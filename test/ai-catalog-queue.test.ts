@@ -156,7 +156,7 @@ test("changed seller/catalog evidence makes a suggestion stale without canonical
     const env = enabled(db, async () => {
       calls++;
       return {
-        response: { decision: "suggestion", catalogProductId: 101, evidence: ["D-1000 MK2"] },
+        response: { catalogProductId: 101, evidenceIndex: 0 },
         usage: { prompt_tokens: 350, completion_tokens: 40, total_tokens: 390 },
       };
     });
@@ -197,6 +197,65 @@ test("changed seller/catalog evidence makes a suggestion stale without canonical
           .first<{ n: number }>()
       )?.n,
       0,
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("known identity vetoes finish without Queue delivery, AI calls or budget reservations", async () => {
+  const { db, dispose } = await database();
+  try {
+    await seed(db);
+    await db
+      .prepare(
+        "UPDATE knowledge_catalog_candidates SET sample_title='D-1000 MK2 専用リモコン' WHERE id=1",
+      )
+      .run();
+    let calls = 0,
+      sends = 0;
+    const env = enabled(db, async () => {
+      calls++;
+      throw new Error("must not invoke");
+    });
+    env.AI_CATALOG_QUEUE = {
+      send: async () => {
+        sends++;
+      },
+    } as unknown as Queue;
+    const first = accountReads(db);
+    const job = await prepareAiCatalogJob({ ...env, DB: first.db }, 1, now);
+    assert.equal(job?.status, "no_suggestion");
+    assert.equal(job?.error_code, "no_safe_candidate");
+    assert.equal(job?.attempts, 0);
+    assert.equal(calls, 0);
+    assert.equal(sends, 0);
+    assert.equal(await loadAiBudget(db, AT.slice(0, 10)), null);
+    const repeat = accountReads(db);
+    await prepareAiCatalogJob({ ...env, DB: repeat.db }, 1, now);
+    assert.equal(repeat.rowsWritten(), 0);
+    assert.ok(first.rowsRead() < 100);
+    assert.ok(first.rowsWritten() < 20);
+    // A crash after inserting a queued job but before local abstention must also avoid inference.
+    await db
+      .prepare("UPDATE ai_catalog_jobs SET status='queued',result_json=NULL WHERE id=?")
+      .bind(job!.id)
+      .run();
+    await processAiCatalogJob(env, job!.id, now);
+    assert.equal((await loadAiJob(db, job!.id))?.status, "no_suggestion");
+    assert.equal(calls, 0);
+    assert.equal(
+      (await db.prepare("SELECT COUNT(*) AS n FROM ai_catalog_attempts").first<{ n: number }>())?.n,
+      0,
+    );
+    console.log(
+      JSON.stringify({
+        event: "ai_preflight_veto_d1",
+        rowsRead: first.rowsRead(),
+        rowsWritten: first.rowsWritten(),
+        statements: first.statementCount(),
+        repeatWrites: repeat.rowsWritten(),
+      }),
     );
   } finally {
     await dispose();

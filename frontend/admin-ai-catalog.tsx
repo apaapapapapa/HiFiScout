@@ -313,6 +313,9 @@ export function AdminAiCatalog() {
             <br />
             代表タイトル: {detail.snapshot?.target.title}
           </p>
+          {detail.job.error === "no_safe_candidate" ? (
+            <p>既存ルールで候補を除外しました。AIは実行していません。</p>
+          ) : null}
           <p>
             AIの候補:{" "}
             {selected

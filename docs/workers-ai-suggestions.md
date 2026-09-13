@@ -2,8 +2,9 @@
 
 Issue [#350](https://github.com/apaapapapapa/HiFiScout/issues/350) adds operator-only
 `catalog_model_lead` suggestions after deterministic classification and official verification.
-The initial contract accepts only existing catalog IDs and exact substrings of supplied seller
-evidence. A validated suggestion is advisory: it cannot verify a catalog product, register an
+The inference contract accepts only supplied catalog IDs and indexes into a supplied seller-evidence
+list. The server resolves each index to its exact seller string and validates the existing advisory
+contract. A validated suggestion cannot verify a catalog product, register an
 alias, change a listing, or merge identities. Review and the existing authoritative save remain
 separate actions. Other suggestion kinds require their own contract and evaluation.
 
@@ -13,6 +14,13 @@ separate actions. Other suggestion kinds require their own contract and evaluati
 variant/accessory/category/collision vetoes, and the input fingerprint. Seller text is untrusted
 data and the model receives no tools or URLs. Input snapshots are rebuilt from allowlisted fields;
 raw seller pages, credentials and unrelated context are never included.
+
+The complete snapshot is checked before selecting eligible catalog options for the request. This
+preserves collision detection while preventing already-vetoed options from reaching the model.
+When no option survives, the job records a deterministic abstention without a Queue send, AI call
+or budget reservation. The detail identifies that AI was not run. A real-workerd fixture measures
+16 rows read, 7 written, and 8 statements for this preparation; repeating it writes zero rows.
+The original full alternative set remains in the fingerprint and reviewer snapshot.
 
 `test/fixtures/ai-catalog-evaluation.ts` contains semantic expectations adapted from the existing
 decision-quality corpus. The fixtures and stubbed responses do **not** demonstrate live accuracy.
@@ -52,8 +60,9 @@ directly; it does not require AI Gateway or store prompt/response payloads in R2
 
 Inference requires all three gates: `AI_CATALOG_ENABLED=true`, an
 `AI_CATALOG_EVALUATION_POLICY` equal to the exact serialized policy that passed a recorded live
-evaluation, and an unblocked daily account-budget grant. Deployment defaults are disabled with no
-evaluation approval. An operator grant must represent capacity reserved after accounting for all
+evaluation, and an unblocked daily account-budget grant. The deployed prompt-3/schema-2 policy is
+approved only for the operator-selected canary described below. A policy change invalidates that
+exact approval key. An operator grant must represent capacity reserved after accounting for all
 other account AI consumers; analytics alone can lag and cannot enforce another caller's ceiling.
 Grants are immutable for that UTC day and cannot reset reservations. An emergency block is final
 for the day. Normal product collection and authoritative classification have no dependency on these
@@ -101,7 +110,28 @@ Use `vp exec tsx scripts/evaluate-ai-catalog.ts responses.json` to evaluate reco
 the fixed corpus. This command is offline and its output explicitly says that response provenance
 has not been verified. Keep the real model request/response metadata, corpus/policy versions,
 latency and provider usage with the evaluation report; passing hand-written responses is not an
-activation approval. No recorded live evaluation has been added by these implementation changes.
+activation approval.
+
+The [2026-09-13 live canary record](https://github.com/apaapapapapa/HiFiScout/blob/main/evaluations/workers-ai/2026-09-13-qwen3-prompt3.json)
+contains all requests, native provider responses, token/Neuron usage and admission outcomes. Prompt 1
+failed with 11 rejected responses out of 14. Prompt 2 was stopped after selecting a different revision.
+Both failed records are retained next to the final record; neither authorizes activation.
+
+Prompt 3/schema 2 uses scalar catalog/evidence selections and applies the existing vetoes before
+inference. In the unchanged 14-case corpus, nine cases abstained deterministically without AI; five
+made real Qwen3 requests, producing four correct suggestions and one conservative abstention. There
+were zero false accepted suggestions and zero invalid responses in this guarded pipeline, with 80%
+positive recall. The five model calls used 1,021 input and 88 output tokens; Cloudflare reported
+7.4035 Neurons in total and individual request latency was 415–686 ms. The nine pre-vetoed cases do
+not demonstrate the model's independent safety; the initial raw-model failures show why those
+guards are necessary. This narrow corpus is not representative production accuracy.
+
+`vp test run test/ai-catalog-contract.test.ts` replays the recorded canary offline and checks exact
+request/admission correspondence, policy key, fingerprints, decoded responses and usage bounds. It
+does not contact a model or authenticate arbitrary external report provenance. The user confirmed
+that this account had no other Workers AI consumers. Grants remain per UTC day: check/reserve the
+account's remaining capacity in the admin view before each day's trial; there is no automatic daily
+renewal and the 25-job/two-attempt limits are unchanged.
 
 After real-model evaluation passes, review the exact policy and account-wide free-capacity
 reservation before setting the deployment gates. Start with the 25-candidate daily cap, inspect

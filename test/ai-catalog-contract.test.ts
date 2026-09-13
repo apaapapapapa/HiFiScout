@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
-import type { AiCatalogSnapshot } from "../src/api/admin-ai-contracts.js";
+import type { AiCatalogSnapshot, AiEvaluationMetrics } from "../src/api/admin-ai-contracts.js";
 import {
   aiCandidateVeto,
   aiSnapshotFingerprint,
   buildAiRequest,
+  eligibleAiCandidates,
   parseAiSnapshot,
   validateAiSuggestion,
+  validateAiSelection,
 } from "../src/ai-suggestions/contract.js";
 import { evaluateAiResponses } from "../src/ai-suggestions/evaluation.js";
 import {
+  AI_CATALOG_POLICY,
+  AI_CATALOG_POLICY_KEY,
   aiBudgetDay,
   aiReservationMilliNeurons,
   aiUsageMilliNeurons,
@@ -90,7 +95,7 @@ test("bounded request isolates seller instructions and fingerprints evidence and
     () =>
       buildAiRequest({
         ...input,
-        target: { ...input.target, title: "語".repeat(240), rawModels: ["型".repeat(160)] },
+        target: { ...input.target, title: "語".repeat(240) },
       }),
     /input_too_large/,
   );
@@ -102,6 +107,42 @@ test("bounded request isolates seller instructions and fingerprints evidence and
     { ...input, candidates: [{ ...input.candidates[0], revision: "changed" }] },
   ])
     assert.notEqual(first, await aiSnapshotFingerprint(changed));
+});
+
+test("wire selections resolve only seller evidence indexes and retain every identity veto", () => {
+  const input = snapshot();
+  assert.deepEqual(
+    validateAiSelection(input, { catalogProductId: 101, evidenceIndex: 0 }),
+    suggestion(),
+  );
+  assert.deepEqual(
+    validateAiSelection(input, { catalogProductId: null, evidenceIndex: null }),
+    abstain,
+  );
+  for (const raw of [
+    { catalogProductId: 999, evidenceIndex: 0 },
+    { catalogProductId: 101, evidenceIndex: -1 },
+    { catalogProductId: 101, evidenceIndex: 100 },
+    { catalogProductId: null, evidenceIndex: 0 },
+    { catalogProductId: 101, evidenceIndex: null },
+    { catalogProductId: 101, evidenceIndex: 0, evidence: "fabricated" },
+  ])
+    assert.throws(() => validateAiSelection(input, raw));
+  for (const item of aiCatalogEvaluationCases) {
+    if (item.expectedCatalogProductId === null) {
+      assert.equal(eligibleAiCandidates(item.snapshot).length, 0, item.id);
+      assert.throws(() => buildAiRequest(item.snapshot), /no_safe_candidate/, item.id);
+      assert.throws(
+        () =>
+          validateAiSelection(item.snapshot, {
+            catalogProductId: item.snapshot.candidates[0].id,
+            evidenceIndex: 0,
+          }),
+        Error,
+        item.id,
+      );
+    } else assert.ok(buildAiRequest(item.snapshot), item.id);
+  }
 });
 
 test("evaluation distinguishes unsafe suggestions, rejected responses and useful coverage", () => {
@@ -130,6 +171,84 @@ test("evaluation distinguishes unsafe suggestions, rejected responses and useful
     cases.length,
   );
   assert.throws(() => evaluateAiResponses(cases, []));
+});
+
+test("the approved live canary reproduces current admission, requests, responses and usage limits", async () => {
+  const report = JSON.parse(
+    readFileSync(
+      new URL("../evaluations/workers-ai/2026-09-13-qwen3-prompt3.json", import.meta.url),
+      "utf8",
+    ),
+  ) as {
+    policyKey: string;
+    cases: Array<{
+      id: string;
+      fingerprint: string;
+      request: unknown;
+      canonicalResponse: unknown;
+      attempts: Array<{
+        result: {
+          response: unknown;
+          model: string;
+          usage: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            neurons: number;
+          };
+        };
+      }>;
+    }>;
+    evaluation: { metrics: AiEvaluationMetrics };
+  };
+  assert.equal(
+    report.policyKey,
+    AI_CATALOG_POLICY_KEY,
+    "changed inference policy requires a new live approval",
+  );
+  assert.equal(report.cases.length, aiCatalogEvaluationCases.length);
+  const responses = [];
+  for (const [index, item] of aiCatalogEvaluationCases.entries()) {
+    const recorded = report.cases[index];
+    assert.equal(recorded.id, item.id);
+    assert.equal(recorded.fingerprint, await aiSnapshotFingerprint(item.snapshot));
+    const eligible = eligibleAiCandidates(item.snapshot).length > 0;
+    assert.deepEqual(recorded.request, eligible ? buildAiRequest(item.snapshot) : null);
+    assert.equal(recorded.attempts.length, eligible ? 1 : 0);
+    let response = abstain;
+    if (eligible) {
+      const result = recorded.attempts[0].result;
+      assert.equal(result.model, AI_CATALOG_POLICY.model);
+      assert.ok(
+        Number.isSafeInteger(result.usage.prompt_tokens) &&
+          result.usage.prompt_tokens >= 0 &&
+          result.usage.prompt_tokens <= AI_CATALOG_POLICY.maxInputTokens,
+      );
+      assert.ok(
+        Number.isSafeInteger(result.usage.completion_tokens) &&
+          result.usage.completion_tokens >= 0 &&
+          result.usage.completion_tokens <= AI_CATALOG_POLICY.maxOutputTokens,
+      );
+      assert.equal(
+        result.usage.total_tokens,
+        result.usage.prompt_tokens + result.usage.completion_tokens,
+      );
+      assert.ok(
+        Number.isFinite(result.usage.neurons) &&
+          result.usage.neurons >= 0 &&
+          result.usage.neurons * 1000 <= aiReservationMilliNeurons(),
+      );
+      const decoded = validateAiSelection(item.snapshot, result.response);
+      assert.deepEqual(decoded, recorded.canonicalResponse);
+      responses.push(decoded);
+    } else {
+      assert.deepEqual(response, recorded.canonicalResponse);
+      responses.push(response);
+    }
+  }
+  const metrics = evaluateAiResponses(aiCatalogEvaluationCases, responses);
+  assert.deepEqual(metrics, report.evaluation.metrics);
+  assert.equal(metrics.passed, true);
 });
 
 test("budget uses UTC windows and pessimistic per-attempt reservations", () => {
