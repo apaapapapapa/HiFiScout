@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci",
+  "repository": "apaapapapapa/HiFiScout",
+  "baselineSha": "0000000000000000000000000000000000000000",
+  "task": {
+    "id": "ci-repair-example",
+    "goal": "Reproduce and repair the selected CI failure without regressions",
+    "requirements": [{ "id": "source-checks", "scope": "source" }],
+    "constraints": ["Keep paused production audits paused", "Do not weaken acceptance checks"],
+    "nextActions": ["Attach the failed CI run and replace baselineSha with its full commit SHA"]
+  },
+  "allowedPaths": ["src", "frontend", "test"],
+  "comparisons": [],
+  "budget": {
+    "maxIterations": 3,
+    "maxDurationMs": 1800000,
+    "maxNoProgress": 2,
+    "maxExternalCalls": 3,
+    "maxReservedCostMicros": 0
+  },
+  "delivery": { "target": "pr", "review": "optional", "reviewWaitMs": 900000 }
+}

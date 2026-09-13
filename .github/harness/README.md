@@ -1,7 +1,32 @@
 # Development harness
 
 The harness connects existing verification tools with explicit acceptance evidence. It runs in the
-development/CI environment; it does not add a production Worker, D1 table or autonomous repair job.
+development/CI environment and does not add a production Worker or D1 table.
+
+## Bounded improvement loops
+
+`vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
+Replace the example baseline with the full incident SHA before creating a run. The contract freezes
+the goal, required harness checks, allowed change paths, comparison requirements, delivery/review
+policy, iteration/time limits and external-call/cost reservations. Changing any of these requires a
+new run. Cost reservations use integer microdollars; they are a spending allocation, not a claim of
+measured provider billing. The default zero allocation permits only zero-cost adapters.
+
+Repairs cannot modify the loop controller, harness gates, CI, agent authority, dependency/runtime
+configuration or migrations. Such changes need a separate ordinary engineering PR. Task prose and
+incident evidence never become shell commands or permission to change the fixed acceptance rules.
+Product/cost loops must include their replay/cost comparison. AI loops require an AI holdout result.
+The normalized contract materializes CI, review coverage and stable-snapshot gates; merge/deployment
+targets add the existing delivery collector's concrete milestone IDs. Required external review adds
+an approval gate. Missing IDs therefore cannot waive the selected policy, even through checkpoint
+assessment. Delivery milestones are evaluated after source repair, at their corresponding stage.
+The delivery collector emits `review-approval` separately from thread resolution, while AI uses the
+existing `ai/offline-holdout` producer; offline success does not prove live model quality. Frozen AI
+labels are protected from repair paths. Review waits are capped at 900,000 ms (15 minutes).
+Loop callers pass the selected target to `collectDelivery`/`assessDelivery`; milestones after that
+target are optional and deployment artifacts are fetched only for deployment targets. The existing
+`harness delivery` CLI keeps its full-deployment default. Browser acceptance/configuration under
+`e2e` is also protected from automatic repair scope.
 
 ## Evidence reports
 
