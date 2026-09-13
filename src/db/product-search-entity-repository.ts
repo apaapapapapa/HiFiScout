@@ -27,6 +27,7 @@ import {
   deleteInactiveOfferSql,
   deleteStaleEntityCategoriesSql,
   refreshEntityAggregatesSql,
+  refreshUnresolvedEntityPrimaryCategoriesSql,
   refreshEntityPresentationColorsSql,
   upsertEntityCategoriesSql,
   refreshEntitySearchTermsSql,
@@ -202,6 +203,7 @@ async function refreshEntities(
     // Aggregate/search refresh is one transaction and one D1 round trip per affected chunk.
     // A query budget must not interrupt this sequence after membership has already moved.
     const results = await db.batch([
+      db.prepare(refreshUnresolvedEntityPrimaryCategoriesSql(offerScope)).bind(...chunk),
       db.prepare(refreshEntityAggregatesSql(offerScope)).bind(...chunk),
       db.prepare(refreshEntityPresentationColorsSql(offerScope)).bind(...chunk),
       db.prepare(upsertEntityCategoriesSql(offerScope)).bind(...chunk),
@@ -299,6 +301,7 @@ export async function rebuildProductSearchEntities(
   const fallbackOffers = await runStatement(db, upsertFallbackOffersSql());
   const exactIdentityOffers = await runStatement(db, upsertExactIdentityGroupOffersSql());
   await runStatement(db, completeEntityMembershipProvenanceSql());
+  await runStatement(db, refreshUnresolvedEntityPrimaryCategoriesSql());
   await runStatement(db, refreshEntityAggregatesSql());
   await runStatement(db, refreshEntityPresentationColorsSql());
   await runStatement(db, upsertEntityCategoriesSql());

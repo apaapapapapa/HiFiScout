@@ -77,6 +77,21 @@ export function exactIdentityRepresentativeListingIdSql(alias: string): string {
   )`;
 }
 
+/** The sole specific category in a group that passed the exact-identity compatibility veto. */
+export function exactIdentityPrimaryCategorySql(alias: string): string {
+  const categoryPeer = `${alias}_primary_category_peer`;
+  return `CASE WHEN ${eligibleExactIdentitySql(alias)}
+      AND ${compatibleExactIdentityCategoriesSql(alias)}
+    THEN COALESCE((
+      SELECT MIN(${categoryPeer}.primary_category_id)
+      FROM products ${categoryPeer} INDEXED BY idx_products_exact_identity
+      WHERE ${eligibleExactIdentitySql(categoryPeer)}
+        AND ${sameExactIdentitySql(alias, categoryPeer)}
+        AND ${categoryPeer}.primary_category_id NOT IN ('other', 'unclassified')
+    ), ${alias}.primary_category_id)
+    ELSE ${alias}.primary_category_id END`;
+}
+
 /**
  * Final fallback owner, shared by entity creation and offer assignment.
  * Keep whitespace after END for Wrangler's SQL-file statement splitter as well as SQLite.
@@ -209,7 +224,7 @@ export function upsertFallbackEntitiesSql(listingScope = ""): string {
            p.manufacturer AS manufacturer,
            p.model AS model,
            COALESCE(sp.normalized_model, '') AS normalized_model,
-           p.primary_category_id AS primary_category_id,
+           ${exactIdentityPrimaryCategorySql("p")} AS primary_category_id,
            COALESCE(NULLIF(sp.manufacturer_terms, ''), p.manufacturer) AS manufacturer_terms,
            COALESCE(NULLIF(sp.model_terms, ''), p.model) AS model_terms,
            '' AS title_terms,
@@ -359,6 +374,42 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
         OR e.latest_activity_at IS NOT agg.latest_activity_at
         OR e.newest_listed_at IS NOT agg.newest_listed_at
         OR e.has_price_drop IS NOT agg.has_price_drop)
+  `;
+}
+
+/**
+ * Re-derives a fallback card's category from its current offers.
+ *
+ * This is deliberately separate from the regular aggregate update. SQLite fires an
+ * `UPDATE OF primary_category_id` trigger whenever the column appears in a SET list, even when
+ * the value is unchanged. The separate value guard therefore keeps price-only refreshes from
+ * adding a billed category-projection write.
+ */
+export function refreshUnresolvedEntityPrimaryCategoriesSql(entityScope = ""): string {
+  return `
+    UPDATE product_search_entities AS e
+    SET primary_category_id = agg.primary_category_id
+    FROM (
+      SELECT m.entity_id,
+             COALESCE(
+               CASE WHEN COUNT(DISTINCT CASE
+                 WHEN p.primary_category_id NOT IN ('other', 'unclassified')
+                   THEN p.primary_category_id END) = 1
+                 THEN MIN(CASE WHEN p.primary_category_id NOT IN ('other', 'unclassified')
+                   THEN p.primary_category_id END)
+                 ELSE NULL END,
+               MAX(CASE WHEN p.id = owner.fallback_listing_id THEN p.primary_category_id END),
+               owner.primary_category_id
+             ) AS primary_category_id
+      FROM product_search_entity_offers m
+      JOIN product_search_entities owner
+        ON owner.id = m.entity_id AND owner.entity_kind = 'unresolved_listing'
+      JOIN products p ON p.id = m.listing_product_id
+      WHERE p.is_active = 1${entityScope}
+      GROUP BY m.entity_id
+    ) AS agg
+    WHERE e.id = agg.entity_id
+      AND e.primary_category_id IS NOT agg.primary_category_id
   `;
 }
 

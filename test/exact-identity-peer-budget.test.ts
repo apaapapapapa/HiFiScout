@@ -52,7 +52,8 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
           normalized_model, model_resolution_status, primary_category_id, title, source_url,
           first_seen_at, last_seen_at, last_changed_at)
         SELECT i, CASE WHEN i % 2 = 1 THEN 'hifido' ELSE 'audiounion' END, CAST(i AS TEXT),
-          'luxman', 'C10', 'C10', 'resolved', 'AMP.PRE', 'LUXMAN C10',
+          'luxman', 'C10', 'C10', 'resolved',
+          CASE WHEN i = 2 THEN 'AMP.PRE' ELSE 'unclassified' END, 'LUXMAN C10',
           'https://example.test/' || i, '${AT}', '${AT}', '${AT}' FROM n
       `)
       .run();
@@ -150,9 +151,36 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       .run();
     await syncProductSearchEntities(db, "hifido", ["1"]);
     const entities = await db
-      .prepare("SELECT entity_key, offer_count, shop_count FROM product_search_entities")
+      .prepare(
+        "SELECT entity_key, primary_category_id, offer_count, shop_count FROM product_search_entities",
+      )
       .all();
-    assert.deepEqual(entities.results, [{ entity_key: "l-1", offer_count: 5, shop_count: 2 }]);
+    assert.deepEqual(entities.results, [
+      {
+        entity_key: "l-1",
+        primary_category_id: "AMP.PRE",
+        offer_count: 5,
+        shop_count: 2,
+      },
+    ]);
+
+    // Removing the only category-providing peer from the safe group refreshes both sides. The
+    // surviving representative must not retain category evidence from a former member.
+    await db
+      .prepare("UPDATE products SET model_resolution_status = 'candidate' WHERE id = 2")
+      .run();
+    await syncProductSearchEntities(db, "audiounion", ["2"]);
+    const separated = await db
+      .prepare(
+        "SELECT entity_key, primary_category_id FROM product_search_entities ORDER BY entity_key",
+      )
+      .all();
+    assert.deepEqual(separated.results, [
+      { entity_key: "l-1", primary_category_id: "unclassified" },
+      { entity_key: "l-2", primary_category_id: "AMP.PRE" },
+    ]);
+    await db.prepare("UPDATE products SET model_resolution_status = 'resolved' WHERE id = 2").run();
+    await syncProductSearchEntities(db, "audiounion", ["2"]);
     const replay = accountReads(db);
     await syncProductSearchEntities(replay.db, "hifido", ["1"]);
     assert.equal(replay.rowsWritten(), 0);
@@ -163,6 +191,16 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       .prepare("UPDATE products SET primary_category_id = 'AMP.INTEGRATED' WHERE id = 5")
       .run();
     assert.deepEqual(await peers(), []);
+    await syncProductSearchEntities(db, "hifido", ["5"]);
+    const conflicting = await db
+      .prepare(
+        "SELECT entity_key, primary_category_id FROM product_search_entities ORDER BY entity_key",
+      )
+      .all();
+    assert.deepEqual(conflicting.results, [
+      { entity_key: "l-1", primary_category_id: "AMP.PRE" },
+      { entity_key: "l-5", primary_category_id: "AMP.INTEGRATED" },
+    ]);
     for (const category of ["unclassified", "other"]) {
       await db
         .prepare("UPDATE products SET primary_category_id = ? WHERE id = 5")

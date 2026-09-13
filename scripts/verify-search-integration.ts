@@ -15,6 +15,7 @@ import {
   deleteInactiveOffersSql,
   refreshEntityAggregatesSql,
   refreshEntitySearchTermsSql,
+  refreshUnresolvedEntityPrimaryCategoriesSql,
   upsertCatalogEntitiesSql,
   upsertCatalogOffersSql,
   upsertFallbackEntitiesSql,
@@ -59,13 +60,14 @@ const entityRefreshSql = [
   deleteInactiveOffersSql(),
   upsertCatalogOffersSql(),
   upsertFallbackOffersSql(),
+  refreshUnresolvedEntityPrimaryCategoriesSql(),
   refreshEntityAggregatesSql(),
   refreshEntitySearchTermsSql(),
   deleteEmptyEntitiesSql(),
 ].join(";\n");
 
 try {
-  const rows = executeLocalD1(`
+  const setupRows = executeLocalD1(`
     ${listing(matchedShopA, "D1000MK2", "TAD D1000MK2", 500000)}
     ${listing(matchedShopB, "D1000MK2", "Technical Audio Devices D1000MK2", 520000)}
     ${listing(unresolvedShop, "D1000TX", "TAD D1000TX", 540000)}
@@ -95,7 +97,8 @@ try {
        'low', 'D1000MK2', 'D1000', '[]', '[]', '[]', '${now}');
 
     ${entityRefreshSql};
-
+  `);
+  const rows = executeLocalD1(`
     SELECT 'grouped' AS check_name,
            e.offer_count, e.shop_count, e.lowest_price_yen,
            (SELECT COUNT(*) FROM product_search_entity_offers m WHERE m.entity_id = e.id) AS members
@@ -121,7 +124,7 @@ try {
   `);
 
   assert.equal(
-    rowsFor(rows, "listing_projection").length,
+    rowsFor(setupRows, "listing_projection").length,
     1,
     "listing evidence must remain available to the entity projection",
   );
