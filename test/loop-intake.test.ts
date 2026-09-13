@@ -23,10 +23,11 @@ const run = {
   updated_at: loopTime(),
 };
 const jobs = {
-  total_count: 2,
+  total_count: 3,
   jobs: [
     { name: "unit-test (1)", conclusion: "failure" },
     { name: "build", conclusion: "success" },
+    { name: "fan-out", conclusion: "failure" },
   ],
 };
 
@@ -41,7 +42,7 @@ test("CI intake distinguishes failed jobs, self-generated runs, foreign sources 
     signalsFromCi(repo, { ...run, head_repository: { full_name: "fork/repo" } }, jobs).reason,
     "foreign_repository",
   );
-  assert.throws(() => signalsFromCi(repo, run, { ...jobs, total_count: 3 }), /incomplete_ci_jobs/u);
+  assert.throws(() => signalsFromCi(repo, run, { ...jobs, total_count: 4 }), /incomplete_ci_jobs/u);
   assert.throws(
     () => signalsFromCi(repo, run, { total_count: 0, jobs: [] }),
     /no_failed_job_evidence/u,

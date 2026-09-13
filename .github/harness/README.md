@@ -59,7 +59,7 @@ and out-of-order signals cannot move lastSeen backwards. Preserve the index with
 writes deduplicated contracts and retains the evidence links. It rejects incomplete job coverage and
 ignores foreign repositories and `automation/loop/` branches already owned by an existing loop.
 
-The `Improvement loop intake` workflow collects failed CI runs from trusted main code, with read-only
+The `autofix.ci` workflow’s `loop-intake` job collects failed CI runs from trusted main code, with read-only
 GitHub permissions and no provider/production credentials. Its artifacts are an intake handoff, not
 proof a repair ran. Stable task IDs let an executor reuse the same journal/worktree across repeated
 artifacts; it must not reset an existing run's budget. No new production scan or duplicate schedule

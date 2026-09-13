@@ -18,8 +18,8 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 - `docs.yml` — architecture boundary check plus deterministic documentation build/publish. Its separate best-effort AI refresh job may update only `docs/ai-generated/**`, validates candidates with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.
-- `autofix.yml` — PR formatting/lint autofix only.
-- `improvement-loop.yml` — bounded CI-failure intake into loop contracts and artifacts. It runs the
+- `autofix.yml` — PR formatting/lint autofix, plus bounded CI-failure intake into loop contracts
+  and artifacts. The read-only `loop-intake` job runs the
   trusted main collector with read-only GitHub access, rejects foreign/incomplete inputs, and leaves
   execution to the loop runner. It does not query production or use AI-provider credentials.
 

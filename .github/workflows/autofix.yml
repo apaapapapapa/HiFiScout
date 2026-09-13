@@ -3,17 +3,28 @@ name: autofix.ci
 on:
   pull_request:
     branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Failed CI run to inspect
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: autofix-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: autofix-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.workflow_run.id || inputs.ci_run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   oxfmt:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -49,3 +60,31 @@ jobs:
           git add -u
           git commit -m "style: apply Vite+ formatter"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+  loop-intake:
+    permissions:
+      contents: read
+      actions: read
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A workflow_run payload is untrusted input. Execute only the trusted main collector.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-deps
+      - name: Collect bounded CI tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOOP_CI_RUN_ID: ${{ github.event.workflow_run.id || inputs.ci_run_id }}
+        run: vp run harness loop intake-ci "$GITHUB_REPOSITORY" "$LOOP_CI_RUN_ID" .generated/loop-intake
+      - name: Preserve intake and contracts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: loop-intake
+          path: .generated/loop-intake/
+          retention-days: 30
+          if-no-files-found: warn

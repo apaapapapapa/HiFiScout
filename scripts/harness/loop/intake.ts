@@ -180,7 +180,10 @@ export function signalsFromCi(
   const evidenceUrl = `https://github.com/${repo}/actions/runs/${runId}`;
   const signals = jobsValue.jobs
     .filter(
-      (job) => isRecord(job) && (job.conclusion === "failure" || job.conclusion === "timed_out"),
+      (job) =>
+        isRecord(job) &&
+        job.name !== "fan-out" &&
+        (job.conclusion === "failure" || job.conclusion === "timed_out"),
     )
     .map((job) => {
       if (!isRecord(job)) throw new Error("invalid_ci_job");
