@@ -262,6 +262,13 @@ Workers usage limits. Deployments use the platform's default version-specific ca
 Non-Workers callers use the existing Cache API fallback. Unit tests prove routing, freshness headers
 and guard order; regional hit rates and platform request coalescing require production observation.
 
+The first unfiltered in-stock page also reads its exact total from the singleton
+`product_search_totals` row instead of counting every matching search entity on each cache miss.
+Migration 0124 backfills that row and guarded projection triggers change it only when an entity
+enters or leaves the in-stock set. Search text, product filters and offer filters continue to use
+their exact request-specific count; the counter does not approximate a filtered result or add a
+write when an entity's positive offer count merely changes between two positive values.
+
 ### Public metadata counts
 
 `/api/meta` reads current `shop_sync_state` and the singleton `public_meta_snapshot`. Public requests
