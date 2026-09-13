@@ -106,6 +106,12 @@ test("in-stock date migration, cursors and refresh ignore newer unavailable offe
       assert.equal(second.items[0].key, sort === "oldest" ? "l-3" : "l-1");
       assert.equal(second.hasMore, false);
     }
+    assert.equal(
+      sqlite
+        .prepare("SELECT in_stock_entity_count FROM product_search_totals WHERE singleton=1")
+        .get()?.in_stock_entity_count,
+      2,
+    );
     sqlite.exec("UPDATE products SET stock_status='sold_out' WHERE id=3");
     await db.prepare(refreshEntityAggregatesSql(" AND m.entity_id IN (?)")).bind(2).run();
     assert.equal(
@@ -115,6 +121,12 @@ test("in-stock date migration, cursors and refresh ignore newer unavailable offe
         )
         .get()?.value,
       null,
+    );
+    assert.equal(
+      sqlite
+        .prepare("SELECT in_stock_entity_count FROM product_search_totals WHERE singleton=1")
+        .get()?.in_stock_entity_count,
+      1,
     );
     const remaining = await searchProducts(db, productQuery("?inStock=true&sort=newest"));
     assert.deepEqual(
