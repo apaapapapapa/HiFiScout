@@ -27,7 +27,7 @@ comparison through a React UI on Cloudflare Workers + D1.
 | D1 / FTS5 | Listings, catalog identity, product entities/offers, price projections, durable work | `src/db/`, `migrations/` |
 | Post-commit Queues | Knowledge Catalog verification and asynchronous CSV exports; independent of crawling | `src/queue.ts`, `wrangler.jsonc` |
 | Admin Worker | Cloudflare Access authentication and internal `CatalogAdminService` RPC | `src/admin/entry.ts`, `wrangler.admin.jsonc` |
-| GitHub Actions | CI, deployment, documentation publication, audits, and backups | `.github/workflows/README.md` |
+| GitHub Actions | CI, deployment, documentation publication, operational telemetry, and backups | `.github/workflows/README.md` |
 
 See [Crawl orchestration](docs/crawl-orchestration.md) and
 [Data platform architecture](docs/data-platform-architecture.md) for lifecycle and storage contracts.
@@ -47,7 +47,8 @@ See [Crawl orchestration](docs/crawl-orchestration.md) and
 | Admin behavior | `docs/listing-admin.md`, `src/admin/contracts.ts` |
 | Commands and toolchain | `package.json`, `package-lock.json`, `vite.config.ts` |
 | Developer documentation | `docs/index.md` |
-| AI contributor instructions and task map | `AGENTS.md`; `CLAUDE.md` imports it |
+| AI contributor instructions and skill routing | [AGENTS.md](AGENTS.md); `CLAUDE.md` imports it |
+| Development evidence and completion harness | [.github/harness/README.md](.github/harness/README.md) |
 
 Prefer these sources over historical PR descriptions, completed migration plans, and production snapshots.
 
@@ -62,9 +63,10 @@ vp run db:migrate:local
 vp run dev
 ```
 
-`dev` builds both frontend bundles before starting Wrangler. Run all source pre-commit checks with
-`vp run verify`; it applies format/lint fixes and runs the read-only checks, parser benchmark, and
-Vitest suite. `vp run check` runs the gate without applying fixes.
+`dev` builds both frontend bundles before starting Wrangler. For source/config changes, use focused
+checks while iterating and run `vp run verify` on the completed candidate. It applies format/lint
+fixes, then the read-only gate defined in `package.json`; `vp run check` runs that gate without fixes.
+See [validation guidance](AGENTS.md#validation) for documentation and other change scopes.
 
 | Task | Command |
 | --- | --- |
@@ -91,9 +93,11 @@ Primary public endpoints include:
 
 The [HTTP API reference](docs/reference/http-api.md) describes executable contract coverage; it is
 not yet a complete inventory of every route. Read `src/index.ts` together with the router when
-checking reachability: public `/api/admin/*` requests return 404 regardless of `ADMIN_TOKEN`.
-The separate Access-protected admin Worker supports catalog/listing corrections and exports through
-the Service Binding. Operational checks and manual replay use the maintained Actions/scripts.
+checking reachability: public `/api/admin/*` requests return 404. The separate Access-protected admin
+Worker provides catalog/listing corrections, CSV import/export and background jobs through the Service
+Binding. Catalog-change, model/category and offer-fact reprocessing use the common jobs screen with
+saved progress and pause/resume; see [administration](docs/listing-admin.md). Broader operator maintenance
+uses the scoped Actions/scripts documented in the workflow responsibility map.
 
 ## Operations and resource use
 
@@ -102,16 +106,21 @@ work. A fresh collection can therefore coexist with trailing search projections.
 and cursors let maintenance resume incomplete projections without fetching the seller again.
 
 General Cron serializes watchdog and maintenance work under one D1-call/wall-time budget, persisting
-pending tasks across ticks. Normal identity repair consumes a dirty set; the full exact-identity scan
-is a daily safety net. Public metadata and recent price medians read persisted projections. See the
-data-platform and crawl guides for the remaining costs and measurement limits.
+pending tasks across ticks. Normal identity repair consumes a dirty set; the daily exact-identity
+safety net advances through bounded candidate windows with a persistent cursor. It does not promise
+a full-catalog pass each day. Public metadata and recent price medians read persisted projections.
+See the data-platform and crawl guides for the remaining costs and measurement limits.
 
 `Deploy Cloudflare` owns provisioning, migrations, Worker deployment, and the immediate smoke check.
 Use that workflow for production deployment; package scripts provide local builds and the migration
 steps consumed by the workflow, without a second combined deployment entry point.
-Product Search/Identity/data-quality checks run in the separate `Production Operational Health`
-workflow. Downstream workflows consume the exact SHA in the `deployment-identity` artifact.
+Public E2E and admin deployment consume the exact SHA in the `deployment-identity` artifact.
 A successful but quota-deferred/no-op deploy does not publish that artifact or change production.
+
+The `data-platform` and `knowledge-catalog` jobs in `Production Operational Health` are intentionally
+paused; they do not run production convergence/quality queries or publish health statuses. Its separate
+passive jobs still archive native D1 Insights and runtime telemetry to private R2 and analyze saved SQL
+archives without application-table scans. Missing telemetry remains unknown rather than zero.
 See the [workflow responsibility map](.github/workflows/README.md) before diagnosing or changing CI/CD.
 
 D1 migrations run before the replacement Worker. Add backward-compatible migrations; never edit an
