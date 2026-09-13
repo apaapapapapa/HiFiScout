@@ -38,16 +38,17 @@ WHERE NOT EXISTS (
   WHERE existing.manufacturer_id='kojo' AND existing.normalized_alias=spellings.normalized_alias
 );
 
+-- Re-evaluate the manufacturer stage itself: a projection-only flag cannot replace derived IDs.
 -- Seek the three observed legacy IDs through idx_products_manufacturer_id. Retain raw seller data,
 -- manual manufacturer overrides and existing projection tokens. No global resolver-version bump.
 UPDATE products INDEXED BY idx_products_manufacturer_id
-SET remediation_projection_required=1, remediation_projection_token=lower(hex(randomblob(16)))
+SET manufacturer_resolver_version=1
 WHERE is_active=1 AND manufacturer_id IN ('kojo', 'kojotechnology', 'brand-1l713dr')
   AND normalized_raw_manufacturer IN (
     'kojo', 'kojotechnology', '光城精工', 'kojotechnologyコウジョウテクノロジー', 'kojo光城精工'
   )
   AND (canonical_manufacturer_id<>'kojo' OR manufacturer_id<>'kojo' OR manufacturer<>'KOJO')
-  AND remediation_projection_required=0
+  AND manufacturer_resolver_version<>1
   AND NOT EXISTS (
     SELECT 1 FROM product_admin_overrides o
     WHERE o.listing_product_id=products.id AND o.manufacturer_id IS NOT NULL

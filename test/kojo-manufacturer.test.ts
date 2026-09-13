@@ -9,7 +9,9 @@ import {
   splitKnownManufacturerModel,
 } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
-import { replayAdminCsvListings } from "../src/db/data-quality-remediation-service.js";
+import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
+import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
+import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { insertListing } from "./helpers/listing-fixture.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
@@ -67,10 +69,10 @@ test("KOJO brand and company spellings share identity and stale search IDs", () 
   );
 });
 
-test("KOJO migration and scoped replay converge search without replacing catalog or seller evidence", async () => {
+test("KOJO migration and scheduled replay converge search without replacing catalog or seller evidence", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
-    const ids = [
+    const listings = [
       ["KOJO", "kojo"],
       ["KOJO TECHNOLOGY", "kojotechnology"],
       ["光城精工", "brand-1l713dr"],
@@ -86,9 +88,14 @@ test("KOJO migration and scoped replay converge search without replacing catalog
         manufacturer_id: id,
         canonical_manufacturer_id: "",
         manufacturer_resolution_status: "unresolved",
+        manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
         model: "Crystal E",
         raw_model: "Crystal E",
         normalized_model: "CRYSTAL E",
+        model_resolver_version: RESOLUTION_VERSIONS.model,
+        metadata_json: JSON.stringify({
+          categoryClassification: { version: RESOLUTION_VERSIONS.category, evidence: [] },
+        }),
         title: `${name} Crystal E 仮想アース`,
         category: "仮想アース・ノイズ対策",
         raw_category: "仮想アース",
@@ -105,14 +112,23 @@ test("KOJO migration and scoped replay converge search without replacing catalog
     const catalogBefore = sqlite
       .prepare("SELECT * FROM knowledge_catalog_products WHERE id=90000")
       .get();
-    sqlite.exec(migration);
-    assert.equal(
-      sqlite
-        .prepare("SELECT COUNT(*) AS n FROM products WHERE remediation_projection_required=1")
-        .get()?.n,
-      3,
+    // All stored stages are current before the alias change. The migration must schedule a
+    // manufacturer replay; refreshing only the existing search projection cannot fix these IDs.
+    await refreshListingProjections(
+      db,
+      listings.map((id) => {
+        const row = sqlite.prepare("SELECT shop_key,source_id FROM products WHERE id=?").get(id)!;
+        return { shop_key: String(row.shop_key), source_id: String(row.source_id) };
+      }),
+      AT,
     );
-    await replayAdminCsvListings(db, ids, AT);
+    sqlite.exec(migration);
+    const sweep = await runDataQualityRemediationSweep(db, {
+      seedLimit: 10,
+      claimLimit: 10,
+      now: new Date(AT),
+    });
+    assert.equal(sweep.failed, 0);
     const rows = sqlite
       .prepare(
         "SELECT manufacturer_id,canonical_manufacturer_id,raw_manufacturer,raw_model,remediation_projection_required FROM products ORDER BY id",
@@ -161,6 +177,7 @@ test("KOJO migration preserves manual decisions, unrelated rows and pending toke
       source_id: "pending",
       manufacturer_id: "kojo",
       canonical_manufacturer_id: "",
+      manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
       raw_manufacturer: "KOJO",
       normalized_raw_manufacturer: "kojo",
       remediation_projection_required: 1,
@@ -169,6 +186,7 @@ test("KOJO migration preserves manual decisions, unrelated rows and pending toke
     const manual = insertListing(sqlite, {
       source_id: "manual",
       manufacturer_id: "brand-1l713dr",
+      manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
       raw_manufacturer: "光城精工",
       normalized_raw_manufacturer: "光城精工",
     });
@@ -185,6 +203,12 @@ test("KOJO migration preserves manual decisions, unrelated rows and pending toke
         .prepare("SELECT remediation_projection_token AS token FROM products WHERE id=?")
         .get(existing)?.token,
       "existing-work",
+    );
+    assert.equal(
+      sqlite
+        .prepare("SELECT manufacturer_resolver_version AS version FROM products WHERE id=?")
+        .get(existing)?.version,
+      1,
     );
     for (const id of [manual, other])
       assert.equal(
