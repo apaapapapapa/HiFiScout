@@ -33,6 +33,27 @@ test("Shimamusen promotional prefixes never become manufacturer or model identit
   assert.match(items[2].model, /^Debut ConneX DCB41/u);
 });
 
+test("Shimamusen keeps a verified multi-word manufacturer out of the model", () => {
+  const html = `
+    <ul>
+      <li>
+        <a href="/shopdetail/000000019804/ct826/page1/order/">
+          【中古品】Unison Research Simply Four ※送料無料《北海道・沖縄・離島を除く》
+        </a>
+        <span class="price">販売価格198,000円(税込)</span>
+      </li>
+    </ul>`;
+
+  const [product] = parseShimamusenListing(html, { kind: "中古品" });
+  const normalized = normalizeCatalogProduct(product, {}, { shopKey: "shimamusen" });
+
+  assert.equal(product.rawManufacturer, "Unison Research");
+  assert.equal(product.model, "Simply Four ※送料無料");
+  assert.equal(normalized.manufacturer, "Unison Research");
+  assert.equal(normalized.manufacturerId, "unisonresearch");
+  assert.equal(normalized.model, "Simply Four");
+});
+
 /**
  * The three shapes a Shimamusen listing title uses to say something that is not the product: the
  * brand written twice with the second spelling bracketed, a `※` delivery footnote, and a product

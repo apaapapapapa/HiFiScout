@@ -2,7 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createBrowserHtmlFetcher } from "../src/crawler/browser.js";
 
-function browserHarness() {
+function browserHarness(contentHtml = "<html>first</html>", fetchLandsOn?: string) {
   const calls = { launch: 0, newPage: 0, goto: 0, evaluate: 0, close: 0 };
   let currentUrl = "about:blank";
   const page = {
@@ -15,11 +15,16 @@ function browserHarness() {
       return currentUrl;
     },
     async content() {
-      return "<html>first</html>";
+      return contentHtml;
     },
     async evaluate(_fn: unknown, url: string) {
       calls.evaluate += 1;
-      return { status: 200, html: `<html>${url}</html>` };
+      return {
+        status: 200,
+        html: `<html>${url}</html>`,
+        url: fetchLandsOn ?? url,
+        redirected: fetchLandsOn != null,
+      };
     },
   };
   const browser = {
@@ -84,7 +89,12 @@ test("Browser Run transport preserves blocked HTTP status errors", async () => {
               return "";
             },
             async evaluate() {
-              return { status: 200, html: "" };
+              return {
+                status: 200,
+                html: "",
+                url: "https://example.com/page-1",
+                redirected: false,
+              };
             },
           };
         },
@@ -99,4 +109,58 @@ test("Browser Run transport preserves blocked HTTP status errors", async () => {
   );
   await fetcher.close();
   assert.equal(harness.calls.launch, 0);
+});
+
+test("Browser Run transport refuses a page over the byte ceiling, counting UTF-8 bytes", async () => {
+  const japanese = "中".repeat(400);
+  const harness = browserHarness(japanese);
+  const fetcher = createBrowserHtmlFetcher({}, { launchBrowser: harness.launchBrowser });
+
+  // 400 characters, 1200 UTF-8 bytes: a code-unit comparison against the same ceiling would pass.
+  await assert.rejects(
+    fetcher.fetchHtmlPage("https://example.com/page-1", {
+      ...fetchOptions(),
+      maxResponseBytes: 600,
+    }),
+    /exceeded the 600 byte limit/u,
+  );
+
+  // A fresh session: the rejected navigation above already pinned the page's origin, which would
+  // route a second call through the same-origin fetch path instead of navigation.
+  const allowed = createBrowserHtmlFetcher(
+    {},
+    { launchBrowser: browserHarness(japanese).launchBrowser },
+  );
+  const ok = await allowed.fetchHtmlPage("https://example.com/page-1", {
+    ...fetchOptions(),
+    maxResponseBytes: 1200,
+  });
+  assert.equal(ok.length, 400);
+});
+
+test("Browser Run transport refuses a same-origin fetch that lands on another origin", async () => {
+  // The page's in-page fetch follows redirects itself and reports only where it ended up, so the
+  // destination is checked on the way back rather than before the request.
+  const harness = browserHarness("<html>first</html>", "https://elsewhere.test/page-2");
+  const fetcher = createBrowserHtmlFetcher({}, { launchBrowser: harness.launchBrowser });
+  const options = fetchOptions();
+
+  // The first call navigates and pins the page origin, so the second reuses the in-page fetch path.
+  await fetcher.fetchHtmlPage("https://example.com/page-1", options);
+  await assert.rejects(
+    fetcher.fetchHtmlPage("https://example.com/page-2", options),
+    /ended on https:\/\/elsewhere\.test, which is not allowed/u,
+  );
+});
+
+test("Browser Run transport accepts a same-origin fetch that stayed on the shop", async () => {
+  const harness = browserHarness("<html>first</html>", "https://example.com/moved");
+  const fetcher = createBrowserHtmlFetcher({}, { launchBrowser: harness.launchBrowser });
+  const options = fetchOptions();
+
+  await fetcher.fetchHtmlPage("https://example.com/page-1", options);
+  assert.equal(
+    await fetcher.fetchHtmlPage("https://example.com/page-2", options),
+    "<html>https://example.com/page-2</html>",
+  );
 });

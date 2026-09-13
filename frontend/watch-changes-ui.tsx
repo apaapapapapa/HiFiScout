@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiClient } from "./api-client.js";
 import type { DisplayProduct } from "./types.js";
+import type { FavoriteProduct } from "./favorites.js";
 import { readPreference, savePreference } from "./public-ui-state.js";
 import { validProductKey, productPermalinkPath } from "./product-permalink.js";
 import { yen } from "./format.js";
@@ -37,7 +38,7 @@ export function FavoriteWatch({
 }: {
   products: DisplayProduct[];
   api: ApiClient;
-  onSnapshots: (products: DisplayProduct[]) => void;
+  onSnapshots: (products: FavoriteProduct[]) => void;
   shopName: (key: string) => string;
 }) {
   // Freeze within the parent's filter + favorite-membership key. Snapshot refreshes may change
@@ -85,7 +86,16 @@ export function FavoriteWatch({
           );
           setSaveError(!savePreference(WATCH_OBSERVATIONS_KEY, JSON.stringify(merged)));
           onSnapshotsRef.current(
-            fresh.flatMap((result) => (result.detail ? [result.detail.product] : [])),
+            fresh.flatMap((result) =>
+              result.detail
+                ? [
+                    {
+                      ...result.detail.product,
+                      favorite_offers: captureWatchObservation(result.detail, checkedAt),
+                    },
+                  ]
+                : [],
+            ),
           );
         }
       })

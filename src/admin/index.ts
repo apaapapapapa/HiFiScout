@@ -12,7 +12,8 @@ import {
   parseKnowledgeCatalogAdminUpdate,
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
-import { requireCloudflareAccess, verifyCloudflareAccessRequest } from "./access.js";
+import { authenticateCloudflareAccess } from "./access.js";
+import type { AdminPrincipal } from "../api/admin-actor.js";
 import { parseModelFactWrite } from "../http/model-fact-admin.js";
 import { parseAdminManufacturerQuery } from "../api/admin-manufacturer-contracts.js";
 import { PRESENTATION_COLORS } from "../catalog/model-presentation-color.js";
@@ -130,6 +131,7 @@ function knowledgeCatalogExportUnavailable(error: unknown, operation: string): R
 
 function manualOperationError(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("catalog_admin_ai_")) return json({ error: message }, { status: 409 });
   if (message.startsWith("catalog_admin_product_already_exists:")) {
     const existingProductId = Number(message.split(":", 2)[1] || 0);
     return json(
@@ -185,6 +187,7 @@ function isResponse(value: unknown): value is Response {
 export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
+  principal: AdminPrincipal,
 ): Promise<Response> {
   const url = new URL(request.url);
 
@@ -201,13 +204,9 @@ export async function handleAuthenticatedCatalogAdminRequest(
       if (isResponse(body)) return body;
       const input = parseModelFactWrite(body);
       if (!input) return json({ error: "invalid_model_fact" }, { status: 400 });
-      const claims = await verifyCloudflareAccessRequest(request, {
-        teamDomain: env.ACCESS_TEAM_DOMAIN || "",
-        audience: env.ACCESS_AUD || "",
-      });
-      return json(
-        await env.CATALOG_ADMIN.saveModelFacts(productId, input, claims?.sub || "access_admin"),
-      );
+      // Previously this re-verified the request's JWT to recover `sub`. The entry point already
+      // proved the signature, so the subject arrives as an argument instead of being re-derived.
+      return json(await env.CATALOG_ADMIN.saveModelFacts(productId, input, principal.actor));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/catalog_model_fact_|UNIQUE constraint|FOREIGN KEY|CHECK constraint/u.test(message))
@@ -232,7 +231,7 @@ export async function handleAuthenticatedCatalogAdminRequest(
       }
       const input = parseAdminCsvApply(body);
       if (!input) return json({ error: "invalid_csv_import" }, { status: 400 });
-      return json(await env.CATALOG_ADMIN.applyCsvImport(input));
+      return json(await env.CATALOG_ADMIN.applyCsvImport(input, principal.actor));
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -403,7 +402,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
     const input = parseKnowledgeCatalogAdminMerge(body);
     if (!input) return json({ error: "invalid_catalog_merge" }, { status: 400 });
     try {
-      const result = await env.CATALOG_ADMIN.mergeProducts(targetProductId, input.sourceProductId);
+      const result = await env.CATALOG_ADMIN.mergeProducts(
+        targetProductId,
+        input.sourceProductId,
+        principal.actor,
+      );
       return result ? json(result) : json({ error: "not_found" }, { status: 404 });
     } catch (error) {
       return manualOperationError(error);
@@ -439,7 +442,7 @@ export async function handleAuthenticatedCatalogAdminRequest(
     const input = parseKnowledgeCatalogAdminUpdate(body);
     if (!input) return json({ error: "invalid_catalog_update" }, { status: 400 });
     try {
-      const result = await env.CATALOG_ADMIN.updateProduct(productId, input);
+      const result = await env.CATALOG_ADMIN.updateProduct(productId, input, principal.actor);
       return result ? json(result) : json({ error: "not_found" }, { status: 404 });
     } catch (error) {
       return manualOperationError(error);
@@ -460,11 +463,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
 
 export default {
   async fetch(request: Request, env: CatalogAdminEnv): Promise<Response> {
-    const denied = await requireCloudflareAccess(request, {
+    const access = await authenticateCloudflareAccess(request, {
       teamDomain: env.ACCESS_TEAM_DOMAIN || "",
       audience: env.ACCESS_AUD || "",
     });
-    if (denied) return denied;
-    return handleAuthenticatedCatalogAdminRequest(request, env);
+    if ("denied" in access) return access.denied;
+    return handleAuthenticatedCatalogAdminRequest(request, env, access.principal);
   },
 } satisfies ExportedHandler<CatalogAdminEnv>;

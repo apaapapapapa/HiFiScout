@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { CATEGORY_VERSION_EXPRESSION } from "./resolution-version-sql.js";
 import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 
@@ -212,10 +213,6 @@ function automaticWorkKey({ row, workType }: Candidate): string {
     `identity:${row.identity_resolver_version}`,
   ].join(":");
 }
-
-/** Category is the one stage whose version is stored inside `metadata_json`, not as a column. */
-const CATEGORY_VERSION_EXPRESSION =
-  "COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0)";
 
 /**
  * One indexed way into the stale set, bounded by its own LIMIT.

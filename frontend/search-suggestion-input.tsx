@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { ApiClient } from "./api-client.js";
@@ -8,6 +8,7 @@ interface SearchSuggestionInputProps {
   api: ApiClient;
   value: string;
   onValueChange: (value: string, debounced: boolean) => void;
+  onCompositionStart?: () => void;
 }
 
 /**
@@ -17,8 +18,16 @@ interface SearchSuggestionInputProps {
  * unnormalized input value. That can hide valid server matches such as full-width or separator
  * variants, so the application owns rendering and keyboard selection of the returned candidates.
  */
-export function SearchSuggestionInput({ api, value, onValueChange }: SearchSuggestionInputProps) {
-  const suggestions = useSearchSuggestions(api, value);
+export function SearchSuggestionInput({
+  api,
+  value,
+  onValueChange,
+  onCompositionStart,
+}: SearchSuggestionInputProps) {
+  const [composing, setComposing] = useState(false);
+  const composingRef = useRef(false);
+  const [draft, setDraft] = useState(value);
+  const suggestions = useSearchSuggestions(api, composing ? "" : value);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const listOpen = open && suggestions.length > 0;
@@ -34,6 +43,7 @@ export function SearchSuggestionInput({ api, value, onValueChange }: SearchSugge
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (composingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape") {
       if (listOpen) event.preventDefault();
       setOpen(false);
@@ -75,7 +85,7 @@ export function SearchSuggestionInput({ api, value, onValueChange }: SearchSugge
         }
         placeholder="例: TAD ME1 / LUXMAN / DAC"
         autoComplete="off"
-        value={value}
+        value={composing ? draft : value}
         style={{ width: "100%" }}
         onFocus={() => setOpen(true)}
         onBlur={() => {
@@ -83,6 +93,22 @@ export function SearchSuggestionInput({ api, value, onValueChange }: SearchSugge
           setActiveIndex(-1);
         }}
         onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          if (composingRef.current) return;
+          setOpen(true);
+          onValueChange(event.currentTarget.value, true);
+        }}
+        onCompositionStart={(event) => {
+          composingRef.current = true;
+          setDraft(event.currentTarget.value);
+          setComposing(true);
+          setOpen(false);
+          setActiveIndex(-1);
+          onCompositionStart?.();
+        }}
+        onCompositionEnd={(event) => {
+          composingRef.current = false;
+          setComposing(false);
           setOpen(true);
           onValueChange(event.currentTarget.value, true);
         }}

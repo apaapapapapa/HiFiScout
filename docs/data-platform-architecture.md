@@ -176,6 +176,76 @@ Both pending selectors materialize their indexed, limited work sets before looki
 
 Migration 0090 records a token in `listing_projection_pending` in the same transaction as an inserted or materially updated listing, including deactivation. Heartbeats and same-value updates do not enqueue work. This obligation survives a failure before `recordCrawlRunWorkSet`; an unchanged crawl returns pending observed sources in its derived work set. Normal crawl continuations and remediation refreshes clear only the token captured before their projection work, after dependency-ordered completion. A concurrent newer edit therefore remains pending. The tables contain current work and constant-size audit cursors, not another append-only event log.
 
+### Public response security headers
+
+Two mechanisms cover two disjoint sets of responses, because Cloudflare keeps them separate by
+design: `public/_headers` applies to assets Workers Static Assets serves directly, and Cloudflare
+explicitly does not apply it to Worker output. `src/http/security-headers.ts` covers everything the
+Worker produces — HTML, API JSON, feeds, edge-cache hits and application error responses — because
+it wraps the outermost public entrypoint in `src/index.ts`. `test/public-security-headers.test.ts`
+asserts the two sets are identical, and `e2e/tests/security-headers.spec.ts` checks the deployed
+responses after each deployment.
+
+Applying the headers after the cache lookup rather than before the cache write means entries stored
+by an earlier deployment are served with the current headers; no purge is needed.
+
+The Content Security Policy is **enforced**, not Report-Only. Every source is `'self'`: one
+first-party bundle, first-party stylesheets, one first-party image, and same-origin `/api/` calls.
+The single exception is inline `style` **attributes**, which React writes; CSP Level 3 governs those
+with `style-src-attr`, so `'unsafe-inline'` is confined there while `style-src-elem 'self'` keeps an
+injected `<style>` element blocked. `style-src` repeats the permissive form only for browsers that
+do not implement the two specific directives. The server-rendered permalink's styles were moved to
+`public/permalink.css` so no rendered document needs an inline stylesheet. A nonce was rejected
+because these documents are served from a shared 30-second edge cache.
+
+This is not the admin console's policy. `Referrer-Policy` is `strict-origin-when-cross-origin`
+rather than `no-referrer`, and `Cross-Origin-Resource-Policy`/`Cross-Origin-Embedder-Policy` are
+deliberately absent: the catalogue is public and meant to be linked to. `Strict-Transport-Security`
+carries neither `includeSubDomains` nor `preload`, since neither the sibling subdomains of a
+`workers.dev` zone nor a preload-list entry are this project's to assert.
+
+CSP is defence in depth. It does not replace the HTML escaping in `product-permalink.ts` or the URL
+validation at the DTO boundary.
+
+### Public API rate limiting
+
+`src/api-guard.ts` resolves a bucket for every public API request and then answers one of three
+decisions, which the routes act on separately:
+
+| State | Answer |
+| --- | --- |
+| Within the limit | Normal handling |
+| Over the limit | `429` |
+| Limiter unconfigured or failing | `503` on the routes it protects |
+
+The third state covers both a missing `API_RATE_LIMITER` binding and a `.limit()` that throws.
+Neither is a pass: a deployment without a working limiter refuses the routes the limiter is
+responsible for rather than serving them unmetered. There is no "no binding, so this must be
+development" bypass; local and test callers supply an explicit mock instead.
+
+The bucket is resolved before the binding is consulted, so a limiter problem can only affect routes
+the limiter covers. Static assets and the retired `/api/admin/*` paths carry no bucket and are never
+stopped by one.
+
+While the limiter is unavailable, a read an existing Cache API entry already answers is still served
+from that entry — `/api/feed`, `/api/meta`, `/api/knowledge-catalog/status` and product permalinks.
+A cache **miss** is refused rather than allowed to reach D1 with no limit in force. Search and
+suggestions have no such mode: they are served by a cached Worker entrypoint whose cache this Worker
+cannot interrogate, so asking it for a hit also authorizes a miss. They answer `503`.
+
+Degradation is logged as one structured line per isolate per minute, not per request: a limiter
+outage affects every request, and logging each one would turn a failed defence into a second
+incident.
+
+Client identity stays `cf-connecting-ip`, which the edge sets and a caller cannot choose. This is an
+abuse brake, not a usage meter: it does not account for the D1 free-tier quota, and no per-request
+D1 counter exists to replace it.
+
+`test/api-rate-limit-degradation.test.ts` fixes the per-route behaviour and asserts that
+`wrangler.jsonc` declares the binding for every environment. Post-deployment, the deploy workflow's
+runtime smoke check requires `GET /api/feed` to answer `200`, which a deployment missing the binding
+could not do.
+
 ### Public search response cache
 
 The default Worker remains uncached so every public API request passes its rate limiter and URL
@@ -193,6 +263,13 @@ without adding R2 objects or operations. The gateway still executes and requests
 Workers usage limits. Deployments use the platform's default version-specific cache keys.
 Non-Workers callers use the existing Cache API fallback. Unit tests prove routing, freshness headers
 and guard order; regional hit rates and platform request coalescing require production observation.
+
+The first unfiltered in-stock page also reads its exact total from the singleton
+`product_search_totals` row instead of counting every matching search entity on each cache miss.
+Migration 0124 backfills that row and guarded projection triggers change it only when an entity
+enters or leaves the in-stock set. Search text, product filters and offer filters continue to use
+their exact request-specific count; the counter does not approximate a filtered result or add a
+write when an entity's positive offer count merely changes between two positive values.
 
 ### Public metadata counts
 
@@ -305,6 +382,11 @@ Migration 0084 removes the obsolete listing FTS index and guards projection/enti
 
 The write path also avoids unchanged indexed-column assignments and filters equal search/candidate
 rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise no-op upsert.
+Resolver remediation applies the same rule to its listing replay: it constructs the `products`
+assignment list from the derived fields that actually changed, while comparing the complete loaded
+source/derived snapshot and projection token. A metadata-only resolver-version advance therefore
+does not name every identity/category index column or rebuild an unchanged `product_categories`
+membership set, and a concurrent update to an omitted field makes the replay retry.
 `syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
 decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
 Candidate review timestamps record a changed decision, while review-run rows record executions.
@@ -362,6 +444,20 @@ For example, `TAD 1000` becomes an FTS5 query equivalent to:
 
 and matches model text such as `D1000MK2` through the trigram index.
 
+When free text starts with a complete known manufacturer name or alias, search also applies the
+same manufacturer predicate as the explicit facet. `lumin` therefore finds LUMIN products without
+matching FiiO's `Aluminum` finish, Sonus faber's `Lumina` models or another maker's LUMIN-compatible
+accessory. `LUMIN U2` and `TAD 1000` retain conjunctive partial model matching; `Lumina` and
+`Aluminum` remain ordinary free-text searches. Recognition uses the shared manufacturer boundary
+and alias rules, including Japanese names and full-width input. FTS still selects candidates before
+the additional predicate, and filtering precedes counts, sorting and pagination. This requires no
+new projection, index or database write.
+
+Typeahead applies this predicate before its candidate limit, and device-local favorites apply the
+same inferred manufacturer alongside their text terms. The browser shares only the manufacturer
+search vocabulary and pure query contract in `src/api/manufacturer-search-contracts.ts`; catalog
+normalization and SQL remain server-side. Search and typeahead reuse `src/db/manufacturer-filter.ts`.
+
 Product search matches `product_search_entities_fts`, whose rows are entities. Each entity indexes canonical manufacturer terms, the canonical normalized model, canonical model terms including Knowledge Catalog aliases, and bounded seller evidence — the titles and normalized terms of up to three member listings — so a query phrased the way a retailer writes it still finds the product without that phrasing becoming canonical truth.
 
 ### Ranking
@@ -409,6 +505,13 @@ Explicit sorting follows the same offer subset as the card whenever an offer fil
 | `oldest` | the same aggregate ascending — the exact inverse, not a different column |
 | `updated` | most recent meaningful listing activity across offers, descending |
 | `priceAsc` / `priceDesc` | lowest offer price; the lowest **in-stock** price when `inStock=true`, so "cheapest first" never orders by a price nobody can buy |
+
+The public UI defaults to `updated` (「新着・更新順」), so meaningful price and stock changes can
+appear ahead of older unchanged listings. `newest` and `oldest` remain explicit publication-date
+choices (「掲載が新しい順」 / 「掲載が古い順」). Favorites use the same date meanings, and URL
+normalization retains explicit publication-date sorts. The API's omitted-sort default remains
+`newest`; the UI sends its selected sort explicitly. This reuses the existing activity indexes and
+does not add crawl writes or a new aggregation path.
 
 The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 

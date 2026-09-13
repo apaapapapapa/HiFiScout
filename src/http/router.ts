@@ -48,7 +48,13 @@ import {
   parseDataQualityRebuildRequest,
   parseReplayRequest,
 } from "./remediation-admin.js";
-import { cachedAtom, cachedJson, json } from "./response.js";
+import {
+  cachedAtom,
+  cachedJson,
+  json,
+  rateLimitedResponse,
+  rateLimiterUnavailableResponse,
+} from "./response.js";
 import type { CrawlerEnv } from "../crawler/types.js";
 
 /** Seconds the edge may serve a cached read response. */
@@ -82,9 +88,12 @@ async function readJsonBody(request: Request): Promise<unknown> {
 async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const rate = await checkPublicApiRateLimit(request, env);
-  if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
+  if (rate.decision === "limited") return rateLimitedResponse();
+  // The limiter could not decide. Reads an existing cache entry already answers stay available;
+  // every other route refuses rather than reaching D1 with no limit in force.
+  const cacheOnly = rate.decision === "unavailable";
 
-  const contractResponse = await handlePublicContractRoute(request, env, ctx);
+  const contractResponse = await handlePublicContractRoute(request, env, ctx, { cacheOnly });
   if (contractResponse) return contractResponse;
 
   if (request.method === "GET" && url.pathname === "/api/feed") {
@@ -93,21 +102,35 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
     const query = parseFeedQuery(url);
     const canonicalUrl = canonicalFeedQueryUrl(url, query);
     const cacheRequest = new Request(canonicalUrl.toString(), request);
-    return cachedAtom(cacheRequest, ctx, FEED_CACHE_TTL_SECONDS, async () => {
-      const result = await searchBaseProducts(env.DB, query);
-      return productSearchAtomFeed(result.items, canonicalUrl);
+    return cachedAtom(
+      cacheRequest,
+      ctx,
+      FEED_CACHE_TTL_SECONDS,
+      async () => {
+        const result = await searchBaseProducts(env.DB, query);
+        return productSearchAtomFeed(result.items, canonicalUrl);
+      },
+      { cacheOnly },
+    );
+  }
+  if (request.method === "GET" && url.pathname === "/api/meta") {
+    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => meta(env), { cacheOnly });
+  }
+  if (request.method === "GET" && url.pathname === "/api/knowledge-catalog/status") {
+    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => knowledgeCatalogStatus(env), {
+      cacheOnly,
     });
   }
+
+  // Past this point every public route either reads D1 or is an unrecognized path, and none of them
+  // has a cache entry to fall back on. Retired `/api/admin/*` paths carry no bucket, so they never
+  // reach this guard with `cacheOnly` set.
+  if (cacheOnly) return rateLimiterUnavailableResponse();
+
   const detailMatch = url.pathname.match(PRODUCT_SEARCH_DETAIL_PATH);
   if (request.method === "GET" && detailMatch) {
     const detail = await productSearchDetail(env.DB, detailMatch[1]);
     return detail ? json(detail) : json({ error: "not_found" }, { status: 404 });
-  }
-  if (request.method === "GET" && url.pathname === "/api/meta") {
-    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => meta(env));
-  }
-  if (request.method === "GET" && url.pathname === "/api/knowledge-catalog/status") {
-    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => knowledgeCatalogStatus(env));
   }
   if (request.method === "GET" && url.pathname === "/api/health") {
     // A failing health check must still answer 503 rather than surfacing a 500.

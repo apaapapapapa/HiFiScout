@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { CATEGORY_VERSION_EXPRESSION } from "./resolution-version-sql.js";
 import type { QueryableDatabase } from "./types.js";
 
 function changes(result: D1Result<unknown>): number {
@@ -59,10 +60,7 @@ export async function compactSupersededAutomaticRemediationJobs(
                   OR (q.work_type = 'resolve_model' AND p.model_resolver_version >= ?)
                   OR (
                     q.work_type = 'classify_category'
-                    AND COALESCE(
-                      CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER),
-                      0
-                    ) >= ?
+                    AND ${CATEGORY_VERSION_EXPRESSION} >= ?
                   )
                   OR (
                     q.work_type = 'resolve_identity'

@@ -2,6 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 
 export const evidenceBucket = "hifiscout-evidence";
 export const requiredQueues = [
+  "hifiscout-ai-catalog",
+  "hifiscout-ai-catalog-dlq",
   "hifiscout-knowledge-verification",
   "hifiscout-knowledge-verification-dlq",
   "hifiscout-product-audit-export",

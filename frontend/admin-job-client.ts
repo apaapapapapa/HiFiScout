@@ -53,7 +53,7 @@ export async function submitAdminReplayJob(
     id,
     kind,
     total: 0,
-    label: kind === "model" ? "旧バージョン商品の型番再判定" : "全商品の出品条件再処理",
+    label: kind === "model" ? "旧バージョン商品の型番・カテゴリ再判定" : "全商品の出品条件再処理",
   });
   return (await adminJobRequest<{ job: AdminBackgroundJob }>({ action: "start", id: job.id })).job;
 }

@@ -39,6 +39,7 @@ const AUDIO_CATEGORIES: readonly AvacCategory[] = Object.freeze([
 
 const CONDITION_MARKER_PATTERN = /[〖【]\s*(中古|展示処分品|アウトレット)\s*[〗】]/u;
 const PRODUCT_CODE_PATTERN = /[〖【]\s*コード\s*([^〗】]+?)\s*[〗】]/u;
+const MARKETING_PREFIX_PATTERN = /^(?:特価(?:品)?(?=\s|$)\s*)+/u;
 const SOLD_PATTERN =
   /この商品は完売しました|完売|売り切れ|売切れ|在庫なし|品切れ|販売終了|売約済(?:み)?/u;
 const IN_STOCK_PATTERN = /カートに入れる|[〖【]\s*中古用\s*[〗】]|数量/u;
@@ -103,6 +104,7 @@ function parseConditionedTitle(value: string, fallbackCategory: string): ParsedT
   const titleEnd = codeIndex >= 0 ? codeIndex : afterCondition.length;
   const categoryStart = codeIndex >= 0 && code ? codeIndex + code[0].length : afterCondition.length;
   const title = cleanText(afterCondition.slice(0, titleEnd))
+    .replace(MARKETING_PREFIX_PATTERN, "")
     .replace(/[-－]\s*送料別途\s*$/u, "")
     .replace(/[-－]\s*特(?:価)?\s*$/u, "")
     .trim();

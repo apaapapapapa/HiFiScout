@@ -40,6 +40,11 @@ const listingHtml = `
   <button>カートに入れる</button>
 </div>
 <div class="product">
+  <a href="/buy/products/detail/51936">〖中古〗特価 YAMAHA NS-F700〖コード22-100342〗フロア型スピーカー(ペア)</a>
+  <p>￥39,800 (税込)</p>
+  <p>この商品は完売しました。</p>
+</div>
+<div class="product">
   <a href="/buy/products/detail/50006">〖新品〗DENON PMA-1700NE〖コードNEW-001〗プリメインアンプ</a>
   <p>￥198,000 (税込)</p>
   <button>カートに入れる</button>
@@ -47,7 +52,7 @@ const listingHtml = `
 
 test("AVAC parser includes used, outlet and display-disposal inventory", () => {
   const products = parseAvacListing(listingHtml, audioPage);
-  assert.equal(products.length, 4);
+  assert.equal(products.length, 5);
 
   assert.deepEqual(products[0], {
     sourceId: "50001",
@@ -83,6 +88,15 @@ test("AVAC parser includes used, outlet and display-disposal inventory", () => {
   assert.equal(products[3]?.rawCategory, "プリメインアンプ");
   assert.equal(products[3]?.category, "プリメインアンプ");
   assert.equal(products[3]?.conditionText, "中古");
+
+  assert.equal(products[4]?.sourceId, "51936");
+  assert.equal(products[4]?.title, "YAMAHA NS-F700");
+  assert.equal(products[4]?.rawManufacturer, "YAMAHA");
+  assert.equal(products[4]?.model, "NS-F700");
+  assert.equal(products[4]?.rawCategory, "フロア型スピーカー(ペア)");
+  assert.equal(products[4]?.category, "スピーカー");
+  assert.equal(products[4]?.conditionText, "中古");
+  assert.equal(products[4]?.stockStatus, "sold_out");
 });
 
 test("AVAC parser preserves sold-out evidence and removes seller shipping suffixes", () => {

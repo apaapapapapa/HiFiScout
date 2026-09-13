@@ -39,11 +39,11 @@ export function saleSubjectText(value: string): string {
         " ",
       )
       .replace(
-        /(?:リモコン|ケーブル|ケース|カバー|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り)/gi,
+        /(?:リモコン|ケーブル|ケース|カバー|イヤーフック|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り)/gi,
         " ",
       )
       .replace(
-        /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ac\s+adapt(?:er|or))\b/gi,
+        /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ear[ -]+hooks?|ac\s+adapt(?:er|or))\b/gi,
         " ",
       )
       // Installed drivers describe a complete product; only standalone units are sale objects.

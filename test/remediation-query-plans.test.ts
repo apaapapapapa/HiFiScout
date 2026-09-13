@@ -269,13 +269,13 @@ for (const shape of SEARCH_SHAPES) {
                 "Unfiltered ordered index walk stops at LIMIT; the no-sort assertion below pins that bound",
             },
           ]
-        : shape.label === "filters"
+        : shape.label === "filters" || shape.label === "full text"
           ? [
               {
                 tables: ["json_each", "presentation"],
-                when: /FROM product_search_entities e WHERE/,
+                when: /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/,
                 reason:
-                  "Manufacturer JSON walks contain only request-sized aliases; in-stock date ordering uses persisted aggregates",
+                  "Manufacturer JSON walks contain only known/request-sized aliases; entity reads remain indexed",
               },
             ]
           : shape.label === "shop filters"

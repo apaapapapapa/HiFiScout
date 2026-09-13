@@ -23,7 +23,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     category: "",
     minPrice: "",
     maxPrice: "",
-    sort: "newest",
+    sort: "updated",
     features: [],
     facets: [],
     inStock: true,
@@ -34,9 +34,9 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
   };
 }
 
-test("the default query asks only for the first page of in-stock listings", () => {
+test("the default query asks for the first in-stock page ordered by meaningful activity", () => {
   const params = productSearchParams(filters());
-  assert.equal(params.toString(), "sort=newest&inStock=true&limit=50");
+  assert.equal(params.toString(), "sort=updated&inStock=true&limit=50");
 });
 
 test("the saved-search feed carries filters but not UI sorting or pagination", () => {
@@ -90,6 +90,17 @@ test("the address bar records only non-default state", () => {
   assert.equal(filterUrlParams(filters({ inStock: false }), "list").get("inStock"), "false");
   assert.equal(filterUrlParams(filters(), "cards").get("view"), "cards");
   assert.equal(filterUrlParams(filters(), "list").get("view"), null);
+});
+
+test("date sorts survive URL cleanup, reload and API serialization", () => {
+  for (const sort of ["updated", "newest", "oldest"]) {
+    const url = filterUrlParams(filters({ sort }), "list");
+    const cleaned = sanitizedCatalogSearch(`?${url}`);
+    const restored = parseUrlFilters(`?${cleaned}`);
+    assert.equal(restored.values.sort, sort);
+    assert.equal(productSearchParams(filters(restored.values)).get("sort"), sort);
+    assert.equal(new URLSearchParams(cleaned).get("sort"), sort === "updated" ? null : sort);
+  }
 });
 
 test("favorites-only is device state and is never shared through the URL", () => {
@@ -178,7 +189,7 @@ test("multiple literal values survive URL, API and feed serialization with indiv
 
 test("an empty or unknown URL falls back to the defaults", () => {
   const parsed = parseUrlFilters("");
-  assert.equal(parsed.values.sort, "newest");
+  assert.equal(parsed.values.sort, "updated");
   assert.equal(parsed.inStock, true);
   assert.equal(parsed.view, null);
   assert.equal(parseUrlFilters("?view=grid").view, null);

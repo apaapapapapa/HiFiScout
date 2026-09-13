@@ -235,6 +235,25 @@ drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `tar
 a finished add-on super tweeter remains `SPK.LOUDSPEAKER`. Channel dividers, equalizers and AV
 processors use `PRC.PROCESSOR` plus `processor_type`.
 
+Recording tape and empty reels use `REC.MEDIA` under `REC`, independently of the `ANA.TAPE`
+deck hardware. Explicit medium and reel-size wording produces `recording_medium` and `reel_size`
+facets; a metal/plastic reel alone does not establish whether tape is included or unused.
+Media is model-optional in data-quality coverage, like cables and accessories.
+Standalone virtual grounds, noise-reduction plugs and USB noise filters use `ACC.GROUND_NOISE`
+under `ACC`, with `noise_accessory_type` facets. Signal isolators, power conditioners/distributors,
+cables and replacement parts retain their existing product types. Generic "noise reduction"
+wording alone establishes no category. Narrow manufacturer/model rules in
+`src/catalog/reviewed-product-types.ts` carry their official product-type sources and review IDs;
+they supply category evidence, never verified catalog identity or an assertion of audible benefit.
+
+Fujiya detail extractor v3 reads only product-bound `block-topic-path--list` trails whose current
+item identifies the requested product and, when available, matches its listing URL. The terminal
+category of the deepest trail takes precedence over repeated ancestor trails. Unknown terminal
+buckets do not inherit an earphone/headphone ancestor, and equal-depth disagreements or conflicts
+with product-specific prose remain ambiguous. Menu categories cannot classify a listing. The
+shop-local extractor version invalidates old negative detail caches within the existing request
+budget; resolver replay itself does not fetch those pages.
+
 Headphone acoustic design and form factor, cartridge MM/MC/MI construction, phono MM/MC support,
 and portable/stationary use are independent facets. Cable endpoints follow the order explicitly
 written in the seller's text; an unspecified second endpoint is not copied from the first.
@@ -256,15 +275,33 @@ different features are ANDed. Missing mentions never produce absent facts. These
 entity-local indexed offer/fact lookups, not a full-catalog aggregate. Favorites lack capability
 facts, so their existing filter-disable behavior is retained.
 
-Classifier version 18 selects existing active listings through the bounded remediation queue;
+The classifier version in `src/catalog/resolution-versions.ts` selects existing active listings through the bounded remediation queue;
 inactive listings are selected when reactivated. Replay regenerates title-derived category,
-capability and facet evidence from the retained full title while preserving seller/official/admin
-evidence and existing write guards. No deployment-triggered seller refetch or full-inventory rewrite
+capability and facet evidence from the retained full title, and regenerates reviewed product-type
+hints with the seller's manufacturer field. Recognized seller-category vocabulary is reinterpreted
+against the current taxonomy without promoting its recorded evidence tier; opaque shop mappings
+retain their stored decision. Official/detail/admin evidence and existing write guards survive.
+No deployment-triggered seller refetch or full-inventory rewrite
 is required. Search projections and metadata converge through the existing refresh paths.
+
+The AVAC adapter removes a leading standalone `特価` or `特価品` token after the seller's
+authoritative condition marker and before manufacturer/model splitting. The rule is shop-local and
+requires a token boundary, so a product or manufacturer name merely beginning with those characters
+is preserved.
 
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
 
 Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.
+
+Fujiya manufacturer placeholders such as `その他` remain in `raw_manufacturer`, but are treated as
+missing for verified title-alias recovery. When a Fujiya title begins with that placeholder, only a
+complete verified manufacturer prefix immediately following it may supply the canonical
+manufacturer; later mentions in product prose cannot. Other shops retain the conservative
+placeholder rejection. This keeps seller evidence intact while allowing model resolution to remove
+the recovered brand from affected listings.
+Confirmed Fujiya rows whose titles do not name a product type use narrowly reviewed manufacturer
+and model rules for category evidence; each rule records its external source and cannot create a
+catalog identity. Broader placeholder rows stay unclassified until independent evidence exists.
 
 Migration 0024 gives Model Resolution its own rule version, extends Knowledge Catalog candidates with the evidence a reviewer needs (raw model variants, sample source URLs, identity rejection reason, unresolved-identity and `other` counts), and adds `data_quality_remediation_events` for before/after provenance. `model_resolver_version` defaults to `1` so every pre-existing listing stays behind the current resolver and is selectable for bounded replay. Resolver versions mean that the stored evidence was evaluated by that algorithm; `remediation_projection_required` separately remains set until projection, Product Identity, and search-entity refresh all succeed. A compare-and-clear operation token prevents an older concurrent replay from clearing newer pending work. A failed downstream pass is therefore selected again even after its derived fields and resolver version were persisted.
 

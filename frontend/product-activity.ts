@@ -51,12 +51,14 @@ export function normalizedSearchText(product: DisplayProduct): string {
   return [
     product.manufacturer,
     product.manufacturer_id,
+    ...(product.search_aliases ?? []),
     product.model,
     product.category,
     product.representative_offer?.title,
   ]
     .filter(Boolean)
     .join(" ")
+    .normalize("NFKC")
     .toLocaleLowerCase("ja-JP");
 }
 

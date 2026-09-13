@@ -286,7 +286,9 @@ test("the data-quality replay writes the same direct set the crawl path writes",
     now: new Date(OBSERVED_AT),
   });
 
-  const replay = db.calls.find((call) => /UPDATE products\s+SET manufacturer = \?/.test(call.sql));
+  const replay = db.calls.find((call) =>
+    /UPDATE products\s+SET[\s\S]*direct_category_ids = \?/.test(call.sql),
+  );
   assert.ok(replay, "a classify_category job must replay the listing's derived fields");
 
   const crawlDirectIds = listing({
@@ -297,7 +299,13 @@ test("the data-quality replay writes the same direct set the crawl path writes",
   }).directCategoryIds;
 
   assert.deepEqual(crawlDirectIds, ["SRC.DISC", "PRC.DAC"]);
-  assert.equal(replay.binds[18], JSON.stringify(crawlDirectIds));
+  const assignments = [...replay.sql.matchAll(/(?:SET|,)\s*([a-z_]+) = \?/gu)].map(
+    (match) => match[1],
+  );
+  assert.equal(
+    replay.binds[assignments.indexOf("direct_category_ids")],
+    JSON.stringify(crawlDirectIds),
+  );
 });
 
 /**

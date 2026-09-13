@@ -475,12 +475,9 @@ function presentationPatterns(
     const pattern = manufacturerPrefixPattern(text);
     if (!id || !pattern) return;
     const entries = byManufacturer.get(id) || [];
-    if (
-      entries.some(
-        (entry) => normalizeManufacturerKey(entry.alias) === normalizeManufacturerKey(text),
-      )
-    )
-      return;
+    // Prefix recovery needs the source presentation's token boundaries. Distinct spellings such as
+    // `Counterpoint` and `Counter Point` share a lookup key but produce different safe prefixes.
+    if (entries.some((entry) => clean(entry.alias).toLowerCase() === text.toLowerCase())) return;
     entries.push({ alias: text, pattern });
     byManufacturer.set(id, entries);
   };

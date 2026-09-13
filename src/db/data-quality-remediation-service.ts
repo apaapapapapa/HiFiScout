@@ -62,6 +62,7 @@ interface RemediationListingRow {
   raw_category: string;
   primary_category_id: string;
   category_ids: string;
+  direct_category_ids: string;
   classification_status: string;
   search_aliases: string;
   metadata_json: string;
@@ -80,6 +81,7 @@ interface PreparedRemediationJob {
   job: DataQualityRemediationJob;
   row: RemediationListingRow;
   projectionToken: string;
+  projectionRequired: boolean;
 }
 
 export interface RemediationProjectionWork {
@@ -96,9 +98,11 @@ export interface RunDataQualityRemediationSweepOptions {
   leaseSeconds?: number;
   now?: Date;
   preferQueuedWork?: boolean;
+  /** Exact backlog metrics are useful on demand, but scale with the outstanding queue. */
+  measureQueue?: boolean;
 }
 
-export interface RunDataQualityRemediationSweepResult {
+interface RemediationSweepResult {
   seeded: number;
   seedScannedCount: number;
   claimed: number;
@@ -106,7 +110,14 @@ export interface RunDataQualityRemediationSweepResult {
   failed: number;
   retried: number;
   affectedShops: string[];
+}
+
+export interface RunDataQualityRemediationSweepResult extends RemediationSweepResult {
   queue: Awaited<ReturnType<typeof dataQualityRemediationActiveQueueMetrics>>;
+}
+
+export interface UnmeasuredDataQualityRemediationSweepResult extends RemediationSweepResult {
+  queue: null;
 }
 
 function metadataObject(value: string): Record<string, unknown> {
@@ -188,6 +199,7 @@ async function syncDerivedFacetFacts(
 ): Promise<void> {
   const next = normalizeFacetFacts([
     ...inferFacetFacts(row.title, {
+      manufacturer: row.raw_manufacturer || row.manufacturer,
       source: "title",
       confidence: 0.8,
       verifiedAt: evaluatedAt,
@@ -216,6 +228,7 @@ async function loadListing(
              model, raw_model, normalized_model, presentation_color, model_resolution_status,
              model_resolution_method, model_resolution_confidence, model_resolver_version,
              title, category, raw_category, primary_category_id, category_ids,
+             direct_category_ids,
              classification_status, search_aliases, metadata_json,
              remediation_projection_required, remediation_projection_token
       FROM products
@@ -275,6 +288,57 @@ const REPLAY_SOURCE_FIELDS = [
   "remediation_projection_token",
 ] as const;
 
+const REPLAY_DERIVED_FIELDS = [
+  "manufacturer",
+  "normalized_raw_manufacturer",
+  "manufacturer_id",
+  "canonical_manufacturer_id",
+  "manufacturer_resolution_status",
+  "manufacturer_resolution_method",
+  "manufacturer_resolution_confidence",
+  "manufacturer_resolver_version",
+  "model",
+  "normalized_model",
+  "presentation_color",
+  "model_resolution_status",
+  "model_resolution_method",
+  "model_resolution_confidence",
+  "model_resolver_version",
+  "category",
+  "primary_category_id",
+  "category_ids",
+  "direct_category_ids",
+  "classification_status",
+  "search_aliases",
+  "metadata_json",
+] as const;
+
+type ReplayDerivedField = (typeof REPLAY_DERIVED_FIELDS)[number];
+
+const CATEGORY_MEMBERSHIP_FIELDS = new Set<ReplayDerivedField>([
+  "primary_category_id",
+  "category_ids",
+  "direct_category_ids",
+]);
+
+// These fields record which resolver/classifier produced the already-persisted values, but they
+// are not inputs to search projection, Product Identity, or search-entity membership. A rule-version
+// replay commonly changes only this metadata. Running all three downstream stages in that case
+// re-reads the same listing and catalog rows without changing a projection. Keep every other field
+// conservative: if a derived value not listed here moves, refresh the downstream read models.
+const NON_PROJECTION_REPLAY_FIELDS = new Set<ReplayDerivedField>([
+  "manufacturer_resolver_version",
+  "model_resolver_version",
+  "metadata_json",
+]);
+
+interface DerivedReplayResult {
+  projectionToken: string;
+  projectionRequired: boolean;
+}
+
+const REPLAY_CAS_FIELDS = [...REPLAY_SOURCE_FIELDS, ...REPLAY_DERIVED_FIELDS] as const;
+
 export class ListingReplaySourceChangedError extends Error {
   constructor() {
     super("listing_replay_source_changed");
@@ -286,7 +350,7 @@ async function replayDerivedListing(
   row: RemediationListingRow,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
-): Promise<string> {
+): Promise<DerivedReplayResult> {
   const manufacturerResolver = createManufacturerResolver(aliases);
   const modelResolver = createModelResolver(aliases);
   const manufacturer = manufacturerResolver({
@@ -309,7 +373,12 @@ async function replayDerivedListing(
 
   const metadata = metadataObject(row.metadata_json);
   const evidence = retainedCategoryEvidence(
-    { title: row.title, rawCategory: row.raw_category, hintedCategory: row.category },
+    {
+      title: row.title,
+      rawCategory: row.raw_category,
+      hintedCategory: row.category,
+      manufacturer: row.raw_manufacturer || row.manufacturer,
+    },
     metadata,
   );
   const classification = classifyCategoryEvidence(evidence);
@@ -373,124 +442,70 @@ async function replayDerivedListing(
   const directCategoryIdsJson = JSON.stringify(categorySet.directCategoryIds);
   const token = `dq-replay:${evaluatedAt}:${row.id}`;
 
-  const result = await db
-    .prepare(`
-      UPDATE products
-      SET manufacturer = ?,
-          normalized_raw_manufacturer = ?,
-          manufacturer_id = ?,
-          canonical_manufacturer_id = ?,
-          manufacturer_resolution_status = ?,
-          manufacturer_resolution_method = ?,
-          manufacturer_resolution_confidence = ?,
-          manufacturer_resolver_version = ?,
-          model = ?,
-          normalized_model = ?,
-          presentation_color = ?,
-          model_resolution_status = ?,
-          model_resolution_method = ?,
-          model_resolution_confidence = ?,
-          model_resolver_version = ?,
-          category = ?,
-          primary_category_id = ?,
-          category_ids = ?,
-          direct_category_ids = ?,
-          classification_status = ?,
-          search_aliases = ?,
-          metadata_json = ?,
-          remediation_projection_required = 1,
-          remediation_projection_token = ?
-      WHERE id = ?
-        AND ${REPLAY_SOURCE_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
-        AND (
-          manufacturer IS NOT ?
-          OR normalized_raw_manufacturer IS NOT ?
-          OR manufacturer_id IS NOT ?
-          OR canonical_manufacturer_id IS NOT ?
-          OR manufacturer_resolution_status IS NOT ?
-          OR manufacturer_resolution_method IS NOT ?
-          OR manufacturer_resolution_confidence IS NOT ?
-          OR manufacturer_resolver_version IS NOT ?
-          OR model IS NOT ?
-          OR normalized_model IS NOT ?
-          OR presentation_color IS NOT ?
-          OR model_resolution_status IS NOT ?
-          OR model_resolution_method IS NOT ?
-          OR model_resolution_confidence IS NOT ?
-          OR model_resolver_version IS NOT ?
-          OR category IS NOT ?
-          OR primary_category_id IS NOT ?
-          OR category_ids IS NOT ?
-          OR direct_category_ids IS NOT ?
-          OR classification_status IS NOT ?
-          OR search_aliases IS NOT ?
-          OR metadata_json IS NOT ?
-        )
-    `)
-    .bind(
-      manufacturer.displayName,
-      manufacturer.normalizedRawManufacturer,
-      manufacturerFilterId,
-      manufacturer.canonicalManufacturerId,
-      manufacturer.status,
-      manufacturer.method,
-      manufacturer.confidence,
-      RESOLUTION_VERSIONS.manufacturer,
-      model.model,
-      model.normalizedModel,
-      presentationColor,
-      model.status,
-      model.method,
-      model.confidence,
-      RESOLUTION_VERSIONS.model,
-      categorySet.displayName,
-      categorySet.primaryCategoryId,
-      categoryIdsJson,
-      directCategoryIdsJson,
-      categorySet.classificationStatus,
-      categorySet.searchAliases,
-      metadataJson,
-      token,
-      row.id,
-      ...REPLAY_SOURCE_FIELDS.map((field) => row[field]),
-      manufacturer.displayName,
-      manufacturer.normalizedRawManufacturer,
-      manufacturerFilterId,
-      manufacturer.canonicalManufacturerId,
-      manufacturer.status,
-      manufacturer.method,
-      manufacturer.confidence,
-      RESOLUTION_VERSIONS.manufacturer,
-      model.model,
-      model.normalizedModel,
-      presentationColor,
-      model.status,
-      model.method,
-      model.confidence,
-      RESOLUTION_VERSIONS.model,
-      categorySet.displayName,
-      categorySet.primaryCategoryId,
-      categoryIdsJson,
-      directCategoryIdsJson,
-      categorySet.classificationStatus,
-      categorySet.searchAliases,
-      metadataJson,
-    )
-    .run();
-
-  const changed = Number(result?.meta?.changes || 0) > 0;
+  const derived: Record<ReplayDerivedField, string | number> = {
+    manufacturer: manufacturer.displayName,
+    normalized_raw_manufacturer: manufacturer.normalizedRawManufacturer,
+    manufacturer_id: manufacturerFilterId,
+    canonical_manufacturer_id: manufacturer.canonicalManufacturerId,
+    manufacturer_resolution_status: manufacturer.status,
+    manufacturer_resolution_method: manufacturer.method,
+    manufacturer_resolution_confidence: manufacturer.confidence,
+    manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+    model: model.model,
+    normalized_model: model.normalizedModel,
+    presentation_color: presentationColor,
+    model_resolution_status: model.status,
+    model_resolution_method: model.method,
+    model_resolution_confidence: model.confidence,
+    model_resolver_version: RESOLUTION_VERSIONS.model,
+    category: categorySet.displayName,
+    primary_category_id: categorySet.primaryCategoryId,
+    category_ids: categoryIdsJson,
+    direct_category_ids: directCategoryIdsJson,
+    classification_status: categorySet.classificationStatus,
+    search_aliases: categorySet.searchAliases,
+    metadata_json: metadataJson,
+  };
+  const changedFields = REPLAY_DERIVED_FIELDS.filter((field) => row[field] !== derived[field]);
+  const projectionChanged = changedFields.some((field) => !NON_PROJECTION_REPLAY_FIELDS.has(field));
+  let changed = false;
+  if (changedFields.length) {
+    const assignments = changedFields.map((field) => `${field} = ?`);
+    if (projectionChanged)
+      assignments.push("remediation_projection_required = 1", "remediation_projection_token = ?");
+    // SQLite maintains every index and UPDATE OF trigger named by a SET clause even when the value
+    // assigned to that column is unchanged. A resolver-version replay commonly changes metadata
+    // alone; assigning all derived columns made that one change rewrite every identity/category
+    // index. The identifiers come only from the fixed list above, while the source snapshot keeps
+    // the same lost-update fence as the former all-column statement. Compare the complete loaded
+    // replay snapshot so a concurrent writer cannot change an omitted derived field unnoticed.
+    const result = await db
+      .prepare(`
+        UPDATE products
+        SET ${assignments.join(", ")}
+        WHERE id = ?
+          AND ${REPLAY_CAS_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
+      `)
+      .bind(
+        ...changedFields.map((field) => derived[field]),
+        ...(projectionChanged ? [token] : []),
+        row.id,
+        ...REPLAY_CAS_FIELDS.map((field) => row[field]),
+      )
+      .run();
+    changed = Number(result?.meta?.changes || 0) > 0;
+  }
   if (!changed) {
     // Zero changes can mean equal derived values or a failed source-snapshot comparison. Do not
     // write categories/facts, refresh projections or acknowledge a newer token in the latter case.
     const current = await loadListing(db, row.id);
-    if (!current || REPLAY_SOURCE_FIELDS.some((field) => current[field] !== row[field]))
+    if (!current || REPLAY_CAS_FIELDS.some((field) => current[field] !== row[field]))
       throw new ListingReplaySourceChangedError();
   }
-  // A replay that moved a listing's category without rebuilding `product_categories` left it
-  // counted under the category it used to be in — visible today in the facet counts, and a wrong
-  // search result once the filter reads membership. Only on an actual change, so an unchanged
-  // listing is not churned through a delete-and-insert every sweep.
-  if (changed) {
+  // Rebuild membership only when membership fields moved. Resolver metadata, model presentation,
+  // or aliases do not change `product_categories`; deleting and reinserting the same rows for those
+  // changes added writes without changing the search result.
+  if (changed && changedFields.some((field) => CATEGORY_MEMBERSHIP_FIELDS.has(field))) {
     await rebuildListingCategories(
       db,
       row.id,
@@ -505,7 +520,12 @@ async function replayDerivedListing(
     title: row.title,
     primaryCategoryId: categorySet.primaryCategoryId,
   });
-  return changed ? token : row.remediation_projection_token;
+  return {
+    projectionToken: projectionChanged ? token : row.remediation_projection_token,
+    // An older failed writer may still own a dirty token even when this replay only advances
+    // metadata. It must still finish before the marker can be acknowledged.
+    projectionRequired: projectionChanged || row.remediation_projection_required === 1,
+  };
 }
 
 /**
@@ -543,10 +563,16 @@ async function prepareJob(
   if (!row) return null;
 
   let projectionToken = row.remediation_projection_token;
+  let projectionRequired = true;
   if (requiresDerivedReplay(job.workType)) {
-    projectionToken = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    projectionToken = replay.projectionToken;
+    // A full rebuild is an explicit repair request for downstream read models, not only a
+    // resolver-version replay. It must repair missing/stale projections even when every derived
+    // listing column is already current.
+    projectionRequired = replay.projectionRequired || job.workType === "reprocess_listing";
   }
-  return { job, row, projectionToken };
+  return { job, row, projectionToken, projectionRequired };
 }
 
 /**
@@ -572,6 +598,18 @@ export async function refreshRemediationShopProjections(
   }
 }
 
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options: RunDataQualityRemediationSweepOptions & { measureQueue: false },
+): Promise<UnmeasuredDataQualityRemediationSweepResult>;
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options?: RunDataQualityRemediationSweepOptions & { measureQueue?: true },
+): Promise<RunDataQualityRemediationSweepResult>;
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options: RunDataQualityRemediationSweepOptions,
+): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult>;
 export async function runDataQualityRemediationSweep(
   db: QueryableDatabase,
   {
@@ -580,8 +618,9 @@ export async function runDataQualityRemediationSweep(
     leaseSeconds = 300,
     now = new Date(),
     preferQueuedWork = false,
+    measureQueue = true,
   }: RunDataQualityRemediationSweepOptions = {},
-): Promise<RunDataQualityRemediationSweepResult> {
+): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult> {
   const evaluatedAt = now.toISOString();
   // Drain already-durable work before spending this invocation's D1-call budget scanning every
   // stale selector. A queued job already names the required replay, while seeding first can leave
@@ -656,11 +695,13 @@ export async function runDataQualityRemediationSweep(
       await refreshRemediationShopProjections(
         db,
         shopKey,
-        preparedJobs.map((prepared) => ({
-          listingProductId: prepared.row.id,
-          sourceId: prepared.row.source_id,
-          projectionToken: prepared.projectionToken,
-        })),
+        preparedJobs
+          .filter((prepared) => prepared.projectionRequired)
+          .map((prepared) => ({
+            listingProductId: prepared.row.id,
+            sourceId: prepared.row.source_id,
+            projectionToken: prepared.projectionToken,
+          })),
         evaluatedAt,
       );
     } catch (error) {
@@ -745,9 +786,12 @@ export async function runDataQualityRemediationSweep(
   // path above still discovers and processes fresh work in this same sweep.
 
   // Outstanding work only. What this sweep itself did is already counted above, so recomputing
-  // lifetime totals here would read the whole retained history to report a backlog of two.
-  const queue = await dataQualityRemediationActiveQueueMetrics(db);
-  const result: RunDataQualityRemediationSweepResult = {
+  // lifetime totals here would read the whole retained history to report a backlog of two. The
+  // scheduled caller also skips this exact aggregate: it does not make a scheduling decision from
+  // the count, and the active queue can contain thousands of durable rows while one bounded job is
+  // handled per tick. Admin and explicit drain callers retain the exact on-demand measurement.
+  const queue = measureQueue ? await dataQualityRemediationActiveQueueMetrics(db) : null;
+  const result = {
     seeded: seeded.workKeys.length,
     seedScannedCount: seeded.scannedCount ?? 0,
     claimed: jobs.length,
@@ -767,6 +811,7 @@ export async function replayAdminCsvListings(
   listingIds: readonly number[],
   evaluatedAt: string,
   aliasSnapshot?: ManufacturerAliasEvidence[],
+  options: { forceProjection?: boolean } = {},
 ): Promise<void> {
   if (!listingIds.length) return;
   if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
@@ -776,10 +821,13 @@ export async function replayAdminCsvListings(
   for (const id of listingIds) {
     const row = await loadListing(db, id);
     if (!row) continue;
-    tokens.set(row.id, await replayDerivedListing(db, row, aliases, evaluatedAt));
+    const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    if (options.forceProjection || replay.projectionRequired)
+      tokens.set(row.id, replay.projectionToken);
     rows.push(row);
   }
-  await refreshListingProjections(db, rows, evaluatedAt);
+  const projectedRows = rows.filter((row) => tokens.has(row.id));
+  await refreshListingProjections(db, projectedRows, evaluatedAt);
   for (const [id, token] of tokens) {
     if (token) await clearProjectionPendingForToken(db, id, token);
   }

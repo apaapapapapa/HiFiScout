@@ -17,7 +17,8 @@ import {
   getCategory,
 } from "../catalog/categories.js";
 import { directCategoryIds } from "../catalog/listing-components.js";
-import { normalizeManufacturer } from "../catalog/manufacturers.js";
+import { manufacturerSearchAliases, normalizeManufacturer } from "../catalog/manufacturers.js";
+import { buildModelSearchAliases } from "../catalog/product-identity.js";
 import { presentationColorList } from "../catalog/model-presentation-color.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
 import type { OfferFact, ProductOffer, ProductSearchItem } from "../api/contracts.js";
@@ -177,6 +178,14 @@ export function toProductSearchItem(
     manufacturer: publicManufacturer,
     manufacturer_id: publicManufacturerId,
     model: row.model,
+    search_aliases: [
+      ...new Set([
+        ...manufacturerSearchAliases(publicManufacturerId || publicManufacturer),
+        ...buildModelSearchAliases(row.model),
+      ]),
+    ]
+      .slice(0, 32)
+      .map((alias) => alias.slice(0, 200)),
     // From the same summary as every other aggregate: a card that filtered to one shop must show
     // the finishes that shop offers, not the ones the product exists in somewhere else.
     presentation_colors: presentationColorList(

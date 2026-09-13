@@ -182,6 +182,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Bounded canonical manufacturer/model vocabulary; optional for older favorite snapshots. */
+  search_aliases?: string[];
   /** Persisted condition bands and monthly asking/activity observations, detail only. */
   market_analysis?: import("../catalog/types.js").ProductMarketAnalysis;
   /** Source-backed model specifications, loaded on detail requests only. */
@@ -249,6 +251,15 @@ export interface ProductSearchResponse {
 export interface ProductSearchDetailResponse {
   product: ProductSearchItem;
   offers: ProductOffer[];
+}
+
+/** Canonical public free-text normalization, shared by server search and local favorites. */
+export function normalizeProductSearchQuery(value: unknown = ""): string {
+  return String(value).normalize("NFKC").replace(/\s+/gu, " ").trim();
+}
+
+export function productSearchTerms(value: unknown = ""): string[] {
+  return normalizeProductSearchQuery(value).split(" ").filter(Boolean).slice(0, 12);
 }
 
 // ---------------------------------------------------------------------------

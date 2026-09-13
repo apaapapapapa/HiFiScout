@@ -1,3 +1,5 @@
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
+import { adminChangeJournalStatement } from "./admin-change-journal.js";
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import { manufacturerFilterIds } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
@@ -13,6 +15,8 @@ import {
   type KnowledgeCatalogAdminProduct,
 } from "./knowledge-catalog-admin-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
+import { assertAiCatalogVerification } from "./ai-catalog-verification.js";
+import type { AiVerificationFence } from "./ai-catalog-verification.js";
 
 const MANUAL_REPLAY_PAGE_SIZE = 250;
 const MANUAL_REPLAY_MAX_PAGES = 8;
@@ -428,7 +432,41 @@ async function linkCandidateToManualProduct(
   input: KnowledgeCatalogAdminCreateInput,
   normalizedModel: string,
   verifiedAt: string,
+  verifiedCatalog: CatalogStateRow | null,
+  aiFence: AiVerificationFence | null,
 ): Promise<void> {
+  // The audit row is also the final compare-and-set guard for an AI handoff. A failed guard
+  // violates message's NOT NULL constraint and rolls back the entire candidate/alias batch.
+  const messageSql = input.aiSuggestionId
+    ? `CASE WHEN EXISTS (
+    SELECT 1 FROM ai_catalog_jobs j JOIN knowledge_catalog_candidates c ON c.id = j.candidate_id
+    JOIN ai_catalog_revisions r ON r.manufacturer_id = c.manufacturer_id
+    JOIN knowledge_catalog_products p ON p.id = json_extract(j.result_json,'$.catalogProductId')
+    JOIN knowledge_catalog_product_categories pc ON pc.product_id = p.id AND pc.is_primary = 1
+    WHERE j.id = ? AND j.status = 'reviewed' AND j.review_outcome = 'useful' AND r.revision = ?
+      AND c.id = ? AND c.review_status = 'pending' AND c.updated_at = ?
+      AND c.observed_model = ? AND c.sample_title = ? AND c.candidate_category_ids = ? AND c.manufacturer_id = ?
+      AND p.id = ? AND p.manufacturer_id = ? AND p.normalized_model = ? AND p.canonical_model = ?
+      AND p.verification_status = 'verified' AND pc.category_id = ?
+  ) THEN ? ELSE NULL END`
+    : "?";
+  const guardBindings = input.aiSuggestionId
+    ? [
+        input.aiSuggestionId,
+        aiFence?.revision ?? -1,
+        candidate.id,
+        candidate.updated_at,
+        candidate.observed_model,
+        candidate.sample_title,
+        candidate.candidate_category_ids,
+        candidate.manufacturer_id,
+        productId,
+        input.manufacturerId,
+        verifiedCatalog?.normalized_model || normalizedModel,
+        verifiedCatalog?.canonical_model || input.canonicalModel,
+        input.primaryCategoryId,
+      ]
+    : [];
   const statements: D1PreparedStatement[] = [
     db
       .prepare(`
@@ -444,7 +482,7 @@ async function linkCandidateToManualProduct(
         INSERT INTO knowledge_catalog_verification_attempts(
           candidate_id, product_id, manufacturer_id, normalized_model, source_type, source_url,
           attempted_at, status, http_status, content_hash, message
-        ) VALUES (?, ?, ?, ?, 'manual_verified', ?, ?, 'verified', NULL, '', 'manual_admin_verification')
+        ) VALUES (?, ?, ?, ?, 'manual_verified', ?, ?, 'verified', NULL, '', ${messageSql})
       `)
       .bind(
         candidate.id,
@@ -453,13 +491,27 @@ async function linkCandidateToManualProduct(
         candidate.normalized_model || normalizedModel,
         input.sourceUrl,
         verifiedAt,
+        ...guardBindings,
+        input.aiSuggestionId
+          ? `manual_admin_verification;ai_suggestion=${input.aiSuggestionId}`
+          : "manual_admin_verification",
       ),
   ];
+  if (input.aiSuggestionId) statements.reverse();
   for (const alias of [candidate.observed_model, input.canonicalModel]) {
     const statement = modelAliasStatement(db, productId, alias, verifiedAt);
     if (statement) statements.push(statement);
   }
-  await db.batch(statements);
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    if (
+      input.aiSuggestionId &&
+      String(error).includes("knowledge_catalog_verification_attempts.message")
+    )
+      throw new Error("catalog_admin_ai_stale");
+    throw error;
+  }
 }
 
 async function completeManualWrite(
@@ -506,6 +558,7 @@ export async function createKnowledgeCatalogAdminProduct(
   input: KnowledgeCatalogAdminCreateInput,
   verifiedAt = new Date().toISOString(),
 ): Promise<KnowledgeCatalogAdminManualWriteResult> {
+  if (input.aiSuggestionId) throw new Error("catalog_admin_ai_review_required");
   const normalizedModel = normalizeCatalogModel(input.canonicalModel);
   const categoryIds = catalogAdminCategoryIds(input.primaryCategoryId);
   if (!normalizedModel) throw new Error("catalog_admin_model_invalid");
@@ -545,6 +598,13 @@ export async function verifyKnowledgeCatalogAdminCandidate(
   const normalizedModel = normalizeCatalogModel(input.canonicalModel);
   if (!normalizedModel) throw new Error("catalog_admin_model_invalid");
   const existing = await findCatalogStateByIdentity(db, input.manufacturerId, normalizedModel);
+  const aiFence = input.aiSuggestionId
+    ? await assertAiCatalogVerification(db, candidateId, input)
+    : null;
+  if (aiFence) {
+    if (existing?.verification_status !== "verified" || Number(existing.id) !== aiFence.productId)
+      throw new Error("catalog_admin_ai_stale");
+  }
 
   let productId: number;
   let created = false;
@@ -567,7 +627,16 @@ export async function verifyKnowledgeCatalogAdminCandidate(
     created = true;
   }
 
-  await linkCandidateToManualProduct(db, candidate, productId, input, normalizedModel, verifiedAt);
+  await linkCandidateToManualProduct(
+    db,
+    candidate,
+    productId,
+    input,
+    normalizedModel,
+    verifiedAt,
+    existing,
+    aiFence,
+  );
   await recordManualSource(db, productId, input.sourceUrl, verifiedAt);
   const completed = await completeManualWrite(db, productId, effectiveInput, verifiedAt);
   return { ...completed, created, matchedExisting };
@@ -607,6 +676,14 @@ export async function mergeKnowledgeCatalogProductReferences(
   targetProductId: number,
   source: KnowledgeCatalogMergeSource,
   mergedAt: string,
+  /**
+   * Rows describing the merge itself, committed with it.
+   *
+   * The duplicate is gone once this batch succeeds, so a record written afterwards could fail with
+   * the merge already applied: the caller would report a failure, the retry would find no source
+   * product, and the merge would be the one manual catalog operation with no trace of who ran it.
+   */
+  auditStatements: readonly D1PreparedStatement[] = [],
 ): Promise<void> {
   const sourceProductId = source.id;
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
@@ -695,6 +772,7 @@ export async function mergeKnowledgeCatalogProductReferences(
         WHERE catalog_product_id = ?
       `)
       .bind(targetProductId, sourceProductId),
+    ...auditStatements,
     db.prepare("DELETE FROM knowledge_catalog_products WHERE id = ?").bind(sourceProductId),
   );
   try {
@@ -711,6 +789,7 @@ export async function mergeKnowledgeCatalogAdminProducts(
   targetProductId: number,
   sourceProductId: number,
   mergedAt = new Date().toISOString(),
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<KnowledgeCatalogAdminMergeResult | null> {
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
   const [target, source] = await Promise.all([
@@ -740,6 +819,20 @@ export async function mergeKnowledgeCatalogAdminProducts(
     .bind(sourceProductId)
     .first<{ count: number }>();
 
+  // One history row per merge, on the product that disappears: without it the merge is the only
+  // manual catalog operation with no trace of who performed it. A merge is a rare, deliberate
+  // action, so this is one extra INSERT per operation, not per row moved, and it is committed by
+  // the merge's own batch so the record and the merge cannot disagree.
+  const mergeJournal = adminChangeJournalStatement(
+    db,
+    "catalog",
+    sourceProductId,
+    { merged_into: "" },
+    { merged_into: String(targetProductId) },
+    mergedAt,
+    { actor },
+  );
+
   await mergeKnowledgeCatalogProductReferences(
     db,
     targetProductId,
@@ -749,6 +842,7 @@ export async function mergeKnowledgeCatalogAdminProducts(
       canonicalName: source.canonical_name,
     },
     mergedAt,
+    mergeJournal,
   );
 
   await recordManualSource(db, targetProductId, "", mergedAt);

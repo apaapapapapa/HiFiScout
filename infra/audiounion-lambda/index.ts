@@ -34,13 +34,15 @@ interface RelayFetchResponse {
   readonly status: number;
   readonly ok: boolean;
   readonly headers: { get(name: string): string | null };
+  /** Present on a real `fetch` response; absent in hand-built test doubles. */
+  readonly body?: ReadableStream<Uint8Array> | null;
   text(): Promise<string>;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 interface RelayFetchInit {
   headers: RelayHeaders;
-  redirect: "follow";
+  redirect: "follow" | "manual";
 }
 
 type RelayFetch = (url: string, init: RelayFetchInit) => Promise<RelayFetchResponse>;
@@ -110,10 +112,154 @@ const RELAY_PERMIT_VERSION = 1 as const;
 const RELAY_PERMIT_TTL_MS = 5 * 60_000;
 const MAX_PERMIT_LENGTH = 4096;
 const PERMIT_SIGNING_CONTEXT = "hifiscout-relay-permit-v1:";
+/**
+ * Ceiling on an upstream body the relay will read.
+ *
+ * A Lambda Function URL response may not exceed 6 MB including base64 expansion, so the raw body has
+ * to stay near 4 MB; that is also far more than any observed seller listing page. The Worker applies
+ * its own, separate ceiling to whatever the relay returns.
+ */
+const MAX_UPSTREAM_RESPONSE_BYTES = 4_000_000;
+/** RFC 9309 allows a parsing limit; the same 500 KiB the Worker uses. */
+const MAX_ROBOTS_RESPONSE_BYTES = 512 * 1024;
+/** RFC 9309 expects at least five redirects to be followed; nothing here needs more. */
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const AUDIOUNION_HOST = "www.audiounion.jp";
 const HIFIDO_HOST = "www.hifido.co.jp";
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(["L", "LNG", "O", "OD"]);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+class RedirectRejectedError extends Error {
+  constructor(reason: string) {
+    super(`relay redirect rejected: ${reason}`);
+    this.name = "RedirectRejectedError";
+  }
+}
+
+/** A redirect destination the host's own `robots.txt` excludes. */
+class RedirectRobotsDisallowedError extends Error {
+  constructor(path: string) {
+    super(`robots_disallowed for redirect destination ${path}`);
+    this.name = "RedirectRobotsDisallowedError";
+  }
+}
+
+/** Evaluated for each redirect destination before it is requested. */
+type RedirectRobotsGate = (target: URL) => Promise<void>;
+
+/**
+ * Hosts this relay may send a request to, redirects included.
+ *
+ * The relay runs in AWS, where "the platform cannot reach a private address" is not true, so a
+ * seller redirect is never followed blindly: every hop is validated before it is requested.
+ */
+const ALLOWED_UPSTREAM_HOSTS = new Set([AUDIOUNION_HOST, HIFIDO_HOST]);
+
+function assertAllowedUpstream(target: URL): void {
+  if (target.username || target.password) {
+    throw new RedirectRejectedError(`destination on ${target.host} carries embedded credentials`);
+  }
+  if (target.protocol !== "https:") {
+    throw new RedirectRejectedError(`destination is not HTTPS: ${target.protocol}//`);
+  }
+  if (target.port !== "" || !ALLOWED_UPSTREAM_HOSTS.has(target.hostname)) {
+    throw new RedirectRejectedError(`host ${target.host} is not an allowed relay upstream`);
+  }
+}
+
+/**
+ * Performs a request, following redirects one validated hop at a time.
+ *
+ * The initial URL has already passed the stricter per-shop URL-shape allowlist, and its robots
+ * policy was evaluated by the caller (or, for a permit, at PREPARE time). Every *later* hop is held
+ * to the host-level rule and to `robotsGate`, so a same-host redirect cannot carry the relay onto a
+ * path the seller excludes — the guarantee the direct transport already gives.
+ */
+async function fetchValidatedUpstream(
+  fetchFn: RelayFetch,
+  url: string,
+  headers: RelayHeaders,
+  robotsGate?: RedirectRobotsGate,
+): Promise<RelayFetchResponse> {
+  let target = new URL(url);
+  const visited = new Set<string>();
+  for (let hop = 0; ; hop += 1) {
+    assertAllowedUpstream(target);
+    const href = target.toString();
+    if (visited.has(href)) throw new RedirectRejectedError(`redirect loop returning to ${href}`);
+    visited.add(href);
+    if (hop > 0 && robotsGate) await robotsGate(target);
+
+    const response = await fetchFn(href, { headers, redirect: "manual" });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    await response.body?.cancel().catch(() => {});
+    if (hop >= MAX_REDIRECTS)
+      throw new RedirectRejectedError(`more than ${MAX_REDIRECTS} redirects`);
+    const location = response.headers.get("location")?.trim();
+    if (!location) throw new RedirectRejectedError("redirect response had no Location header");
+    try {
+      target = new URL(location, href);
+    } catch {
+      throw new RedirectRejectedError("redirect Location is not a resolvable URL");
+    }
+  }
+}
+
+class UpstreamResponseTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`upstream response exceeded the ${maxBytes} byte limit`);
+    this.name = "UpstreamResponseTooLargeError";
+  }
+}
+
+/**
+ * Reads at most `maxBytes` of an upstream body.
+ *
+ * The cap is enforced on bytes actually read, so it holds without a `Content-Length` and for a
+ * compressed payload that expands after `fetch` decodes it. Past the ceiling the reader is
+ * cancelled: `truncate` keeps what was read, otherwise the read fails.
+ */
+async function readBoundedBody(
+  response: RelayFetchResponse,
+  maxBytes: number,
+  { truncate = false }: { truncate?: boolean } = {},
+): Promise<Buffer> {
+  const body = response.body;
+  if (!body?.getReader) {
+    const buffered = Buffer.from(await response.arrayBuffer());
+    if (buffered.byteLength <= maxBytes) return buffered;
+    if (truncate) return buffered.subarray(0, maxBytes);
+    throw new UpstreamResponseTooLargeError(maxBytes);
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let drained = false;
+  try {
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) {
+        drained = true;
+        break;
+      }
+      const remaining = maxBytes - total;
+      if (result.value.byteLength > remaining) {
+        if (!truncate) throw new UpstreamResponseTooLargeError(maxBytes);
+        chunks.push(result.value.subarray(0, remaining));
+        total = maxBytes;
+        break;
+      }
+      total += result.value.byteLength;
+      chunks.push(result.value);
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    if (!drained) await reader.cancel().catch(() => {});
+  }
+}
 
 /** Narrows a `JSON.parse` result to a plain keyed object; arrays are rejected. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -236,16 +382,20 @@ async function fetchRobotsPolicy(
   userAgent: string,
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
-  const response = await fetchFn(robotsUrl, {
-    headers: { "User-Agent": userAgent },
-    redirect: "follow",
-  });
+  // The policy fetch must not become a second, unchecked route: it follows the same host rules.
+  const response = await fetchValidatedUpstream(fetchFn, robotsUrl, { "User-Agent": userAgent });
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");
   if (response.status >= 400 && response.status < 500) return null;
   if (response.status >= 500)
     throw new Error(`robots.txt temporarily unavailable (${response.status})`);
   if (!response.ok) return null;
-  return response.text();
+  // RFC 9309 permits a parsing limit and requires the cut to land on a line boundary, so an
+  // oversized policy degrades to its leading rules instead of failing the relay.
+  const bounded = await readBoundedBody(response, MAX_ROBOTS_RESPONSE_BYTES, { truncate: true });
+  const text = bounded.toString("utf8");
+  if (bounded.byteLength < MAX_ROBOTS_RESPONSE_BYTES) return text;
+  const lastLineBreak = text.lastIndexOf("\n");
+  return lastLineBreak < 0 ? "" : text.slice(0, lastLineBreak + 1);
 }
 
 function configuredEntryUrl(env: RelayEnv): string {
@@ -406,17 +556,51 @@ function verifyPermit(value: unknown, secret: string): RelayPermitClaims | null 
   }
 }
 
+/**
+ * Robots gate for redirect destinations.
+ *
+ * The policy is fetched lazily, so a request that is never redirected costs nothing extra, and it
+ * is cached per origin for the rest of the chain. `robots.txt` is itself exempt: it is fetched
+ * without a gate, since a policy cannot be the authority on whether it may be read.
+ */
+function redirectRobotsGate(fetchFn: RelayFetch, userAgent: string): RedirectRobotsGate {
+  const policies = new Map<string, string | null>();
+  return async (target: URL) => {
+    if (!policies.has(target.origin)) {
+      policies.set(target.origin, await fetchRobotsPolicy(fetchFn, target.origin, userAgent));
+    }
+    if (!isPathAllowed(policies.get(target.origin) ?? null, target.toString(), userAgent)) {
+      throw new RedirectRobotsDisallowedError(target.pathname);
+    }
+  };
+}
+
 async function proxyTarget(
   fetchFn: RelayFetch,
   targetUrl: string,
   profile: RelayRequestProfile,
   env: RelayEnv,
 ): Promise<RelayResponse> {
-  const upstream = await fetchFn(targetUrl, {
-    headers: profile.headers,
-    redirect: "follow",
-  });
-  const bytes = Buffer.from(await upstream.arrayBuffer());
+  const upstream = await fetchValidatedUpstream(
+    fetchFn,
+    targetUrl,
+    profile.headers,
+    redirectRobotsGate(fetchFn, profile.userAgent),
+  );
+  let bytes: Buffer;
+  try {
+    bytes = await readBoundedBody(upstream, MAX_UPSTREAM_RESPONSE_BYTES);
+  } catch (error) {
+    if (!(error instanceof UpstreamResponseTooLargeError)) throw error;
+    // No `x-hifiscout-upstream-status`: the Worker must read this as a relay failure and fail the
+    // collection, never as an empty seller page.
+    return {
+      statusCode: 502,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      body: "upstream_response_too_large",
+      isBase64Encoded: false,
+    };
+  }
   const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
   return {
     statusCode: upstream.status,
@@ -498,7 +682,9 @@ export function createHandler({
         if (profile.userAgent !== claims.profileUserAgent) {
           return jsonResponse(409, { error: "permit_profile_changed" });
         }
-        return proxyTarget(fetchFn, claims.targetUrl, profile, env);
+        // `return await` on purpose: a bare `return` of the promise would settle after this
+        // try/catch has exited, so an upstream or destination failure would escape the mapping below.
+        return await proxyTarget(fetchFn, claims.targetUrl, profile, env);
       }
 
       let requestedUrl: URL;
@@ -560,12 +746,18 @@ export function createHandler({
       // Compatibility path for the Queue-based relay consumers. Phase 4 adds the permit protocol
       // without changing production pacing semantics; Phase 5 will move these callers to DO Alarms.
       if (effectiveDelayMs > 0) await sleepFn(effectiveDelayMs);
-      return proxyTarget(fetchFn, targetUrl, profile, env);
+      return await proxyTarget(fetchFn, targetUrl, profile, env);
     } catch (error) {
-      return jsonResponse(502, {
-        error: "relay_failure",
-        message: String(error instanceof Error ? error.message : String(error)).slice(0, 300),
-      });
+      const message = String(error instanceof Error ? error.message : String(error)).slice(0, 300);
+      // A refused destination is reported distinctly so it is diagnosable as a policy decision
+      // rather than an upstream outage. Either way the Worker reads a relay failure.
+      if (error instanceof RedirectRobotsDisallowedError) {
+        return jsonResponse(502, { error: "robots_disallowed_redirect", message });
+      }
+      if (error instanceof RedirectRejectedError) {
+        return jsonResponse(502, { error: "redirect_rejected", message });
+      }
+      return jsonResponse(502, { error: "relay_failure", message });
     }
   };
 }

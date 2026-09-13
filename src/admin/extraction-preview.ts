@@ -186,7 +186,12 @@ export async function previewAdminExtraction(
     );
     const evidence = row
       ? retainedCategoryEvidence(
-          { title: raw.title, rawCategory: raw.rawCategory, hintedCategory: row.category },
+          {
+            title: raw.title,
+            rawCategory: raw.rawCategory,
+            hintedCategory: row.category,
+            manufacturer: raw.rawManufacturer,
+          },
           metadata,
         )
       : source.categoryEvidence;

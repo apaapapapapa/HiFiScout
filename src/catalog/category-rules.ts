@@ -230,6 +230,17 @@ export function inferExplicitCategoryIds(
   if (subject.categoryId) return [subject.categoryId];
   const value = saleSubjectText(String(text || ""));
   if (!value.trim()) return [];
+  // Consumables precede the historical open-reel deck rule, but an explicitly named machine
+  // remains equipment even when the seller mentions the tape/reel it accepts or includes.
+  if (
+    !/デッキ|レコーダ|プレ[イー]ヤ|\b(?:deck|recorder|player)\b|クリーナ|クリーニング|\bclean(?:er|ing)\b|ケース|カバー|\b(?:case|cover)\b/i.test(
+      value,
+    ) &&
+    /オープンリールテープ|録音(?:用)?テープ|カセットテープ|空リール|(?:7|10)\s*号\s*(?:メタル|プラ(?:スチック)?)?リール|(?:blank|recording|open[\s-]*reel)\s+tape|(?:empty|metal|plastic)\s+(?:tape\s+)?reel/i.test(
+      value,
+    )
+  )
+    return ["REC.MEDIA"];
   // Bare drivers are parts, but a finished add-on super tweeter is a complete speaker.
   // Do not mistake a horn-loaded speaker or a speaker's included tweeter for the sale object.
   if (
@@ -257,5 +268,16 @@ export function inferExplicitCategoryIds(
   if (EARPHONE_PRODUCT_PATTERN.test(value)) return ["PER.EARPHONE"];
   if (HEADPHONE_PRODUCT_PATTERN.test(value)) return ["PER.HEADPHONE"];
   for (const [id, pattern] of RULES) if (pattern.test(value)) return [id];
+  // Explicit equipment/cable/part rules above win over noise-reduction marketing. These words
+  // identify standalone accessories only when the title names no other sale object.
+  if (
+    !/ケーブル|コード|交換|変換|端子部品|\b(?:cables?|cords?|replacement|adapter|transformer)\b/i.test(
+      value,
+    ) &&
+    /仮想アース|(?:virtual\s+ground|grounding)\s*(?:box|unit)|ノイズ(?:対策|除去|低減)(?:用)?プラグ|noise[\s-]+(?:reduction|cancelling)\s+plug|usb\s*(?:ノイズ(?:対策|除去|低減)?|noise)\s*(?:フィルタ(?:ー)?|filter)/i.test(
+      value,
+    )
+  )
+    return ["ACC.GROUND_NOISE"];
   return [];
 }

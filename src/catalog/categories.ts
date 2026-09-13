@@ -341,6 +341,13 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "交換部品",
     "補修部品",
   ]),
+  leaf("ACC.GROUND_NOISE", "仮想アース・ノイズ対策アクセサリー", "ACC", 10, [
+    "virtual ground",
+    "grounding box",
+    "noise reduction plug",
+    "仮想アース",
+    "ノイズ対策プラグ",
+  ]),
   root("SYS", "オーディオシステム", 11),
   leaf("SYS.MULTIFUNCTION", "複合オーディオ機器", "SYS", 1, [
     "co-equal multifunction",
@@ -384,6 +391,15 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "dj controller",
     "digital dj",
     "DJコントローラー",
+  ]),
+  leaf("REC.MEDIA", "録音メディア・リール", "REC", 8, [
+    "recording tape",
+    "blank tape",
+    "empty reel",
+    "オープンリールテープ",
+    "録音用テープ",
+    "カセットテープ",
+    "空リール",
   ]),
   {
     id: UNCLASSIFIED_CATEGORY_ID,

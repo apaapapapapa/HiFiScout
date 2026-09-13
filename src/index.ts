@@ -15,8 +15,9 @@ import {
 import { catalogHtmlWithFeedAutodiscovery } from "./http/catalog-feed-autodiscovery.js";
 import { handleProductCorrectionReport } from "./http/product-correction-report.js";
 import { handleProductPermalink } from "./http/product-permalink.js";
-import { json } from "./http/response.js";
+import { rateLimitedResponse, rateLimiterUnavailableResponse } from "./http/response.js";
 import { handleHttp } from "./http/router.js";
+import { withPublicSecurityHeaders } from "./http/security-headers.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
 import { handleScheduled } from "./scheduled.js";
@@ -26,7 +27,7 @@ import { handleScheduled } from "./scheduled.js";
  * retired at the outermost public entrypoint so no bearer value can make those handlers reachable.
  * Administrative UI/RPC capabilities live on the separate Cloudflare Access-protected admin Worker.
  */
-async function handlePublicHttp(
+async function routePublicHttp(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
@@ -44,7 +45,10 @@ async function handlePublicHttp(
 
   if (request.method === "POST" && url.pathname === "/api/product-correction-reports") {
     const rate = await checkPublicApiRateLimit(request, env);
-    if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
+    if (rate.decision === "limited") return rateLimitedResponse();
+    // An unauthenticated write has no cached answer to fall back on: without a working limiter it is
+    // refused outright rather than accepted unmetered.
+    if (rate.decision === "unavailable") return rateLimiterUnavailableResponse();
     return handleProductCorrectionReport(request, env);
   }
 
@@ -65,6 +69,22 @@ async function handlePublicHttp(
     return catalogHtmlWithFeedAutodiscovery(response, url);
   }
   return response;
+}
+
+/**
+ * The outermost public boundary.
+ *
+ * Every response the Worker produces leaves through here, so the security headers cover HTML, API
+ * JSON, feeds, edge-cache hits and application error responses alike — nothing can be added later
+ * that forgets them. Assets served directly by Workers Static Assets never reach this function and
+ * are covered by `public/_headers` instead; Cloudflare applies that file only to asset responses.
+ */
+async function handlePublicHttp(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  return withPublicSecurityHeaders(await routePublicHttp(request, env, ctx));
 }
 
 /** Crawl Queues are gone in Phase 6; this entrypoint serves the remaining non-crawl Queue jobs. */

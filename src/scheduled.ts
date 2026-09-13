@@ -67,6 +67,7 @@ import {
 } from "./knowledge-catalog/queue-write-quota.js";
 import { recoverStaleKnowledgeCatalogExportJobs } from "./knowledge-catalog-export/service.js";
 import { runRetentionCleanup } from "./maintenance.js";
+import { maintainAiCatalogJobs } from "./ai-suggestions/service.js";
 import { maintainMarketAnalysis } from "./db/market-analysis-repository.js";
 import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
@@ -617,6 +618,11 @@ export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = ne
 
 export interface ScheduledWork {
   name: string;
+  /**
+   * Calls that must still be available before this task is claimed. Expensive, non-checkpointed
+   * work uses this to yield before its first write instead of repeating partial work next tick.
+   */
+  minimumRemainingCalls?: number;
   run(env: Env, scheduledAt?: Date): Promise<unknown>;
 }
 
@@ -669,7 +675,19 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     name: "data_quality_remediation_sweep",
     everyTicks: 2,
     offset: 1,
-    run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1, preferQueuedWork: true }),
+    // One call claims the task, then one listing replay can use roughly thirty calls across
+    // derivation, the three projection stages, snapshot persistence and durable completion.
+    // Starting with only the generic eight-call floor allowed search projection writes before
+    // identity resolution hit the hard cap, so the next tick repeated work that could not finish.
+    minimumRemainingCalls: 31,
+    run: (env) =>
+      runDataQualityRemediationSweep(env.DB, {
+        claimLimit: 1,
+        preferQueuedWork: true,
+        // Backlog size is operational output, not an input to the sweep. Keep its exact, queue-sized
+        // aggregate on the admin/drain path instead of paying for it every ten minutes.
+        measureQueue: false,
+      }),
   },
   {
     // This is the bounded convergence mechanism promised by repairGeneralCronProjectionGaps: if a
@@ -702,6 +720,14 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     everyTicks: 2,
     offset: 4,
     run: (env) => recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
+  },
+  {
+    name: "ai_catalog_maintenance",
+    everyTicks: 12,
+    offset: 4,
+    // One maintenance claim plus the twenty-call maximum of the bounded recovery slice.
+    minimumRemainingCalls: 21,
+    run: (env, now) => maintainAiCatalogJobs(env, now),
   },
   {
     // The normal bootstrap remains hourly. This narrow task adds a ten-minute recovery path after a
@@ -793,12 +819,12 @@ export async function runPendingMaintenance(
     // Leave enough room to claim and complete a useful unit instead of repeatedly acquiring a
     // lease with only one query left. The binding wrapper remains the hard stop inside each task.
     if (budget.exhausted()) break;
-    if (budget.remainingCalls() < 8) {
+    const task = registry.find((candidate) => candidate.name === name);
+    if (!task) continue;
+    if (budget.remainingCalls() < (task.minimumRemainingCalls ?? 8)) {
       budget.defer();
       break;
     }
-    const task = registry.find((candidate) => candidate.name === name);
-    if (!task) continue;
     const token = await claimMaintenance(env.DB, name, scheduledAt);
     if (!token) continue;
     const accounting = accountReads(env.DB);

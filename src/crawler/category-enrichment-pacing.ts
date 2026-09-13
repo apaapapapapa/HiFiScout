@@ -11,6 +11,7 @@ import type { QueryableDatabase } from "../db/types.js";
 import { enrichProductCategories } from "./category-enricher.js";
 import type { DetailEnrichmentTarget } from "./detail-enrichment-plan.js";
 import type { CrawlerEnv, ShopPlugin } from "./types.js";
+import { shopRedirectOrigins } from "./redirects.js";
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 
@@ -136,6 +137,7 @@ export async function planStagedCategoryDetailFetchesWithDbUsage(
       requestDelayMs,
       fetchFn: globalThis.fetch,
       robotsCache: new Map(),
+      allowedRedirectOrigins: shopRedirectOrigins(plugin),
     },
     now,
   });

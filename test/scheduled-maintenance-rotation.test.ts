@@ -41,6 +41,7 @@ test("every sub-daily maintenance task still runs within an hour", () => {
   assert.deepEqual(
     [...seen].sort(),
     [
+      "ai_catalog_maintenance",
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
@@ -176,6 +177,37 @@ test("quota recovery probes every ten minutes without raising the per-tick cap",
     dueMaintenanceTasks(at).some((task) => task.name === "knowledge_catalog_queue_quota_recovery"),
   );
   assert.equal(firesIn.length, 2, "queue quota recovery should run every ten minutes");
+});
+
+test("the scheduled remediation sweep does not recount the durable backlog", async () => {
+  const at = ticks(12).find((tick) =>
+    dueMaintenanceTasks(tick).some((task) => task.name === "data_quality_remediation_sweep"),
+  );
+  assert.ok(at);
+  const task = dueMaintenanceTasks(at).find(
+    (candidate) => candidate.name === "data_quality_remediation_sweep",
+  );
+  assert.ok(task);
+  assert.equal(
+    task.minimumRemainingCalls,
+    31,
+    "a scheduled replay must not start after earlier tasks have spent its completion budget",
+  );
+  const db = captureDatabase(() => []);
+  const result = (await task.run({ DB: db } as unknown as Env)) as { queue: unknown };
+
+  assert.equal(
+    result.queue,
+    null,
+    "an omitted measurement must be explicit rather than reported as zero",
+  );
+  assert.equal(
+    db.calls.some((statement) =>
+      /SELECT COUNT\(\*\) AS count, MIN\(created_at\) AS oldest_created_at/u.test(statement.sql),
+    ),
+    false,
+    "the ten-minute path must not scan every pending and processing queue row for logging",
+  );
 });
 
 test("export recovery stays close to the two-minute threshold it exists to enforce", () => {

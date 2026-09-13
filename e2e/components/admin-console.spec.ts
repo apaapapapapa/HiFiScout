@@ -421,7 +421,8 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   await expect(admin.catalog.duplicateHeading).not.toBeVisible();
   await expect(admin.catalog.candidateHeading).not.toBeVisible();
   await expect(admin.catalog.csvSummary).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(13);
+  await expect(admin.sectionLinks).toHaveCount(14);
+  await expect(admin.sectionLinks.filter({ hasText: "AIの型番候補" })).toBeVisible();
   await expect(admin.sectionLinks.filter({ hasText: "ショップ別クロール" })).toBeVisible();
 
   await admin.catalog.searchFor("D-1000");
@@ -450,7 +451,7 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listingsTab).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/#listings$/u);
   await expect(admin.listings.heading).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(13);
+  await expect(admin.sectionLinks).toHaveCount(14);
 
   await admin.listings.searchFor("D-1000");
   await expect(admin.listings.status).toContainText("検索条件を反映しました");

@@ -149,15 +149,8 @@ export function renderProductPermalinkHtml(
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/brand.css">
   <link rel="stylesheet" href="/design-system.css">
-  <style>
-    #product-permalink-page{position:fixed;inset:0;z-index:1000;overflow:auto;background:#f7f6f2;padding:24px}
-    #product-permalink-page .permalink-shell{display:block;max-width:920px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.12)}
-    #product-permalink-page .permalink-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
-    #product-permalink-page .permalink-offers{list-style:none;padding:0;display:grid;gap:12px}
-    #product-permalink-page .permalink-offer{border:1px solid #ddd8ce;border-radius:12px;padding:16px}
-    #product-permalink-page .permalink-offer>div{display:flex;justify-content:space-between;gap:12px}
-    #product-permalink-page .permalink-color{margin-left:8px}
-  </style>
+  <!-- These rules were inline; a stylesheet lets the public CSP keep style-src-elem 'self'. -->
+  <link rel="stylesheet" href="/permalink.css">
 </head>
 <body>
   <section id="product-permalink-page" data-product-key="${escapeHtml(detail.product.key)}" aria-label="商品詳細">
@@ -182,6 +175,18 @@ export function renderProductPermalinkHtml(
   <script type="module" src="/app.js"></script>
 </body>
 </html>`;
+}
+
+/** HTML sibling of the JSON 503: the permalink namespace answers documents, not JSON. */
+function permalinkUnavailableResponse(): Response {
+  return new Response("Service Unavailable", {
+    status: 503,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "30",
+    },
+  });
 }
 
 export function productPermalinkNotFoundResponse(): Response {
@@ -213,28 +218,36 @@ export async function handleProductPermalink(
   }
 
   const rate = await checkPublicApiRateLimit(request, env);
-  if (!rate.allowed) {
+  if (rate.decision === "limited") {
     return new Response("Too Many Requests", {
       status: 429,
       headers: { "cache-control": "no-store", "retry-after": "60" },
     });
   }
+  // The limiter could not decide. A permalink already in the edge cache is still served from it;
+  // a miss must not reach D1 unmetered, so it answers 503 instead.
+  const cacheOnly = rate.decision === "unavailable";
 
   const key = productKeyFromPermalinkPath(url.pathname);
   if (!key) return productPermalinkNotFoundResponse();
 
   // Catalog query parameters belong to the SPA state, not to the product document itself.
   const cacheRequest = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
-  return cachedResponse(cacheRequest, ctx, async () => {
-    const detail = await productSearchDetail(env.DB, key);
-    if (!detail) return productPermalinkNotFoundResponse();
-    return new Response(renderProductPermalinkHtml(detail, url.origin), {
-      status: 200,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": `public, max-age=${PERMALINK_CACHE_TTL_SECONDS}`,
-        "x-robots-tag": "noindex, follow",
-      },
-    });
-  });
+  return cachedResponse(
+    cacheRequest,
+    ctx,
+    async () => {
+      const detail = await productSearchDetail(env.DB, key);
+      if (!detail) return productPermalinkNotFoundResponse();
+      return new Response(renderProductPermalinkHtml(detail, url.origin), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": `public, max-age=${PERMALINK_CACHE_TTL_SECONDS}`,
+          "x-robots-tag": "noindex, follow",
+        },
+      });
+    },
+    { cacheOnly, unavailableResponse: permalinkUnavailableResponse },
+  );
 }

@@ -89,7 +89,17 @@ export interface AdminChangeHistoryItem {
   after: Record<string, string>;
   createdAt: string;
   status: string;
+  /**
+   * The verified subject that made the change, or `null` when none was recorded.
+   *
+   * `null` means exactly that: rows written before attribution existed, and automated remediation,
+   * which has no human subject to name. It is never filled in with a guess.
+   */
+  actor: string | null;
 }
+
+/** How a change with no recorded subject reads in the console. */
+export const UNKNOWN_ACTOR_LABEL = "不明";
 export interface AdminChangeHistory {
   items: AdminChangeHistoryItem[];
   hasMore: boolean;

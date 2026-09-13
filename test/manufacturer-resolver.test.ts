@@ -135,6 +135,54 @@ test("title evidence resolves only when the explicit seller manufacturer is miss
   assert.equal(noTokenBoundary.status, "unresolved");
 });
 
+test("verified title evidence recovers a manufacturer behind a seller placeholder", () => {
+  for (const [title, manufacturerId] of [
+    ["その他 そのた ESSENCE AUDIO 4.4mm to 4.4mm mini-mini Cable", "essence-audio"],
+    ["その他 そのた QuillAcoustics Satin", "quill-acoustics"],
+    ["その他 そのた G4 Audio Dracula", "g4-audio"],
+    ["その他 そのた Mother Audio ME5", "mother-audio"],
+  ] as const) {
+    const result = resolveManufacturer({
+      shopKey: "fujiya-avic",
+      rawManufacturer: "その他",
+      manufacturerCandidate: "その他",
+      title,
+    });
+    assert.equal(result.status, "resolved");
+    assert.equal(result.canonicalManufacturerId, manufacturerId);
+    assert.equal(result.method, "title_bootstrap_alias");
+    assert.equal(result.normalizedRawManufacturer, "");
+  }
+
+  const otherShop = resolveManufacturer({
+    shopKey: "other-shop",
+    rawManufacturer: "",
+    title: "その他 SONY HAP-Z1ES",
+  });
+  assert.equal(otherShop.status, "unresolved");
+  assert.equal(otherShop.canonicalManufacturerId, "");
+});
+
+test("placeholder recovery preserves seller evidence and removes the recovered brand from model", () => {
+  const product = normalizeCatalogProduct(
+    parsedProduct({
+      title: "その他 そのた Mother Audio ME5",
+      manufacturer: "その他",
+      rawManufacturer: "その他",
+      model: "Mother Audio ME5",
+      rawModel: "Mother Audio ME5",
+    }),
+    {},
+    { shopKey: "fujiya-avic" },
+  );
+
+  assert.equal(product.rawManufacturer, "その他");
+  assert.equal(product.manufacturer, "Mother Audio");
+  assert.equal(product.manufacturerId, "mother-audio");
+  assert.equal(product.rawModel, "Mother Audio ME5");
+  assert.equal(product.model, "ME5");
+});
+
 test("similar spelling alone never becomes a canonical manufacturer", () => {
   const result = resolveManufacturer({ rawManufacturer: "Accuphaze" });
   assert.equal(result.status, "unresolved");

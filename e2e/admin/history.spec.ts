@@ -16,6 +16,7 @@ for (const conflict of [false, true])
       after: { model: "D-1000" },
       createdAt: "2026-08-26T00:00:00Z",
       status: "saved",
+      actor: "access:user:hifiscout.cloudflareaccess.com/test-subject",
     });
     await context.setExtraHTTPHeaders(await app.headers());
     await page.goto("/#listings");

@@ -43,7 +43,15 @@ export function effectiveManufacturerAliases(
       normalizedAlias: normalizeManufacturerKey(row.normalizedAlias || row.alias),
     }))
     .filter((row) => {
-      const identity = `${key(row)}\u0000${row.verificationStatus}`;
+      // Keep distinct display spellings that normalize to the same lookup key. Prefix matching
+      // still needs their token boundaries (for example `Counterpoint` and `Counter Point`),
+      // while exact resolution can safely see both rows for the same manufacturer.
+      const presentation = String(row.alias)
+        .normalize("NFKC")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      const identity = `${key(row)}\u0000${presentation}\u0000${row.verificationStatus}`;
       if (
         !row.normalizedAlias ||
         row.verificationStatus === "rejected" ||

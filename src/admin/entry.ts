@@ -7,7 +7,9 @@ import { isRecord } from "../types.js";
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import catalogAdmin from "./index.js";
-import { requireCloudflareAccess } from "./access.js";
+import { authenticateCloudflareAccess } from "./access.js";
+import type { AdminPrincipal } from "../api/admin-actor.js";
+import { parseAiAdminCommand } from "../http/admin-ai-catalog.js";
 import type { CatalogAdminRpc } from "./contracts.js";
 import { parseAdminWorkCountCursor } from "../api/admin-work-counts-contract.js";
 import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
@@ -30,7 +32,7 @@ import type {
 interface ListingAdminRpc extends CatalogAdminRpc {
   previewExtraction(input: unknown): Promise<unknown>;
   getOperations(): Promise<unknown>;
-  adminJobs(input: unknown): Promise<unknown>;
+  adminJobs(input: unknown, actor?: string): Promise<unknown>;
   getCrawlOverview(): Promise<unknown>;
   controlCrawl(shopKey: string, action: "pause" | "resume" | "run"): Promise<unknown>;
   getChangeHistory(kind: "listing" | "catalog", id: number): Promise<unknown>;
@@ -39,6 +41,7 @@ interface ListingAdminRpc extends CatalogAdminRpc {
     input: AdminRestoreSelection,
     revision: string,
     operationId: string,
+    actor?: string,
   ): Promise<unknown>;
   getListingDiagnosis(listingId: number): Promise<unknown>;
   getOfferFactReplay(): Promise<unknown>;
@@ -46,7 +49,11 @@ interface ListingAdminRpc extends CatalogAdminRpc {
   getOfferFacts(listingId: number): Promise<unknown>;
   updateOfferFacts(listingId: number, changes: OfferFactChanges): Promise<unknown>;
   listListings(options: ListingAdminListOptions): Promise<unknown>;
-  updateListing(listingId: number, input: ListingAdminUpdateInput): Promise<unknown>;
+  updateListing(
+    listingId: number,
+    input: ListingAdminUpdateInput,
+    actor?: string,
+  ): Promise<unknown>;
   listCorrectionReports(options: ProductCorrectionReportListOptions): Promise<unknown>;
   updateCorrectionReport(
     reportId: number,
@@ -107,6 +114,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === "/api/admin/extraction-preview" ||
     pathname === "/api/admin/manufacturer-registry" ||
     pathname === "/api/admin/quality" ||
+    pathname === "/api/admin/ai-catalog" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
@@ -151,8 +159,31 @@ function correctionReportUpdateError(error: unknown): Response {
 export async function handleAuthenticatedAdminEntryRequest(
   request: Request,
   env: AdminEnv,
+  principal: AdminPrincipal,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/ai-catalog" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 4096);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAiAdminCommand(body);
+    if (!command) return json({ error: "invalid_ai_command" }, { status: 400 });
+    try {
+      // The entry point already proved this request's token, so the subject arrives as an argument
+      // rather than being recovered by verifying the same signature a second time.
+      return json(await env.CATALOG_ADMIN.adminAiCatalog(command, principal.actor));
+    } catch {
+      return json(
+        { error: "AI提案を処理できませんでした。候補・予算・提案の鮮度を再確認してください。" },
+        { status: 409 },
+      );
+    }
+  }
 
   if (url.pathname === "/api/admin/extraction-preview" && request.method === "POST") {
     if (!isJsonRequest(request))
@@ -241,7 +272,7 @@ export async function handleAuthenticatedAdminEntryRequest(
     const command = parseAdminJobCommand(body);
     if (!command) return json({ error: "invalid_admin_job_command" }, { status: 400 });
     try {
-      return json(await env.CATALOG_ADMIN.adminJobs(command));
+      return json(await env.CATALOG_ADMIN.adminJobs(command, principal.actor));
     } catch (error) {
       return json(
         { error: error instanceof Error ? error.message : "処理の状態を確認できませんでした。" },
@@ -307,7 +338,12 @@ export async function handleAuthenticatedAdminEntryRequest(
     )
       return json({ error: "invalid_history_restore" }, { status: 400 });
     return json(
-      await env.CATALOG_ADMIN.restoreHistoryColor(selection, body.revision, body.operationId),
+      await env.CATALOG_ADMIN.restoreHistoryColor(
+        selection,
+        body.revision,
+        body.operationId,
+        principal.actor,
+      ),
     );
   }
   if (url.pathname === WORK_COUNTS_PATH && request.method === "GET") {
@@ -428,7 +464,7 @@ export async function handleAuthenticatedAdminEntryRequest(
     const input = parseListingAdminUpdate(body);
     if (!input) return json({ error: "invalid_listing_update" }, { status: 400 });
     try {
-      const result = await env.CATALOG_ADMIN.updateListing(listingId, input);
+      const result = await env.CATALOG_ADMIN.updateListing(listingId, input, principal.actor);
       return result ? json(result) : json({ error: "not_found" }, { status: 404 });
     } catch (error) {
       return updateError(error);
@@ -452,12 +488,13 @@ export default {
     const pathname = new URL(request.url).pathname;
     if (!isAdminEntryRoute(pathname)) return catalogAdmin.fetch(request, env);
 
-    const denied = await requireCloudflareAccess(request, {
+    // The token is verified once, here. Handlers take the resulting subject as an argument.
+    const access = await authenticateCloudflareAccess(request, {
       teamDomain: env.ACCESS_TEAM_DOMAIN || "",
       audience: env.ACCESS_AUD || "",
     });
-    if (denied) return denied;
-    return handleAuthenticatedAdminEntryRequest(request, env);
+    if ("denied" in access) return access.denied;
+    return handleAuthenticatedAdminEntryRequest(request, env, access.principal);
   },
 } satisfies ExportedHandler<AdminEnv>;
 import { parseAdminJobCommand } from "../http/admin-jobs.js";

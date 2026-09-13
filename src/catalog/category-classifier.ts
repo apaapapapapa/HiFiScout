@@ -22,6 +22,12 @@ const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Ma
   ["中古スピーカー", "SPK.LOUDSPEAKER"],
   ["カートリッジ", "ANA.CARTRIDGE"],
   ["cartridge", "ANA.CARTRIDGE"],
+  ["オープンリールテープ", "REC.MEDIA"],
+  ["録音用テープ", "REC.MEDIA"],
+  ["カセットテープ", "REC.MEDIA"],
+  ["空リール", "REC.MEDIA"],
+  ["仮想アース", "ACC.GROUND_NOISE"],
+  ["ノイズ対策プラグ", "ACC.GROUND_NOISE"],
 ]);
 
 const CONFIDENCE_BY_STRENGTH = Object.freeze({

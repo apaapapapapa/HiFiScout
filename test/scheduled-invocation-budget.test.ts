@@ -169,6 +169,50 @@ test("budget-limited daily work resumes on later ticks and lets untouched tasks 
   assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 60 * 60_000)), []);
 });
 
+test("a task-specific budget floor yields before claiming or partially running expensive work", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("CREATE TABLE expensive_writes(n INTEGER)");
+    const at = new Date("2030-01-01T00:00:00Z");
+    await enqueueMaintenance(db, ["expensive"], at);
+    let runs = 0;
+    const tasks = [
+      {
+        name: "expensive",
+        minimumRemainingCalls: 10,
+        async run(env: Env) {
+          runs += 1;
+          await env.DB.prepare("INSERT INTO expensive_writes VALUES (1)").run();
+        },
+      },
+    ];
+
+    const short = invocationBudget(db, { maxCalls: 11 });
+    await short.db.prepare("SELECT 1").all();
+    await runPendingMaintenance({ DB: short.db } as unknown as Env, at, short, tasks);
+    assert.equal(runs, 0);
+    assert.equal(short.metrics().yieldReason, "d1_calls");
+    assert.equal(
+      sqlite.prepare("SELECT claimed_at FROM scheduled_maintenance_pending").get()?.claimed_at,
+      null,
+    );
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM expensive_writes").get()?.n, 0);
+
+    const next = invocationBudget(db, { maxCalls: 20 });
+    await runPendingMaintenance(
+      { DB: next.db } as unknown as Env,
+      new Date(at.getTime() + 5 * 60_000),
+      next,
+      tasks,
+    );
+    assert.equal(runs, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM expensive_writes").get()?.n, 1);
+    assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 10 * 60_000)), []);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("stale maintenance completion cannot delete a newer claim", async () => {
   const { db } = migratedSqlite();
   const at = new Date("2030-01-01T00:00:00Z");

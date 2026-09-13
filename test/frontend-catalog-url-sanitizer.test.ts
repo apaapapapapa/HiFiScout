@@ -60,11 +60,11 @@ test("price bounds must be plain integers", () => {
   assert.equal(sanitizedCatalogSearch(`?minPrice=${"9".repeat(13)}`), "");
 });
 
-test("only the price sorts are shareable", () => {
+test("valid explicit sorts remain shareable across changes to the default", () => {
   assert.equal(sanitizedCatalogSearch("?sort=priceAsc"), "sort=priceAsc");
   assert.equal(sanitizedCatalogSearch("?sort=priceDesc"), "sort=priceDesc");
-  // `newest` is the default the app applies itself, so carrying it would only add URL noise.
-  assert.equal(sanitizedCatalogSearch("?sort=newest"), "");
+  assert.equal(sanitizedCatalogSearch("?sort=updated"), "sort=updated");
+  assert.equal(sanitizedCatalogSearch("?sort=newest"), "sort=newest");
   assert.equal(sanitizedCatalogSearch("?sort=invalid"), "");
 });
 

@@ -23,7 +23,7 @@ import { PAGE_SIZE, pageOffset } from "./pagination.js";
 import { SPECIFICATION_FILTER_DEFINITIONS } from "../src/api/catalog-specification-contracts.js";
 import type { SpecificationFilterValues } from "../src/api/catalog-specification-contracts.js";
 
-export const DEFAULT_SORT = "newest";
+export const DEFAULT_SORT = "updated";
 
 /** Text/select controls that round-trip through both the API query and the URL, in that order. */
 export const URL_VALUE_IDS = [

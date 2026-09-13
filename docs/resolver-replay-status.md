@@ -1,8 +1,9 @@
 # Resolver replay status
 
-For model-version updates, the admin console also provides **バックグラウンド処理 → 型番の一括再判定**.
+For model or category-version updates, the admin console also provides **バックグラウンド処理 → 型番・カテゴリの一括再判定**.
 Its durable job continues without the browser and supports saved progress, pause/resume and cancellation.
-See [bounded model replay](./listing-admin.md#bounded-model-resolver-replay) for its scope and recovery rules.
+See [bounded model and category replay](./listing-admin.md#bounded-model-resolver-replay) for its scope and recovery rules,
+including restarting model-only jobs after the selection scope expands.
 It does not publish the GitHub commit status described below.
 
 **Resolver Replay Drain** is an operator-triggered maintenance workflow that supplements the normal

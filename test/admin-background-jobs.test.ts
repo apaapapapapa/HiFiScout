@@ -520,7 +520,11 @@ test("model replay persists one candidate window, respects pause and snapshot bo
     await h.alarm();
     const first = (await h.command({ action: "get", id })).job;
     assert.equal(first.processed, 1);
-    assert.deepEqual(first.modelReplay, { version: RESOLUTION_VERSIONS.model, scanned: 4 });
+    assert.deepEqual(first.modelReplay, {
+      version: RESOLUTION_VERSIONS.model,
+      categoryVersion: RESOLUTION_VERSIONS.category,
+      scanned: 4,
+    });
     assert.equal(first.status, "running");
     assert.equal(
       h.sqlite.prepare("SELECT model FROM products WHERE id=100001").get()?.model,
@@ -571,11 +575,118 @@ test("model replay persists one candidate window, respects pause and snapshot bo
   }
 });
 
+test("category-only drift replays retained evidence and search categories while preserving manual categories", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 4);
+    h.sqlite
+      .prepare(`UPDATE products SET title='SONY オープンリールテープ SLH-550',
+      raw_manufacturer='SONY',raw_model='SLH-550',model='SLH-550',raw_category='オープンリールテープ',
+      category='テープデッキ',primary_category_id='ANA.TAPE',model_resolver_version=?,metadata_json=?`)
+      .run(
+        RESOLUTION_VERSIONS.model,
+        JSON.stringify({ categoryClassification: { version: RESOLUTION_VERSIONS.category - 1 } }),
+      );
+    h.sqlite
+      .prepare(
+        "UPDATE products SET metadata_json=json_set(metadata_json,'$.categoryClassification.version',?) WHERE id=100003",
+      )
+      .run(RESOLUTION_VERSIONS.category);
+    h.sqlite.exec("UPDATE products SET is_active=0 WHERE id=100004");
+    await updateListingAdminProduct(h.db, 100002, { primaryCategoryId: "ACC.PART" });
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    await h.alarm();
+    await h.command({ action: "pause", id });
+    h.restart();
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    const result = (await h.command({ action: "get", id })).job;
+    assert.equal(result.status, "completed");
+    assert.equal(result.processed, 2);
+    for (const [listingId, category] of [
+      [100001, "REC.MEDIA"],
+      [100002, "ACC.PART"],
+    ] as const) {
+      const row = h.sqlite.prepare("SELECT * FROM products WHERE id=?").get(listingId)!;
+      assert.equal(row.primary_category_id, category);
+      assert.equal(row.model_resolver_version, RESOLUTION_VERSIONS.model);
+      assert.equal(
+        JSON.parse(String(row.metadata_json)).categoryClassification.version,
+        RESOLUTION_VERSIONS.category,
+      );
+      assert.equal(row.raw_category, "オープンリールテープ");
+      assert.equal(row.remediation_projection_required, 0);
+      assert.equal(
+        h.sqlite
+          .prepare(`SELECT COUNT(*) AS n FROM product_search_entity_offers o
+        JOIN product_search_entity_categories c ON c.entity_id=o.entity_id
+        WHERE o.listing_product_id=? AND c.category_id=?`)
+          .get(listingId, category)?.n,
+        1,
+        `listing ${listingId}: ${category}`,
+      );
+    }
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT COUNT(*) AS n FROM products WHERE id IN (100003,100004) AND primary_category_id='ANA.TAPE'",
+        )
+        .get()?.n,
+      2,
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("model-only saved cursors stop and cannot hide category drift from a new combined replay", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 2);
+    h.sqlite.prepare("UPDATE products SET model_resolver_version=?").run(RESOLUTION_VERSIONS.model);
+    const oldId = crypto.randomUUID();
+    await h.command(modelCommand(oldId));
+    // Pre-upgrade state has exactly the same rule tuple, but skipped these category-only rows.
+    h.local
+      .prepare(`UPDATE model_replays SET versions_json=?,max_product_id=100002,
+      after_id=100002,scanned_count=2,scan_complete=1 WHERE job_id=?`)
+      .run(JSON.stringify(RESOLUTION_VERSIONS), oldId);
+    await h.command({ action: "start", id: oldId });
+    h.restart();
+    const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+    await h.alarm();
+    const oldJob = (await h.command({ action: "get", id: oldId })).job;
+    assert.equal(oldJob.status, "failed");
+    assert.match(oldJob.error, /対象範囲が更新/);
+    assert.equal(oldJob.modelReplay?.categoryVersion, undefined);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
+    await h.command({ action: "resume", id: oldId }, 409);
+    const newId = (await h.command(modelCommand())).job.id;
+    assert.notEqual(newId, oldId);
+    await h.command({ action: "start", id: newId });
+    await h.alarm();
+    await h.alarm();
+    const completed = (await h.command({ action: "get", id: newId })).job;
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.processed, 2);
+    assert.equal(completed.modelReplay?.categoryVersion, RESOLUTION_VERSIONS.category);
+  } finally {
+    h.close();
+  }
+});
+
 test("model replay scans an all-current tail in bounded windows and coalesces repeated submissions", async () => {
   const h = harness();
   try {
     modelListings(h, 51);
-    h.sqlite.prepare("UPDATE products SET model_resolver_version=?").run(RESOLUTION_VERSIONS.model);
+    h.sqlite
+      .prepare("UPDATE products SET model_resolver_version=?,metadata_json=?")
+      .run(
+        RESOLUTION_VERSIONS.model,
+        JSON.stringify({ categoryClassification: { version: RESOLUTION_VERSIONS.category } }),
+      );
     const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
     const id = crypto.randomUUID();
     await h.command(modelCommand(id));
@@ -653,14 +764,27 @@ test("model replay retains failed projection work and an in-flight pause, then r
     assert.equal((await h.command({ action: "get", id })).job.status, "paused");
     assert.equal((await h.command({ action: "get", id })).job.processed, 1);
     const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
-    h.local
-      .prepare("UPDATE model_replays SET versions_json=? WHERE job_id=?")
-      .run(JSON.stringify({ ...RESOLUTION_VERSIONS, category: -1 }), id);
+    h.local.prepare("UPDATE model_replays SET versions_json=? WHERE job_id=?").run(
+      JSON.stringify({
+        ...JSON.parse(
+          String(
+            h.local.prepare("SELECT versions_json FROM model_replays WHERE job_id=?").get(id)!
+              .versions_json,
+          ),
+        ),
+        category: -1,
+      }),
+      id,
+    );
+    assert.equal((await h.command({ action: "get", id })).job.modelReplay?.categoryVersion, -1);
     await h.command({ action: "resume", id }, 409);
     h.local.prepare("UPDATE jobs SET status='queued' WHERE id=?").run(id);
     h.restart();
     await h.alarm();
-    assert.match((await h.command({ action: "get", id })).job.error, /判定ルールが更新/);
+    assert.match(
+      (await h.command({ action: "get", id })).job.error,
+      /判定ルールまたは対象範囲が更新/,
+    );
     assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
     await h.command({ action: "cancel", id });
     assert.notEqual((await h.command(modelCommand())).job.id, id);

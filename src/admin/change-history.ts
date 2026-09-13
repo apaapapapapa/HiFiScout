@@ -1,6 +1,7 @@
 import { ADMIN_CSV_FIELDS, type AdminCsvChange } from "../api/admin-csv-contracts.js";
 import type { AdminRestoreSelection } from "../api/admin-listing-contracts.js";
 import { isRecord } from "../types.js";
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
 import { previewAdminCsvChange } from "../db/admin-csv-import-repository.js";
 import {
   hasLaterAdminChange,
@@ -103,6 +104,7 @@ export async function restoreAdminHistoryColor(
   selection: AdminRestoreSelection,
   expectedRevision: string,
   operationId: string,
+  actor = UNKNOWN_ADMIN_ACTOR,
 ) {
   if (
     selection.kind !== "listing" ||
@@ -162,16 +164,11 @@ export async function restoreAdminHistoryColor(
         state.values_json,
         state.updated_at,
       ),
-      ...adminChangeJournalStatement(
-        db,
-        "listing",
-        selection.targetId,
-        before,
-        after,
-        now,
+      ...adminChangeJournalStatement(db, "listing", selection.targetId, before, after, now, {
         operationId,
-        source,
-      ),
+        restoredFrom: source,
+        actor,
+      }),
     ],
   );
   return { status: "applied", message: "色を復元しました。" };

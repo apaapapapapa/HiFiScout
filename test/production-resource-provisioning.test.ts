@@ -46,7 +46,7 @@ test("Queue pagination finds existing resources before creating only a missing q
     if (path.startsWith("/queues?")) {
       const page = new URL(`https://example.test${path}`).searchParams.get("page");
       return {
-        result: (page === "1" ? requiredQueues.slice(0, 2) : requiredQueues.slice(2, 3)).map(
+        result: (page === "1" ? requiredQueues.slice(0, 2) : requiredQueues.slice(2, -1)).map(
           (queue_name) => ({ queue_name }),
         ),
         result_info: { total_pages: 2 },
@@ -55,7 +55,7 @@ test("Queue pagination finds existing resources before creating only a missing q
     return { result: {} };
   };
   await provisionProductionResources(api);
-  assert.deepEqual(created, [{ queue_name: requiredQueues[3] }]);
+  assert.deepEqual(created, [{ queue_name: requiredQueues.at(-1) }]);
 });
 
 test("a forbidden bucket read cannot trigger resource creation", async () => {
