@@ -48,6 +48,8 @@ function makeEvent(
 }
 
 export function parseLoopRun(value: unknown): LoopRun {
+  if (JSON.stringify(value, null, 2).length + 1 > 4_194_304)
+    throw new Error("loop_state_too_large");
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||

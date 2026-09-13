@@ -62,3 +62,27 @@ test("edited or truncated history cannot silently become a valid resume point", 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an append cannot make a persisted journal too large to read", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "loop-size-"));
+  const path = join(dir, "state.json");
+  try {
+    let run = await createLoopRun(example, path);
+    let rejected = false;
+    for (let n = 0; n < 20; n++) {
+      try {
+        run = await appendLoopEvent(path, run.revision, run.specDigest, "heartbeat", {
+          padding: "x".repeat(250_000),
+        });
+      } catch (error) {
+        assert.match(String(error), /loop_state_too_large/u);
+        assert.deepEqual(await readLoopRun(path), run);
+        rejected = true;
+        break;
+      }
+    }
+    assert.equal(rejected, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

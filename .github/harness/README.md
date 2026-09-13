@@ -15,6 +15,11 @@ measured provider billing. The default zero allocation permits only zero-cost ad
 Repairs cannot modify the loop controller, harness gates, CI, agent authority, dependency/runtime
 configuration or migrations. Such changes need a separate ordinary engineering PR. Task prose and
 incident evidence never become shell commands or permission to change the fixed acceptance rules.
+Product/cost loops must include their replay/cost comparison. AI loops require an AI holdout result.
+The normalized contract materializes CI, review coverage and stable-snapshot gates; merge/deployment
+targets add the existing delivery collector's concrete milestone IDs. Required external review adds
+an approval gate. Missing IDs therefore cannot waive the selected policy, even through checkpoint
+assessment. Delivery milestones are evaluated after source repair, at their corresponding stage.
 
 Create a journal with `vp run harness loop init <spec.json> <state.json>`; inspect it with
 `vp run harness loop history <state.json>`. Journals extend the existing checkpoint storage primitive:
@@ -23,6 +28,8 @@ the last complete state. Events are append-only, ordered and chained to the cont
 detects accidental edits, not a malicious writer able to replace the whole journal. Preserve journals
 as CI artifacts or operator-owned task files. An abandoned lock needs deliberate writer-liveness
 checking before removal. Inspecting history does not execute its contents or restart a stopped run.
+The parent directory is synced after replacement. Both append and read enforce the same serialized
+journal size ceiling, so a successful write cannot create a journal rejected by the reader.
 
 ## Evidence reports
 
