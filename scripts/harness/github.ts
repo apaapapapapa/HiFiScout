@@ -11,10 +11,12 @@ import { requireSha } from "./report.js";
 const exec = promisify(execFile);
 // gh owns authentication and artifact transport, as in the existing Actions workflows. No
 // shell interpolation, mutations, repair commands or production Cloudflare requests occur here.
-export async function gh(args: string[]): Promise<string> {
+export async function gh(args: string[], timeoutMs = 60_000): Promise<string> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000)
+    throw new Error("invalid_github_timeout");
   const { stdout } = await exec("gh", args, {
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: timeoutMs,
     maxBuffer: 8 * 1024 * 1024,
   });
   return stdout;

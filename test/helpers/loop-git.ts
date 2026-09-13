@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { loopGit } from "../../scripts/harness/loop/workspace.js";
 import { createLoopRun } from "../../scripts/harness/loop/state.js";
 import { loopSpec } from "./loop.js";
-export async function loopGitFixture() {
+import type { LoopSpec } from "../../scripts/harness/loop/contract.js";
+export async function loopGitFixture(overrides: Partial<LoopSpec> = {}) {
   const root = await mkdtemp(join(tmpdir(), "loop-workspace-")),
     source = join(root, "source");
   await mkdir(join(source, "src"), { recursive: true });
@@ -19,6 +20,6 @@ export async function loopGitFixture() {
   const sha = loopGit(source, ["rev-parse", "HEAD"]),
     state = join(root, "state.json"),
     workspaces = join(root, "workspaces");
-  await createLoopRun({ ...loopSpec(), baselineSha: sha }, state);
+  await createLoopRun({ ...loopSpec(), ...overrides, baselineSha: sha }, state);
   return { root, source, sha, state, workspaces };
 }

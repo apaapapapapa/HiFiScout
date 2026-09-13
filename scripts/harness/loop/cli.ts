@@ -4,6 +4,12 @@ import { assessLoopRun, beginLoopAttempt, recordLoopEvent } from "./controller.j
 import { isRecord } from "../../../src/types.js";
 import { applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
 import { evaluateLoopAttempt } from "./evaluation.js";
+import {
+  publishLoopPull,
+  reviewLoopPull,
+  observeLoopDelivery,
+  mergeLoopPull,
+} from "./publication.js";
 import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
 
@@ -31,7 +37,14 @@ export async function runLoopCli(args: string[]): Promise<number> {
       undefined,
       args[4] === "manual",
     );
-  } else if (args[0] === "evaluate" && (args.length === 3 || args.length === 4))
+  } else if (args[0] === "publish" && args.length === 3)
+    result = await publishLoopPull(args[1], args[2]);
+  else if (args[0] === "review" && (args.length === 3 || args.length === 4))
+    result = await reviewLoopPull(args[1], args[2], args[3]);
+  else if (args[0] === "observe" && args.length === 3)
+    result = await observeLoopDelivery(args[1], args[2]);
+  else if (args[0] === "merge" && args.length === 3) result = await mergeLoopPull(args[1], args[2]);
+  else if (args[0] === "evaluate" && (args.length === 3 || args.length === 4))
     result = await evaluateLoopAttempt(args[1], args[2], args[3]);
   else if (args[0] === "prepare" && args.length === 4)
     result = await prepareLoopWorkspace(args[1], args[2], args[3]);
