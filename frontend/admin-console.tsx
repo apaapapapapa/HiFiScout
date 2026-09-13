@@ -1,6 +1,7 @@
 import { AdminManufacturerRegistry } from "./admin-manufacturer-registry.js";
 import { AdminQualityPanel } from "./admin-quality.js";
 import { AdminExtractionPreview } from "./admin-extraction-preview.js";
+import { AdminAiCatalog } from "./admin-ai-catalog.js";
 import { AdminOperationsPanel } from "./admin-operations.js";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
@@ -181,6 +182,7 @@ export function AdminConsole() {
         <div hidden={location.view !== "operations"}>
           {visited.has("operations") ? <AdminOperationsPanel /> : null}
         </div>
+        <div hidden={location.view !== "ai"}>{visited.has("ai") ? <AdminAiCatalog /> : null}</div>
         <div hidden={location.view !== "jobs"}>
           {visited.has("jobs") ? (
             <AdminJobsPanel

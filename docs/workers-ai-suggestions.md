@@ -59,7 +59,47 @@ Grants are immutable for that UTC day and cannot reset reservations. An emergenc
 for the day. Normal product collection and authoritative classification have no dependency on these
 gates or on model availability.
 
-## Free allowance
+## Operator review
+
+The Access-protected console's **AIの型番候補** view is reached from a candidate's **AI候補を確認**
+link or directly with `#ai`. Operators prepare one existing candidate at a time. A disabled or
+quota-deferred job needs **当日の予算で再開** after the gates are satisfied; preparing the same
+fingerprint never starts another inference. The status list uses a 20-row indexed keyset page;
+only opening one detail pays for current-evidence revalidation.
+
+The detail shows every supplied alternative, exact seller-evidence spans, token usage, reserved
+and measured Neurons, latency and attempt outcomes. **役に立った**, **誤り** and **証拠不足** record
+advisory quality only. A fresh, useful suggestion offers a link to the existing candidate Verify
+form. It does not fill that form with an AI answer or an invented source. The operator must check
+the official model and sale object and provide the verification source themselves.
+
+The handoff carries the suggestion ID. Existing Verify rechecks the evidence fingerprint, reviewed
+outcome, supplied catalog ID, model and category before saving. Its final candidate/alias batch
+checks the current target and selected catalog again; a mismatch rolls back the entire batch.
+AI handoffs can only select the reviewed existing verified product. They cannot create or revive
+catalog products. The existing verification-attempt audit links the suggestion ID, and the ordinary
+bounded replay remains responsible for updating listings. A sample title never authorizes a whole
+group of accessories or bundles to be treated as the base product.
+
+Budget controls record an operator's recent account-wide capacity check, cap this feature at
+1,000 Neurons/day, and provide an irreversible-for-the-day stop. The authenticated Access subject
+is the actor; the request body cannot select a reviewer identity or model. Public `/api/admin/*`
+still returns 404. These controls cannot approve a live evaluation or enable the deployed feature.
+
+## Model evaluation and activation
+
+Use `vp exec tsx scripts/evaluate-ai-catalog.ts responses.json` to evaluate recorded responses for
+the fixed corpus. This command is offline and its output explicitly says that response provenance
+has not been verified. Keep the real model request/response metadata, corpus/policy versions,
+latency and provider usage with the evaluation report; passing hand-written responses is not an
+activation approval. No recorded live evaluation has been added by these implementation changes.
+
+After real-model evaluation passes, review the exact policy and account-wide free-capacity
+reservation before setting the deployment gates. Start with the 25-candidate daily cap, inspect
+all suggestions manually, and measure false suggestions, accepted fixes, operator time and D1 cost
+before expanding coverage. Without those checks, retain the default disabled configuration.
+
+## Free capacity accounting
 
 `src/ai-suggestions/policy.ts` is the only definition of model, request/output limits, attempt
 limits, retention and daily allowance. On 2026-09-13 the pinned Qwen3 model costs 4,625 Neurons per

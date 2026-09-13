@@ -19,6 +19,7 @@ import {
   updateCatalogSpecifications,
 } from "./db/catalog-specification-repository.js";
 import type { CatalogSpecifications } from "./catalog/types.js";
+import { adminAiCatalog } from "./ai-suggestions/admin.js";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
@@ -87,6 +88,9 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async adminAiCatalog(input: unknown, actor: string) {
+    return adminAiCatalog(this.env, input, actor);
+  }
   async adminQuality(input: unknown) {
     const command = parseAdminQualityCommand(input);
     if (!command) throw new Error("invalid_quality_command");

@@ -7,7 +7,8 @@ import { isRecord } from "../types.js";
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import catalogAdmin from "./index.js";
-import { requireCloudflareAccess } from "./access.js";
+import { requireCloudflareAccess, verifyCloudflareAccessRequest } from "./access.js";
+import { parseAiAdminCommand } from "../http/admin-ai-catalog.js";
 import type { CatalogAdminRpc } from "./contracts.js";
 import { parseAdminWorkCountCursor } from "../api/admin-work-counts-contract.js";
 import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
@@ -107,6 +108,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === "/api/admin/extraction-preview" ||
     pathname === "/api/admin/manufacturer-registry" ||
     pathname === "/api/admin/quality" ||
+    pathname === "/api/admin/ai-catalog" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
@@ -153,6 +155,30 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/ai-catalog" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 4096);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAiAdminCommand(body);
+    if (!command) return json({ error: "invalid_ai_command" }, { status: 400 });
+    try {
+      const claims = await verifyCloudflareAccessRequest(request, {
+        teamDomain: env.ACCESS_TEAM_DOMAIN || "",
+        audience: env.ACCESS_AUD || "",
+      });
+      return json(await env.CATALOG_ADMIN.adminAiCatalog(command, claims?.sub || "access_admin"));
+    } catch {
+      return json(
+        { error: "AI提案を処理できませんでした。候補・予算・提案の鮮度を再確認してください。" },
+        { status: 409 },
+      );
+    }
+  }
 
   if (url.pathname === "/api/admin/extraction-preview" && request.method === "POST") {
     if (!isJsonRequest(request))

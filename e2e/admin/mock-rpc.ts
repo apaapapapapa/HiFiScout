@@ -80,6 +80,7 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    adminAiCatalog: unsupported("adminAiCatalog"),
     async adminQuality(input) {
       return { received: input };
     },

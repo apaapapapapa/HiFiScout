@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "ai",
+    label: "AIの型番候補",
+    description: "未解決の型番候補と根拠を確認し、提案の評価を記録します。",
+    group: "データの整備",
+  },
+  {
     id: "quality",
     label: "品質点検",
     description: "再報告・未分類・照合の問題を、影響と優先度から確認します。",
@@ -106,6 +112,9 @@ export function adminViewUrl(href: string, view: AdminView): string {
     "jobId",
     "listingId",
     "reportId",
+    "candidateId",
+    "aiSuggestionId",
+    "aiCandidateId",
   ])
     url.searchParams.delete(key);
   url.hash = view === "catalog" ? "" : view;
