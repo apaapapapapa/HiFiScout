@@ -110,7 +110,7 @@ test("quality loads lazily, shows scope and unknowns, and explicitly advances sp
   expect(calls).toHaveLength(0);
   await page
     .getByRole("navigation", { name: "管理メニュー" })
-    .getByRole("link", { name: "品質点検", exact: true })
+    .getByRole("link", { name: "品質管理", exact: true })
     .click();
   const panel = page.getByRole("region", { name: "優先度付き品質点検", exact: true });
   const reportPanel = panel.getByRole("region", { name: "優先する誤り報告" });

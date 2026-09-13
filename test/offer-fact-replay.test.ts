@@ -11,34 +11,35 @@ import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 
 const AT = "2026-09-01T00:00:00Z";
 
-test("replay requests cannot override the durable cursor or server batch size", async () => {
-  let calls = 0;
+test("retired foreground replay cannot mutate; coverage remains readable", async () => {
   const env = {
-    CATALOG_ADMIN: {
-      stepOfferFactReplay: async () => {
-        calls++;
-        return {};
-      },
-    },
+    CATALOG_ADMIN: { getOfferFactReplay: async () => ({ scannedCount: 25 }) },
   } as unknown as Parameters<typeof handleAuthenticatedAdminEntryRequest>[1];
   const url = "https://admin.example.test/api/admin/offer-facts/replay";
-  const send = (body: unknown, origin = "https://admin.example.test") =>
-    handleAuthenticatedAdminEntryRequest(
+  for (const body of [null, [], {}, { afterId: 100 }, { limit: 10000 }]) {
+    const response = await handleAuthenticatedAdminEntryRequest(
       new Request(url, {
         method: "POST",
-        headers: { origin, "content-type": "application/json" },
+        headers: { origin: "https://admin.example.test", "content-type": "application/json" },
         body: JSON.stringify(body),
       }),
       env,
       TEST_ADMIN_PRINCIPAL,
     );
-  for (const body of [null, [], { afterId: 100 }, { limit: 10000 }]) {
-    assert.equal((await send(body)).status, 400);
+    assert.equal(response.status, 410);
+    assert.deepEqual(await response.json(), {
+      error: "offer_fact_replay_moved_to_jobs",
+      replacement: "/api/admin/jobs",
+    });
+    assert.equal(response.headers.get("cache-control"), "no-store");
   }
-  assert.equal((await send({}, "https://other.example.test")).status, 403);
-  assert.equal(calls, 0);
-  assert.equal((await send({})).status, 200);
-  assert.equal(calls, 1);
+  const response = await handleAuthenticatedAdminEntryRequest(
+    new Request(url),
+    env,
+    TEST_ADMIN_PRINCIPAL,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { scannedCount: 25 });
 });
 
 function fixture() {

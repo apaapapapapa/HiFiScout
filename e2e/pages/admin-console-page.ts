@@ -1,3 +1,4 @@
+import { ADMIN_VIEWS, adminWorkspace } from "../../frontend/admin-navigation.js";
 import type { Locator, Page } from "@playwright/test";
 
 import { CatalogAdminPage } from "./catalog-admin-page.js";
@@ -23,14 +24,27 @@ export class AdminConsolePage {
     this.listings = new ListingAdminPage(root.locator("#listings-pane"));
   }
 
-  async openCatalog(): Promise<void> {
-    if (await this.catalogTab.isVisible()) await this.catalogTab.click();
-    else await this.root.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("catalog");
+  async openSection(name: string): Promise<void> {
+    const view = ADMIN_VIEWS.find((item) => item.label === name);
+    if (!view) throw new Error(`Unknown admin task: ${name}`);
+    const workspace = adminWorkspace(view.id);
+    const workspaceLink = this.root
+      .getByRole("navigation", { name: "管理メニュー" })
+      .getByRole("link", { name: workspace.label, exact: true });
+    if (await workspaceLink.isVisible()) {
+      if (!(await this.sectionLink(name).isVisible())) await workspaceLink.click();
+      await this.sectionLink(name).click();
+    } else {
+      await this.root.getByRole("combobox", { name: "管理分野を選ぶ" }).selectOption(workspace.id);
+      await this.root.getByRole("combobox", { name: "作業を選ぶ" }).selectOption(view.id);
+    }
   }
 
+  async openCatalog(): Promise<void> {
+    await this.openSection("製品カタログ");
+  }
   async openListings(): Promise<void> {
-    if (await this.listingsTab.isVisible()) await this.listingsTab.click();
-    else await this.root.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("listings");
+    await this.openSection("登録商品");
   }
 
   sectionLink(name: string): Locator {

@@ -45,7 +45,6 @@ interface ListingAdminRpc extends CatalogAdminRpc {
   ): Promise<unknown>;
   getListingDiagnosis(listingId: number): Promise<unknown>;
   getOfferFactReplay(): Promise<unknown>;
-  stepOfferFactReplay(): Promise<unknown>;
   getOfferFacts(listingId: number): Promise<unknown>;
   updateOfferFacts(listingId: number, changes: OfferFactChanges): Promise<unknown>;
   listListings(options: ListingAdminListOptions): Promise<unknown>;
@@ -356,21 +355,10 @@ export async function handleAuthenticatedAdminEntryRequest(
     return json(await env.CATALOG_ADMIN.getOfferFactReplay());
   }
   if (url.pathname === OFFER_FACT_REPLAY_PATH && request.method === "POST") {
-    if (!isJsonRequest(request))
-      return json({ error: "application_json_required" }, { status: 415 });
-    if (!isSameOriginBrowserMutation(request, url))
-      return json({ error: "same_origin_required" }, { status: 403 });
-    const body = await readJsonBody(request, 1024);
-    if (body === REQUEST_BODY_TOO_LARGE)
-      return json({ error: "request_body_too_large" }, { status: 413 });
-    if (
-      body === null ||
-      typeof body !== "object" ||
-      Array.isArray(body) ||
-      Object.keys(body).length
-    )
-      return json({ error: "invalid_replay_request" }, { status: 400 });
-    return json(await env.CATALOG_ADMIN.stepOfferFactReplay());
+    return json(
+      { error: "offer_fact_replay_moved_to_jobs", replacement: "/api/admin/jobs" },
+      { status: 410 },
+    );
   }
 
   const diagnosisMatch = url.pathname.match(DIAGNOSIS_PATH);

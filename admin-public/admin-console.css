@@ -91,13 +91,51 @@ body {
   background: var(--surface-muted);
   color: var(--text-strong);
 }
-.admin-nav-group a[aria-current="page"] {
+.admin-nav-group a[aria-current="true"] {
   background: var(--accent-soft);
   color: var(--accent-strong);
   box-shadow: inset 3px 0 var(--accent);
 }
-.admin-nav-group a[aria-current="page"] .admin-nav-arrow {
+.admin-nav-group a[aria-current="true"] .admin-nav-arrow {
   opacity: 1;
+}
+.admin-task-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+.admin-task-navigation a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-strong);
+  text-decoration: none;
+  font-size: 13px;
+}
+.admin-task-navigation a[aria-current="page"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+.admin-task-selector {
+  margin-bottom: 20px;
+}
+.admin-offer-coverage {
+  margin-top: 18px;
+}
+.admin-offer-coverage summary {
+  cursor: pointer;
+  padding: 10px 0;
+}
+@media (max-width: 760px) {
+  .admin-task-navigation { display: none; }
 }
 .admin-work-count {
   min-width: 28px;

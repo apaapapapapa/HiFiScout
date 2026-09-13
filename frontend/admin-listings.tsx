@@ -10,7 +10,6 @@ import {
   type PresentationColorDefinition,
 } from "../src/api/admin-listing-contracts.js";
 import { AdminOfferFacts } from "./admin-offer-facts.js";
-import { AdminOfferFactReplay } from "./admin-offer-fact-replay.js";
 
 import {
   EMPTY_STATUS,
@@ -114,12 +113,10 @@ function overrideLabels(product: ListingProduct): string[] {
 }
 
 export function ListingAdmin({
-  view = "listings",
   active = true,
   search = "",
   revision = 0,
 }: {
-  view?: "listings" | "maintenance";
   active?: boolean;
   search?: string;
   revision?: number;
@@ -129,7 +126,6 @@ export function ListingAdmin({
   const [metaAttempt, setMetaAttempt] = useState(0);
   const loadedSearch = useRef<{ search: string; revision: number } | null>(null);
   const searchRequest = useRef(0);
-  const [replayVisited, setReplayVisited] = useState(view === "maintenance");
   const [status, setStatus] = useState<StatusMessage>(EMPTY_STATUS);
   const [categories, setCategories] = useState<CategoryFacet[]>([]);
   const [presentationColors, setPresentationColors] = useState<
@@ -243,10 +239,6 @@ export function ListingAdmin({
 
   useEffect(() => {
     if (!active || !metaReady) return;
-    if (view === "maintenance") {
-      setReplayVisited(true);
-      return;
-    }
     const previous = loadedSearch.current;
     if (previous?.search === search && previous.revision === revision) return;
     loadedSearch.current = { search, revision };
@@ -263,7 +255,7 @@ export function ListingAdmin({
     setDraft(filters);
     setApplied(filters);
     void loadListings(filters, 0, []);
-  }, [active, metaReady, view, search, revision, applied, loadListings]);
+  }, [active, metaReady, search, revision, applied, loadListings]);
 
   useEffect(() => {
     const dialog = editDialogRef.current;
@@ -430,7 +422,7 @@ export function ListingAdmin({
           ) : null}
         </div>
       ) : null}
-      <div hidden={view !== "listings"}>
+      <div>
         <p className="status-message" role="status" aria-live="polite" data-kind={status.kind}>
           {status.text}
         </p>
@@ -735,16 +727,6 @@ export function ListingAdmin({
               </div>
             </section>
           </>
-        ) : null}
-      </div>
-      <div hidden={view !== "maintenance"}>
-        {metaReady && replayVisited ? (
-          <AdminOfferFactReplay
-            shops={shops}
-            categories={categories}
-            active={active && view === "maintenance"}
-            revision={revision}
-          />
         ) : null}
       </div>
 

@@ -20,15 +20,31 @@ for fixtures, rejection/recovery cases and the boundary this suite covers.
 
 ## Task workspaces
 
-The console uses a persistent sidebar on desktop and a labelled native task selector on mobile.
-The workspaces are product catalog (`/` or `/#catalog`), registered products (`/#listings`),
-correction reports (`/#reports`), duplicate review (`/#duplicates`), unverified candidates
-(`/#candidates`), CSV import/export (`/#csv`), offer-fact replay (`/#maintenance`), crawl controls (`/#crawls`), and background jobs (`/#jobs`). Browser
-Back/Forward and direct links select the corresponding workspace. Navigation preserves already
-loaded searches and in-progress CSV input within the open console; it does not persist private
-admin data in browser storage. Each workspace has a distinct page title and an active menu label.
+The console groups related work into five workspaces. Desktop uses a persistent sidebar and
+workspace-specific task links; mobile uses separate labelled workspace and task selectors. The
+canonical mapping is `frontend/admin-navigation.ts`.
 
-The task selector and sidebar show work counts for correction reports (all unresolved `open` and
+| Workspace | Tasks |
+| --- | --- |
+| カタログ管理 | 製品カタログ、未検証候補、重複の整理、AIの型番候補、メーカー・別名 |
+| 商品管理 | 登録商品、抽出テスト |
+| 品質管理 | 品質点検、誤り報告 |
+| 一括処理 | バックグラウンド処理（カタログ・判定ルール・出品条件の再処理と処理履歴）、CSV入出力 |
+| 稼働管理 | 負荷・稼働状況、ショップ別クロール |
+
+Task hashes remain stable (`#catalog`, `#listings`, `#reports`, `#duplicates`, `#candidates`,
+`#ai`, `#manufacturers`, `#extraction`, `#quality`, `#csv`, `#jobs`, `#operations`, `#crawls`).
+The retired `#maintenance` entry resolves to `#jobs` with its query parameters intact and replaces
+its history entry. Browser Back/Forward and direct links select both the workspace and its task.
+Navigation preserves loaded searches and in-progress CSV input within the open console; private
+admin data is not persisted in browser storage. Each task has a page title and an active link.
+
+Tasks with different authority or scope remain distinct within their workspace: quality prioritization
+and individual report resolution; unverified candidates and AI suggestions; catalog-wide product
+facts and seller-specific listings; editable CSV and complete archival ZIP. Grouping the navigation
+does not auto-verify candidates, merge products, replay stored data or change cron schedules.
+
+The task selector and task links show work counts for correction reports (all unresolved `open` and
 `in_review` reports, regardless of age), duplicate catalog **groups**, and candidates whose review
 status is `pending`. Counts are independent of workspace search filters: 0–99 display numerically,
 and 100 or more display as `99+`. Unavailable or incomplete counts display `—`, never a false zero.
@@ -44,7 +60,8 @@ are not counted as duplicates. Catalog-wide aggregation is confined to the migra
 not navigation requests. Multi-page counts are eventually consistent with concurrent changes.
 
 Catalog, candidate, duplicate and export queries start when their workspace is first opened.
-Listing search and replay are also loaded independently. A failed metadata request has an inline
+Listing search and replay are loaded independently; opening the jobs task does not search listings.
+Coverage display names are fetched only when its disclosure is first opened. A failed metadata request has an inline
 retry. Deep-link filters are passed directly to React state before the first search; a listing link
 can supply `shopKey` and `scope` without `q`. Returning to a loaded workspace does not refetch its
 unchanged search. Export status polling runs only while the CSV workspace is visible. Started
@@ -73,14 +90,18 @@ directly, without triggering catalog-wide projection work.
 
 ## Bounded offer-fact replay
 
-**出品条件の再処理・充足率** processes retained listing fields without contacting sellers. One request
-handles at most 25 listings; the optional 500-listing action sends at most 20 sequential requests.
-**全商品を再処理** confirms and submits a durable job, including inactive listings. After the
-submission is accepted, closing the tab does not stop processing. Open **バックグラウンド処理** to
-check saved progress or pause/resume it; one in-flight bounded step may finish after a pause.
-The job resumes the saved cursor and pins the extraction-rule version. New listings receive facts
-through the ordinary writer. A processing error or three consecutive steps without progress stops
-the job for review. The 25/500 actions retain their bounded foreground request limits.
+**一括処理 → バックグラウンド処理 → 出品条件の再処理 → 全商品を再処理** confirms and
+submits a durable job over retained listing fields, including inactive listings, without contacting
+sellers. After submission is accepted, closing the tab does not stop processing. The same screen
+shows saved job progress and pause/resume controls; one in-flight bounded step may finish after a
+pause. The job resumes the existing saved cursor and pins the extraction-rule version. New listings
+receive facts through the ordinary writer. A processing error or three consecutive steps without
+progress stops the job for review. The browser-driven 25/500-listing actions are retired; their
+bounded processing is owned exclusively by the durable job coordinator, at most 25 listings per step.
+
+**出品条件の充足率を確認** opens the retained coverage snapshot in the same screen. A failed
+progress read stays unknown and offers retry; it cannot enable an unverified replay start. Job
+progress refresh also reloads coverage. There is no background polling or new catalog-wide query.
 
 Each step atomically claims its expected cursor, verifies the source-field snapshot, writes facts
 under a unique step token, and records coverage. A concurrent caller or changed source snapshot
@@ -93,12 +114,15 @@ and category. It counts explicit positive or negative evidence for condition, in
 warranty, and sale unit. It is partial until completion and is not a live inventory denominator.
 Review these gaps and sample the seller evidence before promoting filters more widely. The
 `offer_fact_replay_step` log records D1 reads, writes and statement counts for each bounded step.
-`GET/POST /api/admin/offer-facts/replay` is Access protected; POST takes only an empty JSON object,
-and the client cannot supply a cursor or override the server's batch size.
+`GET /api/admin/offer-facts/replay` remains Access protected and read-only. Its retired POST returns
+410 with `offer_fact_replay_moved_to_jobs` and `/api/admin/jobs` as the replacement; it never calls a
+mutation RPC. The public Service Binding no longer exposes `stepOfferFactReplay`. Only the existing
+background coordinator calls the bounded repository step. No progress rows or facts are deleted.
+Older open consoles must reload before starting replay; already accepted durable jobs continue.
 
 ## Catalog updates applied to stored listings {#catalog-change-replay}
 
-**バックグラウンド処理 → カタログ更新を登録商品に反映 → カタログの変更を反映**
+**一括処理 → バックグラウンド処理 → カタログ更新を登録商品に反映 → カタログの変更を反映**
 starts a durable `catalog` job. Use it after adding or correcting catalog records, including records
 added outside the admin import flow. It covers all stored listings, including inactive ones and
 listings whose deterministic rule versions are already current. It uses retained seller evidence;
@@ -137,7 +161,7 @@ statement count; it does not claim to measure the subsequent replay or account-w
 
 ## Bounded model and category replay {#bounded-model-resolver-replay}
 
-**バックグラウンド処理 → 型番・カテゴリの一括再判定 → 旧バージョンの商品を一括再判定**
+**一括処理 → バックグラウンド処理 → 型番・カテゴリの一括再判定 → 旧バージョンの商品を一括再判定**
 starts a durable `model` job through the existing Access-protected `/api/admin/jobs` route.
 The existing job kind and storage are shared by both stages; there is no separate category job.
 The screen displays both deployed rule versions, while each job shows its pinned versions.

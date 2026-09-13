@@ -59,7 +59,7 @@ test("operations loads lazily, shows unknowns and deferred deployment, and filte
   expect(reads).toBe(0);
   await page
     .getByRole("navigation", { name: "管理メニュー" })
-    .getByRole("link", { name: "負荷・稼働状況" })
+    .getByRole("link", { name: "稼働管理" })
     .click();
   const panel = page.getByRole("region", { name: "負荷・稼働状況", exact: true });
   await expect(panel).toContainText("serving-version");
