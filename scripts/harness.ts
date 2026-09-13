@@ -4,6 +4,17 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "loop" && args[1] === "init" && args.length === 4) {
+    const { createLoopRun } = await import("./harness/loop/state.js");
+    const run = await createLoopRun(JSON.parse(await readFile(args[2], "utf8")), args[3]);
+    console.log(JSON.stringify(run, null, 2));
+    return 0;
+  }
+  if (args[0] === "loop" && args[1] === "history" && args.length === 3) {
+    const { readLoopRun } = await import("./harness/loop/state.js");
+    console.log(JSON.stringify(await readLoopRun(args[2]), null, 2));
+    return 0;
+  }
   if (args[0] === "loop" && args[1] === "validate" && args.length === 3) {
     const { parseLoopSpec, loopSpecDigest } = await import("./harness/loop/contract.js");
     const spec = parseLoopSpec(JSON.parse(await readFile(args[2], "utf8")));

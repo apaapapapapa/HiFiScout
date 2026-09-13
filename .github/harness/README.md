@@ -28,6 +28,18 @@ target are optional and deployment artifacts are fetched only for deployment tar
 `harness delivery` CLI keeps its full-deployment default. Browser acceptance/configuration under
 `e2e` is also protected from automatic repair scope.
 
+Create a journal with `vp run harness loop init <spec.json> <state.json>`; inspect it with
+`vp run harness loop history <state.json>`. Journals extend the existing checkpoint storage primitive:
+exclusive writer locks, optimistic revisions, synced temporary files and atomic replacement preserve
+the last complete state. Events are append-only, ordered and chained to the contract digest. This
+detects accidental edits, not a malicious writer able to replace the whole journal. Preserve journals
+as CI artifacts or operator-owned task files. An abandoned lock needs deliberate writer-liveness
+checking before removal. Inspecting history does not execute its contents or restart a stopped run.
+The parent directory is synced after replacement. Both append and read enforce the same serialized
+journal size ceiling, so a successful write cannot create a journal rejected by the reader.
+Lock removal is synced as well. Event data must be plain JSON: non-finite numbers, undefined,
+accessors, sparse arrays and class instances are rejected; stored payloads are detached from callers.
+
 ## Evidence reports
 
 Run `vp run harness report .generated/harness/report.json` to validate and assess a report.
