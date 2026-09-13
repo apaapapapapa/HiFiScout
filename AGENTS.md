@@ -37,6 +37,7 @@ Start with the relevant row rather than loading every document.
 | Schema | Ordered `migrations/*.sql`; add a migration, never edit one already applied |
 | Test placement and performance coverage | `docs/testing-strategy.md`, `test/`, `e2e/` |
 | CI, deployment, operational checks | `.github/workflows/README.md` and the responsible workflow/scripts |
+| Harness evidence and completion | `.github/harness/README.md`, `scripts/harness.ts` |
 | Documentation | `docs/index.md`, `docs/tooling.md`, `docs/.vitepress/config.mts` |
 
 ## Validation
