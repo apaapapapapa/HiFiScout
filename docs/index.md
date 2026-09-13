@@ -18,6 +18,7 @@ This site combines curated architecture documentation with references generated 
 ## Data and operations
 
 - [Data quality](./data-quality.md) — metric semantics, identity coverage, taxonomy, and replay order.
+- [Workers AI suggestions](./workers-ai-suggestions.md) — bounded operator review, evaluation and inference budgets.
 - [Remediation runbook](./data-quality-remediation.md) — evidence-driven investigation and correction.
 - [Resolver replay status](./resolver-replay-status.md) — bounded manual maintenance and convergence.
 - [Registered Product Admin](./listing-admin.md) — Access-protected listing corrections and overrides.
