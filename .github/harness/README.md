@@ -15,6 +15,11 @@ measured provider billing. The default zero allocation permits only zero-cost ad
 Repairs cannot modify the loop controller, harness gates, CI, agent authority, dependency/runtime
 configuration or migrations. Such changes need a separate ordinary engineering PR. Task prose and
 incident evidence never become shell commands or permission to change the fixed acceptance rules.
+Product/cost loops must include their replay/cost comparison. AI loops require an AI holdout result.
+The normalized contract materializes CI, review coverage and stable-snapshot gates; merge/deployment
+targets add the existing delivery collector's concrete milestone IDs. Required external review adds
+an approval gate. Missing IDs therefore cannot waive the selected policy, even through checkpoint
+assessment. Delivery milestones are evaluated after source repair, at their corresponding stage.
 
 ## Evidence reports
 

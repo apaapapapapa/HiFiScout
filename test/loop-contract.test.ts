@@ -18,6 +18,10 @@ test("loop contracts freeze acceptance, scope, budget and delivery policy", () =
     "test/loop-contract.test.ts",
     "test/harness-ai.test.ts",
     "scripts/harness.ts",
+    "src/types.ts",
+    "scripts/check-no-first-party-js.ts",
+    ".dependency-cruiser.json",
+    "src/AGENTS.md",
     "migrations/new.sql",
     "src-other/file.ts",
   ])
@@ -31,9 +35,52 @@ test("malformed budgets and acceptance cannot become permissive defaults", () =>
       parseLoopSpec({ ...example, budget: { ...example.budget, maxIterations: value } }),
     );
   assert.throws(() => parseLoopSpec({ ...example, allowedPaths: ["src/"] }));
+  const deployed = parseLoopSpec({
+    ...example,
+    delivery: { ...example.delivery, target: "deployment", review: "required" },
+  });
+  for (const id of [
+    "ci",
+    "review-threads",
+    "main-merge",
+    "deployment",
+    "deployment/catalog-admin",
+    "verification/e2e",
+    "review-approval",
+  ])
+    assert.ok(deployed.task.requirements.some((r) => r.id === id));
   assert.throws(
-    () => parseLoopSpec({ ...example, delivery: { ...example.delivery, target: "deployment" } }),
-    /deployment_gate/u,
+    () =>
+      parseLoopSpec({
+        ...example,
+        task: {
+          ...example.task,
+          requirements: [...example.task.requirements, { id: "deployment", scope: "source" }],
+        },
+        delivery: { ...example.delivery, target: "deployment" },
+      }),
+    /gate_scope/u,
   );
   assert.throws(() => parseLoopSpec({ ...example, task: { ...example.task, requirements: [] } }));
+});
+
+test("domain loops cannot opt out of their comparison or AI gate", () => {
+  for (const kind of ["product", "cost"])
+    assert.throws(() => parseLoopSpec({ ...example, kind }), /requires_comparison/u);
+  assert.deepEqual(
+    parseLoopSpec({ ...example, kind: "product", comparisons: ["replay"] }).comparisons,
+    ["replay"],
+  );
+  assert.deepEqual(parseLoopSpec({ ...example, kind: "cost", comparisons: ["cost"] }).comparisons, [
+    "cost",
+  ]);
+  assert.ok(
+    parseLoopSpec({ ...example, kind: "ai" }).task.requirements.some((r) => r.id === "ai:holdout"),
+  );
+  const broad = parseLoopSpec({
+    ...example,
+    allowedPaths: ["scripts", "src", ".dependency-cruiser.json"],
+  });
+  assert.equal(pathAllowed(broad, "scripts/check-no-first-party-js.ts"), false);
+  assert.equal(pathAllowed(broad, ".dependency-cruiser.json"), false);
 });
