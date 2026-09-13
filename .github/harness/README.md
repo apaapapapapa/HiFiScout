@@ -106,6 +106,41 @@ All harvested cases are regression-only; they are never silently added to the fr
 Source-review notes do not claim independent human label review. Fresh holdout labels still need
 separate source grounding and independent review before new model-selection measurements.
 
+## Domain intake and native agent handoff
+
+`vp run harness loop profiles` lists bounded defaults for CI, product identity, local cost and
+offline AI repair. Generated contracts start with three attempts, two no-progress results, a one-hour
+overall deadline, optional Codex review capped at 15 minutes and PR delivery. Review and narrow the
+paths, budget and authorized delivery target before `init`; the contract is immutable afterwards.
+
+`vp run harness loop intake-report <envelope.json> <directory>` imports an existing common report:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "product",
+  "repository": "apaapapapapa/HiFiScout",
+  "evidenceUrl": "https://github.com/apaapapapapa/HiFiScout/actions/runs/123",
+  "report": { "...": "existing complete HarnessReport" }
+}
+```
+
+Use `source-checks` for CI, `replay/*` or `comparison:replay` for product,
+`cost/*` or `comparison:cost` for cost, and `ai/offline-holdout` for AI. Only required failed source
+checks with matching evidence SHAs produce proposals. Unsupported, unknown, skipped, unbound or
+production-observation reports produce no repair task. This does not query production, restart
+paused audits, call models, or prove the signal is still current. Check the current owning source
+before accepting a task. Manual confirmed corrections can use the existing `ingest` signal schema
+with retained primary-source evidence; they grant no authority to edit production rows.
+
+The existing autofix workflow exports CI proposals as a 30-day artifact. Reuse a retained intake
+directory/index across imports and sessions; downloading independent workflow artifacts alone does
+not merge their indexes. Accepted contracts, journals, workspace manifests and raw evidence must
+be retained for resumption. The native [hifiscout-loop skill](../../.agents/skills/hifiscout-loop/SKILL.md)
+connects intake, hypothesis, patch, evaluation, review, merge and lesson retention. It uses the
+current Codex session as the repair actor; no permanent Worker or unattended model runner is added.
+`loop help` lists the complete CLI, including status, request recovery and lesson commands.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.

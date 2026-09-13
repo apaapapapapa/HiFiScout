@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout 改善ループ"
+  short_description: "失敗の再現から比較評価、PR、回帰事例の蓄積まで予算内で進める"
+  default_prompt: "Use $hifiscout-loop to run or resume this bounded HiFiScout improvement through verified delivery."
+
+policy:
+  allow_implicit_invocation: true
