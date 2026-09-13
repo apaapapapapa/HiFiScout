@@ -19,6 +19,7 @@ import {
   previewAdminCsvChange,
 } from "../src/db/admin-csv-import-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { updateListingAdminProduct } from "../src/db/listing-admin-repository.js";
@@ -270,16 +271,30 @@ function database() {
   setup.sqlite.exec(`
     INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
     VALUES ('luxman','LUXMAN','2026-09-05','2026-09-05');
-    INSERT INTO products(id,shop_key,source_id,manufacturer,model,title,category,condition_text,
-      price_yen,stock_status,source_url,first_seen_at,last_seen_at,last_changed_at,is_active,
-      raw_manufacturer,manufacturer_id,canonical_manufacturer_id,manufacturer_resolution_status,
-      raw_model,normalized_model,model_resolution_status,raw_category,primary_category_id,
-      category_ids,direct_category_ids,classification_status)
-    VALUES (90001,'hifido','csv-test','LUXMAN','C10','LUXMAN C10','プリアンプ','中古',
-      100000,'in_stock','https://example.test/csv-test','2026-09-05','2026-09-05','2026-09-05',1,
-      'LUXMAN','luxman','luxman','resolved','C10','C10','resolved','プリアンプ','AMP.PRE',
-      '["AMP.PRE","AMP"]','["AMP.PRE"]','classified');
   `);
+  insertListing(setup.sqlite, {
+    at: "2026-09-05",
+    id: 90001,
+    shop_key: "hifido",
+    source_id: "csv-test",
+    source_url: "https://example.test/csv-test",
+    manufacturer: "LUXMAN",
+    raw_manufacturer: "LUXMAN",
+    manufacturer_id: "luxman",
+    canonical_manufacturer_id: "luxman",
+    manufacturer_resolution_status: "resolved",
+    model: "C10",
+    raw_model: "C10",
+    normalized_model: "C10",
+    model_resolution_status: "resolved",
+    title: "LUXMAN C10",
+    price_yen: 100000,
+    category: "プリアンプ",
+    raw_category: "プリアンプ",
+    primary_category_id: "AMP.PRE",
+    category_ids: '["AMP.PRE","AMP"]',
+    direct_category_ids: '["AMP.PRE"]',
+  });
   return setup;
 }
 

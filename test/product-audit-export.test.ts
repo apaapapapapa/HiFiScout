@@ -19,6 +19,7 @@ import type {
   ProductAuditExportScope,
 } from "../src/product-audit-export/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing, type ListingOverrides } from "./helpers/listing-fixture.js";
 
 function exportRow(
   overrides: Partial<CatalogAdminProductExportRow> = {},
@@ -372,51 +373,49 @@ test("product export download preserves attachment metadata and admin security h
 
 test("product audit repository exports active rows by default and all history on request", async () => {
   const { sqlite, db } = migratedSqlite();
-  const insert = sqlite.prepare(`
-    INSERT INTO products(
-      shop_key, source_id, manufacturer, model, title, category, condition_text,
-      price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at,
-      is_active, raw_manufacturer, manufacturer_id, normalized_raw_manufacturer,
-      canonical_manufacturer_id, manufacturer_resolution_status,
-      manufacturer_resolution_method, manufacturer_resolution_confidence,
-      raw_model, normalized_model, model_resolution_status, model_resolution_method,
-      model_resolution_confidence, raw_category, primary_category_id, category_ids,
-      classification_status
-    ) VALUES (
-      ?, ?, 'EDISCREATION', 'Fiber Box 2 JPSM', ?, 'その他', '中古',
-      ?, 'in_stock', ?, ?, ?, ?,
-      ?, 'EDISCREATION', 'ediscreation', 'ediscreation',
-      'ediscreation', 'resolved', 'bootstrap_alias', 'high',
-      'Fiber Box 2 JPSM', 'FIBERBOX2JPSM', 'resolved', 'seller_model',
-      'high', '光アイソレーター', 'other', '["other"]', 'classified'
-    )
-  `);
-  const activeId = Number(
-    insert.run(
-      "shop-a",
-      "a-1",
-      "EDISCREATION Fiber Box 2 JPSM",
-      125_000,
-      "https://example.test/a-1",
-      "2026-08-20T00:00:00.000Z",
-      "2026-08-22T00:00:00.000Z",
-      "2026-08-21T00:00:00.000Z",
-      1,
-    ).lastInsertRowid,
-  );
-  const inactiveId = Number(
-    insert.run(
-      "shop-b",
-      "b-1",
-      "EDISCREATION Fiber Box 2 JPSM sold",
-      118_000,
-      "https://example.test/b-1",
-      "2026-08-10T00:00:00.000Z",
-      "2026-08-11T00:00:00.000Z",
-      "2026-08-11T00:00:00.000Z",
-      0,
-    ).lastInsertRowid,
-  );
+  const fiberBox: ListingOverrides = {
+    manufacturer: "EDISCREATION",
+    raw_manufacturer: "EDISCREATION",
+    manufacturer_id: "ediscreation",
+    normalized_raw_manufacturer: "ediscreation",
+    canonical_manufacturer_id: "ediscreation",
+    manufacturer_resolution_status: "resolved",
+    manufacturer_resolution_method: "bootstrap_alias",
+    manufacturer_resolution_confidence: "high",
+    model: "Fiber Box 2 JPSM",
+    raw_model: "Fiber Box 2 JPSM",
+    normalized_model: "FIBERBOX2JPSM",
+    model_resolution_status: "resolved",
+    model_resolution_method: "seller_model",
+    model_resolution_confidence: "high",
+    category: "その他",
+    raw_category: "光アイソレーター",
+    primary_category_id: "other",
+    category_ids: '["other"]',
+  };
+  const activeId = insertListing(sqlite, {
+    ...fiberBox,
+    at: "2026-08-21T00:00:00.000Z",
+    first_seen_at: "2026-08-20T00:00:00.000Z",
+    last_seen_at: "2026-08-22T00:00:00.000Z",
+    shop_key: "shop-a",
+    source_id: "a-1",
+    source_url: "https://example.test/a-1",
+    title: "EDISCREATION Fiber Box 2 JPSM",
+    price_yen: 125_000,
+    is_active: 1,
+  });
+  const inactiveId = insertListing(sqlite, {
+    ...fiberBox,
+    at: "2026-08-11T00:00:00.000Z",
+    first_seen_at: "2026-08-10T00:00:00.000Z",
+    shop_key: "shop-b",
+    source_id: "b-1",
+    source_url: "https://example.test/b-1",
+    title: "EDISCREATION Fiber Box 2 JPSM sold",
+    price_yen: 118_000,
+    is_active: 0,
+  });
 
   const entityId = Number(
     sqlite

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { applyManualCategoryAuthority } from "../scripts/apply-manual-category-authority.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import { applyConfirmedSwitchBundleCategory } from "../scripts/apply-confirmed-switch-bundle-category.js";
 import { updateListingAdminProduct } from "../src/db/listing-admin-repository.js";
 import { recordingDatabase, queryPlan } from "./helpers/query-plan.js";
@@ -11,30 +12,34 @@ const URL = "https://shop.formusic.jp/network-player/31211.html";
 
 function database() {
   const setup = migratedSqlite();
-  setup.sqlite
-    .prepare(`INSERT INTO products(
-    id,shop_key,source_id,manufacturer,model,title,category,condition_text,
-    price_yen,stock_status,source_url,first_seen_at,last_seen_at,last_changed_at,is_active,
-    raw_manufacturer,manufacturer_id,canonical_manufacturer_id,manufacturer_resolution_status,
-    raw_model,normalized_model,model_resolution_status,model_resolution_method,
-    raw_category,primary_category_id,category_ids,direct_category_ids,classification_status,
-    metadata_json
-  ) VALUES (1772,'formusic','31211','Telegartner',?,?,'ネットワークプレーヤー','中古',
-    498000,'in_stock',?,'2026-09-06','2026-09-06','2026-09-06',1,
-    'Telegartner','telegartner','telegartner','resolved',?,'M12SWITCHIEGOLD20M3',
-    'candidate','unsafe_annotation','network-player','SRC.STREAMER',
-    '["SRC.STREAMER"]','["SRC.STREAMER"]','classified',?
-  )`)
-    .run(
-      MODEL,
-      MODEL,
-      URL,
-      MODEL,
-      JSON.stringify({
-        modelNormalization: { unclassifiedTokens: ["bundle_components"] },
-        categoryClassification: { source: "seller_category", categoryIds: ["SRC.STREAMER"] },
-      }),
-    );
+  insertListing(setup.sqlite, {
+    at: "2026-09-06",
+    id: 1772,
+    shop_key: "formusic",
+    source_id: "31211",
+    source_url: URL,
+    manufacturer: "Telegartner",
+    raw_manufacturer: "Telegartner",
+    manufacturer_id: "telegartner",
+    canonical_manufacturer_id: "telegartner",
+    manufacturer_resolution_status: "resolved",
+    model: MODEL,
+    raw_model: MODEL,
+    normalized_model: "M12SWITCHIEGOLD20M3",
+    model_resolution_status: "candidate",
+    model_resolution_method: "unsafe_annotation",
+    title: MODEL,
+    price_yen: 498000,
+    category: "ネットワークプレーヤー",
+    raw_category: "network-player",
+    primary_category_id: "SRC.STREAMER",
+    category_ids: '["SRC.STREAMER"]',
+    direct_category_ids: '["SRC.STREAMER"]',
+    metadata_json: JSON.stringify({
+      modelNormalization: { unclassifiedTokens: ["bundle_components"] },
+      categoryClassification: { source: "seller_category", categoryIds: ["SRC.STREAMER"] },
+    }),
+  });
   // Reproduce a later CSV correction: the catalog describes the body, not this seller bundle.
   // The old audit source is retired; it must not be revived to authorize a product merge.
   setup.sqlite.exec(`UPDATE knowledge_catalog_products SET canonical_model='M12 SWITCH IE GOLD',
