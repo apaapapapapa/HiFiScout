@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
+import { insertListing as insertRow } from "./helpers/listing-fixture.js";
 
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
@@ -108,44 +109,33 @@ function insertListing(sqlite: DatabaseSync, listing: ListingFixture): void {
     isActive = 1,
     modelStatus = "resolved",
   } = listing;
-  sqlite
-    .prepare(`
-      INSERT INTO products (
-        id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
-        canonical_manufacturer_id, manufacturer_resolution_status, model, raw_model,
-        normalized_model, model_resolution_status, title, category, raw_category,
-        primary_category_id, category_ids, direct_category_ids, classification_status,
-        search_aliases, condition_text, price_yen, stock_status, source_url, first_seen_at,
-        last_seen_at, last_changed_at, last_activity_at, is_active, metadata_json
-      ) VALUES (
-        ?, ?, ?, 'Example', 'Example', ?, ?, 'resolved', ?, ?, ?, ?, ?, ?, ?, ?,
-        json_array(?), json_array(?), 'classified', '[]', 'used', 100000, 'in_stock', ?,
-        ?, ?, ?, ?, ?, '{}'
-      )
-    `)
-    .run(
-      id,
-      shopKey,
-      `src-${id}`,
-      manufacturerId,
-      manufacturerId,
-      normalizedModel,
-      normalizedModel,
-      normalizedModel,
-      modelStatus,
-      `Listing ${id}`,
-      categoryId,
-      categoryId,
-      categoryId,
-      categoryId,
-      categoryId,
-      `https://example.test/${id}`,
-      AT,
-      AT,
-      AT,
-      AT,
-      isActive,
-    );
+  insertRow(sqlite, {
+    at: AT,
+    id,
+    shop_key: shopKey,
+    source_id: `src-${id}`,
+    manufacturer: "Example",
+    raw_manufacturer: "Example",
+    manufacturer_id: manufacturerId,
+    canonical_manufacturer_id: manufacturerId,
+    manufacturer_resolution_status: "resolved",
+    model: normalizedModel,
+    raw_model: normalizedModel,
+    normalized_model: normalizedModel,
+    model_resolution_status: modelStatus,
+    title: `Listing ${id}`,
+    category: categoryId,
+    raw_category: categoryId,
+    primary_category_id: categoryId,
+    category_ids: JSON.stringify([categoryId]),
+    direct_category_ids: JSON.stringify([categoryId]),
+    search_aliases: "[]",
+    condition_text: "used",
+    source_url: `https://example.test/${id}`,
+    last_activity_at: AT,
+    is_active: isActive,
+    metadata_json: "{}",
+  });
 }
 
 /** Puts each listing in its own fallback entity, which is exactly the split state to be repaired. */

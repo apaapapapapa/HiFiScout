@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
+import { TEST_ADMIN_PRINCIPAL, recordingAdminAssets } from "./helpers/admin-principal.js";
 
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
 import { adminCsvOriginal } from "../src/api/admin-csv-contracts.js";
@@ -8,16 +8,7 @@ import type { AdminManufacturerQuery } from "../src/api/admin-manufacturer-contr
 
 function adminEnv(seenPaths: string[]) {
   return {
-    ADMIN_ASSETS: {
-      async fetch(input: Request | URL | string): Promise<Response> {
-        const request = input instanceof Request ? input : new Request(input);
-        seenPaths.push(new URL(request.url).pathname);
-        return new Response("catalog admin", {
-          status: 200,
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
-      },
-    },
+    ADMIN_ASSETS: recordingAdminAssets(seenPaths, "catalog admin"),
     CATALOG_ADMIN: {
       async listProducts(): Promise<unknown> {
         return {};

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
+import { insertListing as insertRow } from "./helpers/listing-fixture.js";
 
 import { listingMembershipCategoryIds } from "../src/catalog/listing-components.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
@@ -63,41 +64,30 @@ const D1000MK3_AT_SHOP_C: Listing = {
 const ALL_LISTINGS = [D1000MK2_AT_SHOP_A, D1000MK2_AT_SHOP_B, D1000MK3_AT_SHOP_C] as const;
 
 function insertListing(sqlite: DatabaseSync, listing: Listing): number {
-  const result = sqlite
-    .prepare(`
-      INSERT INTO products(
-        shop_key, source_id, manufacturer, model, title, category, condition_text,
-        price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at,
-        last_activity_at, is_active,
-        raw_manufacturer, normalized_raw_manufacturer, manufacturer_id, canonical_manufacturer_id,
-        manufacturer_resolution_status, raw_model, normalized_model, model_resolution_status,
-        raw_category, primary_category_id, category_ids, classification_status, search_aliases
-      ) VALUES (
-        ?, ?, 'TAD', ?, ?, 'D/Aコンバーター', '中古',
-        ?, 'in_stock', ?, ?, ?, ?,
-        ?, 1,
-        'Technical Audio Devices', 'TECHNICALAUDIODEVICES', ?, ?,
-        'resolved', ?, ?, 'resolved',
-        'D/Aコンバーター', 'dac', '["dac"]', 'classified', 'DAC D/A Converter'
-      )
-    `)
-    .run(
-      listing.shopKey,
-      listing.sourceId,
-      listing.model,
-      `TAD ${listing.model}`,
-      listing.priceYen,
-      `https://example.test/${listing.shopKey}/${listing.sourceId}`,
-      listing.seenAt,
-      listing.seenAt,
-      listing.seenAt,
-      listing.seenAt,
-      CATALOG_MANUFACTURER,
-      CATALOG_MANUFACTURER,
-      listing.model,
-      listing.model,
-    );
-  const id = Number(result.lastInsertRowid);
+  const id = insertRow(sqlite, {
+    at: listing.seenAt,
+    shop_key: listing.shopKey,
+    source_id: listing.sourceId,
+    manufacturer: "TAD",
+    raw_manufacturer: "Technical Audio Devices",
+    normalized_raw_manufacturer: "TECHNICALAUDIODEVICES",
+    manufacturer_id: CATALOG_MANUFACTURER,
+    canonical_manufacturer_id: CATALOG_MANUFACTURER,
+    manufacturer_resolution_status: "resolved",
+    model: listing.model,
+    raw_model: listing.model,
+    normalized_model: listing.model,
+    model_resolution_status: "resolved",
+    title: `TAD ${listing.model}`,
+    category: "D/Aコンバーター",
+    raw_category: "D/Aコンバーター",
+    primary_category_id: "dac",
+    category_ids: '["dac"]',
+    search_aliases: "DAC D/A Converter",
+    price_yen: listing.priceYen,
+    source_url: `https://example.test/${listing.shopKey}/${listing.sourceId}`,
+    last_activity_at: listing.seenAt,
+  });
   // The listing write path materializes membership for every listing it stores, and the category
   // filter reads it, so a fixture that skipped it would be a listing production cannot produce.
   // Derived rather than spelled out, so a taxonomy change cannot leave this fixture behind.

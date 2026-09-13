@@ -1,22 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
-import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
+import { TEST_ADMIN_PRINCIPAL, recordingAdminAssets } from "./helpers/admin-principal.js";
 
 import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 
 function adminEnv(seenPaths: string[]) {
   return {
-    ADMIN_ASSETS: {
-      async fetch(input: Request | URL | string): Promise<Response> {
-        const request = input instanceof Request ? input : new Request(input);
-        seenPaths.push(new URL(request.url).pathname);
-        return new Response("admin asset", {
-          status: 200,
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
-      },
-    },
+    ADMIN_ASSETS: recordingAdminAssets(seenPaths, "admin asset"),
     CATALOG_ADMIN: {
       async getWorkCounts(): Promise<unknown> {
         return { reports: 99, candidates: 100, duplicateIdentities: [], nextDuplicateCursor: null };

@@ -1,5 +1,6 @@
 import { migrationSources } from "./helpers/migrations.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
@@ -20,24 +21,33 @@ function applyMigration(sqlite: DatabaseSync, file: string): void {
 
 function insertInactiveLegacyListing(sqlite: DatabaseSync): void {
   const title = "Studio Desktop Class D Integrated Amplifier A1";
-  sqlite
-    .prepare(`
-      INSERT INTO products (
-        id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
-        canonical_manufacturer_id, manufacturer_resolution_status, model, raw_model,
-        normalized_model, model_resolution_status, title, category, raw_category,
-        primary_category_id, category_ids, direct_category_ids, classification_status,
-        search_aliases, condition_text, price_yen, stock_status, source_url, first_seen_at,
-        last_seen_at, last_changed_at, last_activity_at, is_active, metadata_json
-      ) VALUES (
-        1201, 'legacy-shop', 'inactive-studio-amp', 'Example', 'Example', 'example',
-        'example', 'resolved', 'A1', 'A1', 'A1', 'resolved', ?, 'integrated_amp',
-        'integrated_amp', 'integrated_amp', json_array('integrated_amp'),
-        '["integrated_amp"]', 'classified', 'integrated_amp', 'used', 100000,
-        'in_stock', 'https://example.test/inactive-studio-amp', ?, ?, ?, ?, 0, '{}'
-      )
-    `)
-    .run(title, AT, AT, AT, AT);
+  insertListing(sqlite, {
+    at: AT,
+    id: 1201,
+    shop_key: "legacy-shop",
+    source_id: "inactive-studio-amp",
+    manufacturer: "Example",
+    raw_manufacturer: "Example",
+    manufacturer_id: "example",
+    canonical_manufacturer_id: "example",
+    manufacturer_resolution_status: "resolved",
+    model: "A1",
+    raw_model: "A1",
+    normalized_model: "A1",
+    model_resolution_status: "resolved",
+    title,
+    category: "integrated_amp",
+    raw_category: "integrated_amp",
+    primary_category_id: "integrated_amp",
+    category_ids: '["integrated_amp"]',
+    direct_category_ids: '["integrated_amp"]',
+    search_aliases: "integrated_amp",
+    condition_text: "used",
+    source_url: "https://example.test/inactive-studio-amp",
+    last_activity_at: AT,
+    is_active: 0,
+    metadata_json: "{}",
+  });
   sqlite
     .prepare(
       "INSERT INTO product_categories(product_id, category_id, is_direct) VALUES (1201, 'integrated_amp', 1)",
