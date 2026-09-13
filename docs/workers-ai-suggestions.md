@@ -116,6 +116,28 @@ alias case and the unsupported SA-10 SE positive, preserving the original cases 
 This is an assistant's source-based review independent of model answers, not a separate human
 sign-off. It does not replace or broaden the existing live approval.
 
+The [v2 live holdout result](https://github.com/apaapapapapa/HiFiScout/blob/main/evaluations/workers-ai/2026-09-13-holdout-v2-evaluation.json)
+**failed** the zero-invalid-response gate. Six cases abstained before inference; the remaining 14
+made one real request each with the unchanged prompt-3/schema-2 policy. Eight of ten positive
+cases yielded correct suggestions (80% recall). Five responses combined a null catalog ID with
+evidence index 0, which the runtime correctly rejected; two of those were positive cases. There
+were no false accepted suggestions. Of the four model-routed negative cases, one returned a
+valid abstention and three were invalid. The six deterministic negatives are not model successes.
+
+The [native responses and recording](https://github.com/apaapapapapa/HiFiScout/blob/main/evaluations/workers-ai/2026-09-13-holdout-v2-qwen3-prompt3.json)
+retain every provider ID, request, output, timestamp and usage value. The 14 requests used 2,561
+input and 248 output tokens, with 19.401296377182007 provider-reported Neurons. REST elapsed times
+were 431–884 ms (median 485.5 ms), measured inside the connector; this is not Workers CPU or a
+production latency percentile. No response was rewritten or retried to obtain a pass. All 257,502
+reserved milli-Neurons remain charged to the manual evaluation ledger (864,471 cumulatively),
+independent of the unchanged production operator allowance.
+
+`test/ai-holdout-live-record.test.ts` replays these native observations offline and preserves their
+failed result, exact request/usage correspondence and strict rejection. This is a completed
+measurement with an unsuccessful model gate. It does not broaden activation. Any prompt/schema
+change needs its own reviewed policy, remaining budget and new live evidence; once used to tune
+such a change, this corpus is a regression set rather than a fresh holdout.
+
 Use `vp run harness ai-template .generated/ai-recording.json` to create an incomplete recording
 template and `vp run harness ai <recording.json> <new-output-dir>` to replay recorded wire responses.
 Both commands are offline. The evaluator uses the actual runtime admission and output contracts,
