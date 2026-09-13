@@ -174,6 +174,37 @@ Both pending selectors materialize their indexed, limited work sets before looki
 
 Migration 0090 records a token in `listing_projection_pending` in the same transaction as an inserted or materially updated listing, including deactivation. Heartbeats and same-value updates do not enqueue work. This obligation survives a failure before `recordCrawlRunWorkSet`; an unchanged crawl returns pending observed sources in its derived work set. Normal crawl continuations and remediation refreshes clear only the token captured before their projection work, after dependency-ordered completion. A concurrent newer edit therefore remains pending. The tables contain current work and constant-size audit cursors, not another append-only event log.
 
+### Public response security headers
+
+Two mechanisms cover two disjoint sets of responses, because Cloudflare keeps them separate by
+design: `public/_headers` applies to assets Workers Static Assets serves directly, and Cloudflare
+explicitly does not apply it to Worker output. `src/http/security-headers.ts` covers everything the
+Worker produces — HTML, API JSON, feeds, edge-cache hits and application error responses — because
+it wraps the outermost public entrypoint in `src/index.ts`. `test/public-security-headers.test.ts`
+asserts the two sets are identical, and `e2e/tests/security-headers.spec.ts` checks the deployed
+responses after each deployment.
+
+Applying the headers after the cache lookup rather than before the cache write means entries stored
+by an earlier deployment are served with the current headers; no purge is needed.
+
+The Content Security Policy is **enforced**, not Report-Only. Every source is `'self'`: one
+first-party bundle, first-party stylesheets, one first-party image, and same-origin `/api/` calls.
+The single exception is inline `style` **attributes**, which React writes; CSP Level 3 governs those
+with `style-src-attr`, so `'unsafe-inline'` is confined there while `style-src-elem 'self'` keeps an
+injected `<style>` element blocked. `style-src` repeats the permissive form only for browsers that
+do not implement the two specific directives. The server-rendered permalink's styles were moved to
+`public/permalink.css` so no rendered document needs an inline stylesheet. A nonce was rejected
+because these documents are served from a shared 30-second edge cache.
+
+This is not the admin console's policy. `Referrer-Policy` is `strict-origin-when-cross-origin`
+rather than `no-referrer`, and `Cross-Origin-Resource-Policy`/`Cross-Origin-Embedder-Policy` are
+deliberately absent: the catalogue is public and meant to be linked to. `Strict-Transport-Security`
+carries neither `includeSubDomains` nor `preload`, since neither the sibling subdomains of a
+`workers.dev` zone nor a preload-list entry are this project's to assert.
+
+CSP is defence in depth. It does not replace the HTML escaping in `product-permalink.ts` or the URL
+validation at the DTO boundary.
+
 ### Public API rate limiting
 
 `src/api-guard.ts` resolves a bucket for every public API request and then answers one of three
