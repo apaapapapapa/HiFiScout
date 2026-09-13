@@ -143,3 +143,83 @@ test("search, paging, product detail and shop links work under the enforced poli
   expect(violations, "unexpected CSP violations").toEqual([]);
   expect(pageErrors, "unexpected page errors under the enforced policy").toEqual([]);
 });
+
+test("the images the catalogue does load are admitted by img-src, and none come from a seller", async ({
+  page,
+  catalogPage,
+}) => {
+  // `img-src 'self' data:` is only proven by a document that actually loads an image. The public
+  // catalogue deliberately republishes no seller imagery, so the icon is the one image-governed
+  // subresource -- and an off-origin one would be blocked outright rather than merely unwanted.
+  const violations = await collectCspViolations(page);
+  const imageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "image") imageRequests.push(request.url());
+  });
+  const failedImages: string[] = [];
+  page.on("response", (response) => {
+    if (response.request().resourceType() === "image" && !response.ok())
+      failedImages.push(`${response.status()} ${response.url()}`);
+  });
+
+  await catalogPage.goto("/");
+  await expect(catalogPage.heading).toBeVisible();
+
+  const origin = new URL(page.url()).origin;
+  const documentImages = await page.evaluate(() => {
+    const icons = [
+      ...document.querySelectorAll('link[rel~="icon"], link[rel~="apple-touch-icon"]'),
+    ].map((link) => (link as HTMLLinkElement).href);
+    const images = [...document.querySelectorAll("img")].map((image) => image.src);
+    return [...icons, ...images].filter(Boolean);
+  });
+
+  expect(documentImages.length, "the document references at least one image").toBeGreaterThan(0);
+  for (const url of [...documentImages, ...imageRequests]) {
+    if (url.startsWith("data:")) continue;
+    expect(new URL(url).origin, `image source must be same-origin: ${url}`).toBe(origin);
+  }
+  // Every referenced icon has to resolve, or `img-src 'self'` would be hiding a 404 instead of
+  // admitting a real file.
+  for (const url of documentImages) {
+    if (url.startsWith("data:")) continue;
+    const fetched = await page.request.get(url);
+    expect(fetched.status(), `image must load: ${url}`).toBe(200);
+    expect(fetched.headers()["content-type"] ?? "").toMatch(/^image\//u);
+  }
+
+  expect(failedImages, "images blocked or missing under the enforced policy").toEqual([]);
+  expect(violations, "unexpected CSP violations").toEqual([]);
+});
+
+test("paging and the price history graphic survive the enforced policy", async ({
+  page,
+  catalogPage,
+}) => {
+  // Paging re-renders from the bundle's own fetches (`connect-src 'self'`), and the price history
+  // is drawn as an inline SVG element rather than an image, so this is the visual most likely to
+  // break silently if the policy ever gains a stricter rule.
+  const violations = await collectCspViolations(page);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await catalogPage.goto("/");
+  await expect(catalogPage.count).toBeVisible();
+
+  const second = catalogPage.pageButton(2);
+  if (await second.count()) {
+    await second.click();
+    await expect(catalogPage.pageIndicator(2)).toBeVisible();
+    await expect(catalogPage.cards.first()).toBeVisible();
+  } else if (await catalogPage.loadMore.count()) {
+    const before = await catalogPage.cards.count();
+    await catalogPage.loadMore.click();
+    await expect.poll(() => catalogPage.cards.count()).toBeGreaterThan(before);
+  }
+
+  const sparkline = page.locator("svg.history-sparkline").first();
+  if (await sparkline.count()) await expect(sparkline).toBeVisible();
+
+  expect(violations, "unexpected CSP violations").toEqual([]);
+  expect(pageErrors, "unexpected page errors under the enforced policy").toEqual([]);
+});
