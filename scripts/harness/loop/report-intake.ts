@@ -47,7 +47,8 @@ export function signalsFromHarnessReport(value: unknown) {
         sourceSha: report.sourceSha,
         observedAt: report.finishedAt,
         failureKey: `report:${check.id}`,
-        summary: `Reproduce ${check.id}: ${check.reason}`,
+        // Reasons/measurements may change between observations of the same frozen source failure.
+        summary: `Reproduce and repair required ${kind} report check: ${check.id}`,
         evidenceUrl: evidence.href,
       }),
     );

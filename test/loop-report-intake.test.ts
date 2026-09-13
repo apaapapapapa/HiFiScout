@@ -50,6 +50,8 @@ test("report intake deduplicates tasks and freezes domain gates without authoriz
     input.kind = "ai";
     input.report.checks[0].id = "ai/offline-holdout";
     const first = await collectReportIntake(input, directory);
+    input.report.checks[0].reason = "A later observation has different measurements";
+    input.report.finishedAt = "2026-09-13T00:00:03.000Z";
     assert.deepEqual(await collectReportIntake(input, directory), first);
     const index = JSON.parse(await readFile(join(directory, "index.json"), "utf8"));
     assert.equal(index.items.length, 1);
