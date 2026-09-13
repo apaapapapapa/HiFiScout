@@ -14,6 +14,8 @@ import type { LoopSpec } from "./contract.js";
 import { appendLoopEvent, parseLoopRun, readLoopRun } from "./state.js";
 import type { LoopRun } from "./state.js";
 import { assessLoopScope } from "./scope.js";
+import { assessLoopDelivery, parseLoopReview } from "./review.js";
+import type { LoopReviewReceipt } from "./review.js";
 
 export type LoopPhase =
   | "ready"
@@ -37,6 +39,9 @@ export interface LoopView {
   activeAttempt: { number: number; startedAt: string; hypothesis: string } | null;
   lastReport: HarnessReport | null;
   lastVerifiedSha: string | null;
+  review: { prNumber: number; sourceSha: string; requestedAt: string; deadline: string } | null;
+  reviewReceipt: LoopReviewReceipt | null;
+  lastDeliveryReport: HarnessReport | null;
   nextAction: string;
 }
 
@@ -122,6 +127,9 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
     activeAttempt: null,
     lastReport: null,
     lastVerifiedSha: null,
+    review: null,
+    reviewReceipt: null,
+    lastDeliveryReport: null,
     nextAction: "start-attempt",
   };
   let bestPassed = -1;
@@ -156,6 +164,9 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
         view.phase = "running";
         view.reason = "attempt_in_progress";
         view.lastVerifiedSha = null;
+        view.review = null;
+        view.reviewReceipt = null;
+        view.lastDeliveryReport = null;
         view.lastProgressAt = event.at;
         break;
       }
@@ -207,6 +218,93 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
         }
         break;
       }
+      case "review-requested": {
+        ensure(
+          view.phase === "review" && view.lastVerifiedSha && !view.review,
+          "review_already_requested_or_source_unverified",
+        );
+        ensure(event.at < deadline, "budget_exhausted");
+        ensure(requireSha(data.sourceSha) === view.lastVerifiedSha, "review_source_mismatch");
+        view.review = {
+          prNumber: integer(data.prNumber, "review_pr_number", 1),
+          sourceSha: view.lastVerifiedSha,
+          requestedAt: event.at,
+          deadline: new Date(
+            Math.min(
+              Date.parse(deadline),
+              Date.parse(event.at) +
+                (run.spec.delivery.review === "self" ? 0 : run.spec.delivery.reviewWaitMs),
+            ),
+          ).toISOString(),
+        };
+        view.reason = "review_requested";
+        view.lastProgressAt = event.at;
+        break;
+      }
+      case "reviewed": {
+        ensure(view.phase === "review" && view.review && view.lastReport, "review_not_requested");
+        ensure(event.at < deadline, "budget_exhausted");
+        const receipt = parseLoopReview(data.receipt);
+        ensure(
+          receipt.sourceSha === view.lastVerifiedSha &&
+            receipt.completedAt >= view.review.requestedAt &&
+            receipt.completedAt <= event.at,
+          "review_identity_or_interval_mismatch",
+        );
+        if (receipt.method === "self") {
+          ensure(run.spec.delivery.review !== "required", "required_review_cannot_fall_back");
+          ensure(event.at >= view.review.deadline, "review_wait_not_expired");
+        }
+        const finished = run.events
+          .slice(0, event.sequence - 1)
+          .reverse()
+          .find((e) => e.type === "attempt-finished");
+        const scope = finished?.data.scope;
+        ensure(
+          isRecord(scope) &&
+            Array.isArray(scope.changes) &&
+            scope.changes.every(
+              (item) => isRecord(item) && receipt.reviewedPaths.includes(String(item.path)),
+            ),
+          "review_does_not_cover_changed_paths",
+        );
+        ensure(receipt.unresolvedFindings === 0, "unresolved_review_findings");
+        view.reviewReceipt = receipt;
+        view.phase = "delivery";
+        view.reason =
+          receipt.method === "self" ? "self_review_completed" : "codex_review_completed";
+        view.lastProgressAt = event.at;
+        break;
+      }
+      case "delivery-observed": {
+        ensure(
+          view.phase === "delivery" && view.review && view.reviewReceipt && view.lastVerifiedSha,
+          "delivery_before_review",
+        );
+        ensure(event.at < deadline, "budget_exhausted");
+        const report = assessLoopDelivery(
+          run.spec,
+          view.lastVerifiedSha,
+          view.review.prNumber,
+          data.snapshot,
+        );
+        ensure(
+          report.startedAt >= view.reviewReceipt.completedAt && report.finishedAt <= event.at,
+          "delivery_interval_mismatch",
+        );
+        const progress = (r: HarnessReport | null) =>
+          r ? digest([r.sourceSha, r.deploymentSha, r.checks.map((c) => [c.id, c.status])]) : null;
+        if (progress(view.lastDeliveryReport) !== progress(report)) view.lastProgressAt = event.at;
+        view.lastDeliveryReport = report;
+        if (report.status === "pass") {
+          view.phase = "completed";
+          view.reason = `target_${run.spec.delivery.target}_verified`;
+        } else if (report.status === "fail") {
+          view.phase = "blocked";
+          view.reason = "delivery_checks_failed";
+        } else view.reason = "awaiting_delivery_evidence";
+        break;
+      }
       case "blocked":
         view.phase = "blocked";
         view.reason = requireText(data.reason, "block_reason");
@@ -250,10 +348,18 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
       : view.phase === "running"
         ? "await-attempt"
         : view.phase === "review"
-          ? "request-review"
-          : view.phase === "blocked"
-            ? "resolve-blocker"
-            : "none";
+          ? !view.review
+            ? "request-review"
+            : at >= view.review.deadline
+              ? run.spec.delivery.review === "required"
+                ? "obtain-required-review"
+                : "complete-self-review"
+              : "await-review"
+          : view.phase === "delivery"
+            ? "observe-delivery"
+            : view.phase === "blocked"
+              ? "resolve-blocker"
+              : "none";
   return view;
 }
 

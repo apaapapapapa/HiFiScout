@@ -34,6 +34,21 @@ the existing local browser harness. AI contracts require a candidate-bound recor
 the offline holdout runner does not make provider calls or authorize activation. A source pass moves
 to review, while production effectiveness requires separately collected operational evidence.
 
+## Review and completion state
+
+A verified candidate records `review-requested` once with its full SHA and PR number. The deadline
+cannot be extended by repeated requests or heartbeats. Optional Codex review can fall back to a
+recorded self-review after at most 15 minutes; a `self` contract can review immediately. Required
+external approval cannot fall back, and still needs GitHub's explicit approval after a Codex review.
+Each review receipt covers every changed path, retains its summary/artifact and unresolved-finding
+count, and is invalidated by another attempt. A timeout alone is never a completed review.
+
+The delivery transition reassesses the collected GitHub snapshot, matching the reviewed PR head.
+PR completion needs its CI and review gates; merge completion additionally needs main CI on the
+actual merge SHA. Deployment completion requires the owning deployment identity and downstream
+receipts. Missing evidence stays pending; failed gates block. Repeated identical polls do not count
+as progress, and even an otherwise passing final result cannot exceed the original run deadline.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
