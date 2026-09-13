@@ -21,6 +21,7 @@ test("logical D1 backup excludes FTS virtual/shadow and provider-owned tables", 
     { schema: "main", name: "sqlite_sequence", type: "table", wr: 0 },
     { schema: "main", name: "_cf_METADATA", type: "table", wr: 0 },
     { schema: "main", name: "d1_migrations", type: "table", wr: 0 },
+    { schema: "main", name: "product_search_totals", type: "table", wr: 0 },
     { schema: "temp", name: "temporary_rows", type: "table", wr: 0 },
     { schema: "main", name: "settings", type: "table", wr: 1 },
   ]);
@@ -29,6 +30,15 @@ test("logical D1 backup excludes FTS virtual/shadow and provider-owned tables", 
     { name: "products", withoutRowid: false },
     { name: "settings", withoutRowid: true },
   ]);
+});
+
+test("logical D1 backup rebuilds the derived in-stock total from restored entities", () => {
+  const tables = selectBackupTables([
+    { schema: "main", name: "product_search_entities", type: "table", wr: 0 },
+    { schema: "main", name: "product_search_totals", type: "table", wr: 0 },
+  ]);
+
+  assert.deepEqual(tables, [{ name: "product_search_entities", withoutRowid: false }]);
 });
 
 test("rowid backup SQL uses server-side quote() and a fixed upper boundary", () => {
