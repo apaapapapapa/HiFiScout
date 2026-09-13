@@ -876,8 +876,8 @@ for (const width of [390, 1280]) {
     await category.press("Enter");
     await expect.poll(() => seen.searches.at(-1)?.searchParams.has("category")).toBe(false);
     expect(seen.searches.at(-1)?.searchParams.getAll("manufacturer")).toEqual([
-      "LUXMAN",
       "Accuphase",
+      "LUXMAN",
     ]);
     await expectPinned(width <= 1100);
 
