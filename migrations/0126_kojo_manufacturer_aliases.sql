@@ -41,7 +41,7 @@ WHERE NOT EXISTS (
 -- Seek the three observed legacy IDs through idx_products_manufacturer_id. Retain raw seller data,
 -- manual manufacturer overrides and existing projection tokens. No global resolver-version bump.
 UPDATE products INDEXED BY idx_products_manufacturer_id
-SET remediation_projection_required=1, remediation_projection_token='0126-kojo-aliases'
+SET remediation_projection_required=1, remediation_projection_token=lower(hex(randomblob(16)))
 WHERE is_active=1 AND manufacturer_id IN ('kojo', 'kojotechnology', 'brand-1l713dr')
   AND normalized_raw_manufacturer IN (
     'kojo', 'kojotechnology', '光城精工', 'kojotechnologyコウジョウテクノロジー', 'kojo光城精工'
