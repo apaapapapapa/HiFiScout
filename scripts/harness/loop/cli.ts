@@ -13,6 +13,7 @@ import {
 import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
 import { loopStatus, loopStatusMarkdown, writeLoopStatus } from "./status.js";
+import { proveLoopRegression, learnFromLoop } from "./learning.js";
 
 export async function runLoopCli(args: string[]): Promise<number> {
   const json = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
@@ -32,7 +33,11 @@ export async function runLoopCli(args: string[]): Promise<number> {
       console.log(loopStatusMarkdown(result as ReturnType<typeof loopStatus>));
       return 0;
     }
-  } else if (args[0] === "snapshot" && args.length === 3)
+  } else if (args[0] === "regression" && args.length === 4)
+    result = await proveLoopRegression(args[1], args[2], await json(args[3]));
+  else if (args[0] === "learn" && args.length === 5)
+    result = await learnFromLoop(args[1], args[2], await json(args[3]), args[4]);
+  else if (args[0] === "snapshot" && args.length === 3)
     result = await writeLoopStatus(await readLoopRun(args[1]), args[2]);
   else if (args[0] === "heartbeat" && args.length === 2)
     result = await recordLoopEvent(args[1], await readLoopRun(args[1]), "heartbeat", {});
