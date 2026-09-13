@@ -325,14 +325,14 @@ test("a run past one chunk retires every orphan and counts each half once", asyn
  * ones already in the table: the earlier implementation deleted listings and swept entities as two
  * separate statements, so an interrupted run committed the cascade and lost the sweep, and by then
  * both the listing and the membership are gone -- there is nothing left to derive a candidate from.
- * Migration 0121 clears those once, which is why the daily path is allowed to stop looking.
+ * Migration 0125 clears those once, which is why the daily path is allowed to stop looking.
  */
 const ORPHAN_MIGRATION = readFileSync(
-  new URL("../migrations/0121_retire_pre_existing_orphan_entities.sql", import.meta.url),
+  new URL("../migrations/0125_retire_pre_existing_orphan_entities.sql", import.meta.url),
   "utf8",
 );
 
-test("migration 0121 clears the orphans the scoped sweep can no longer find", () => {
+test("migration 0125 clears the orphans the scoped sweep can no longer find", () => {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
