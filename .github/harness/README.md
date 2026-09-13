@@ -135,8 +135,6 @@ types or inject the necessary capability at the composition root, then rerun the
 Rule exceptions and baseline suppression files require an explicit architectural change; do not
 add one merely to make CI pass. There is no second hand-written dependency checker.
 
-## Extension points
-
 ## Isolated UI evidence
 
 `vp run harness ui .generated/ui-<run-id>` builds the admin bundle and runs the existing gallery
@@ -157,8 +155,6 @@ fixture teardown, own completion; the CLI uses those results and its process exi
 report. Missing/skipped results or a dirty/changed checkout stay unknown. These are browser tests
 against local data, not deployment or production verification. Review screenshots/DOM together
 with console and network evidence; an image alone does not prove an interaction succeeded.
-
-## Adding a boundary
 
 ## Workers AI holdout and review feedback
 
@@ -192,6 +188,9 @@ approved policy, bypass identity vetoes or grant account budget. Independent lab
 provider evidence are needed for any future live evaluation/activation decision.
 
 ## Extending an existing boundary
+
+The canonical development command inventory is in [tooling](../../docs/tooling.md); CI scheduling,
+cache keys and artifact ownership are in the [workflow responsibility map](../workflows/README.md).
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration

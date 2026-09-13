@@ -14,7 +14,7 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 
 ## Validation
 
-- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, authenticated admin browser tests with local Access/RPC mocks, builds, and dependency security. Short checks share the `static-checks` runner. The component job runs both browser suites and populates the shared Chromium and pinned Noto CJK caches; unit jobs need no browser.
+- `ci.yml` — source/toolchain and architecture checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, authenticated admin browser tests with local Access/RPC mocks, builds, and dependency security. Short checks share the `static-checks` runner. The component job runs both browser suites and populates the shared Chromium and pinned Noto CJK caches; unit jobs need no browser. The required `product-replay` job assembles the existing shard and cost evidence.
 - `docs.yml` — architecture boundary check plus deterministic documentation build/publish. Its separate best-effort AI refresh job may update only `docs/ai-generated/**`, validates candidates with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.
@@ -24,6 +24,28 @@ The `ci:*` tasks in `vite.config.ts` reuse `package.json` commands. They retain 
 metadata, the declaration-before-compiler and frontend-before-Worker dependencies, and four separate
 unit timing reports. Change shared commands in the package scripts instead of copying a second CI
 version; change task scheduling/cache metadata in Vite's task configuration.
+
+`ci:architecture` invokes the canonical `vp run check:architecture`, also used by normal
+`check`/`verify` and the documentation alias. Its cache inputs explicitly include
+`.dependency-cruiser.json`, TypeScript/package configuration, the dependency lock, `src/**` and
+`frontend/**`. The long error format gives the owning rule, import endpoints and boundary reason.
+
+The unit jobs preserve all four JSON timing reports even on failure. `product-replay` imports those
+reports to assess fixed extraction, normalization, classification, identity, search and admin-override
+regressions; it does not execute a second test suite. Existing D1, DO and Queue budget tests and the
+parser benchmark emit 13 cost samples. The measurement tasks include `GITHUB_SHA` in their cache
+keys. The aggregate job requires matching source identities and complete required measurements;
+missing metadata is unknown. `product-replay` and `cost-evidence` artifacts retain the result and
+original samples for 30 days. Existing assertions and CPU baseline gates still own behavioral and
+performance success; the cost report alone establishes only that measurement exists.
+
+The component job enables `HARNESS_UI=1` for isolated gallery/admin browser evidence. Every case
+captures a screenshot, DOM, console/page errors, request metadata and SHA/URL/retry identity;
+admin fixture diagnostics and final Playwright JSON are included in `component-ui-review` for
+seven days. Final results include teardown failures. The harness owns loopback servers, blocks
+other browser origins and uses the existing signed local Access/RPC/JWKS mocks. This is local UI
+evidence, independent of the deployment-owned public E2E verification. See
+[harness operations](../harness/README.md) and [tooling](../../docs/tooling.md) for local commands.
 
 `.github/actions/change-scope` compares the candidate tree with the event's comparison base. Documentation-only changes retain source/toolchain checks and the always-present `fan-out` result but skip application test/build/security steps. Unknown bases run the full suite. All application jobs still report a result, so a workflow-level path filter cannot strand the required check in Pending. The dependency audit still runs for every application change; CodeQL and the weekly secret scan retain their own schedules.
 

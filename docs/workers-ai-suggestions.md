@@ -106,6 +106,27 @@ still returns 404. These controls cannot approve a live evaluation or enable the
 
 ## Model evaluation and activation
 
+The development harness adds a separate 20-case, 10-family holdout in
+`test/fixtures/ai-catalog-holdout.ts`. Its product families do not overlap the TAD/LS50 development
+canary. Positive spellings are adapted from existing shop/identity regressions; negative candidates
+are synthetic mutations. Labels retain source provenance and await independent review. This
+extends evaluation infrastructure; it does not replace or broaden the existing live approval.
+
+Use `vp run harness ai-template .generated/ai-recording.json` to create an incomplete recording
+template and `vp run harness ai <recording.json> <new-output-dir>` to replay recorded wire responses.
+Both commands are offline. The evaluator uses the actual runtime admission and output contracts,
+checks the exact policy/corpus/fingerprint/request, and keeps deterministic vetoes separate from
+model-only results. Per-attempt latency, nullable provider usage and response-bound reviewer
+accept/reject outcomes remain distinct. Reused provider IDs, stale reviews and unsafe responses
+are rejected or fail the evaluation. See the
+[recording format](https://github.com/apaapapapapa/HiFiScout/blob/main/.github/harness/README.md#workers-ai-holdout-and-review-feedback).
+
+Passing a fixture replay does not authenticate provider or reviewer provenance, prove population
+accuracy, grant account budget or authorize activation. The report always marks live evaluation
+unknown and activation unapproved; use independently reviewed labels and genuine provider evidence
+for a later live evaluation decision. Existing deployed policy, identity vetoes and budget gates
+continue to apply.
+
 Use `vp exec tsx scripts/evaluate-ai-catalog.ts responses.json` to evaluate recorded responses for
 the fixed corpus. This command is offline and its output explicitly says that response provenance
 has not been verified. Keep the real model request/response metadata, corpus/policy versions,
