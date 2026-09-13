@@ -41,7 +41,8 @@ cannot be extended by repeated requests or heartbeats. Optional Codex review can
 recorded self-review after at most 15 minutes; a `self` contract can review immediately. Required
 external approval cannot fall back, and still needs GitHub's explicit approval after a Codex review.
 Each review receipt covers every changed path, retains its summary/artifact and unresolved-finding
-count, and is invalidated by another attempt. A timeout alone is never a completed review.
+count, and is invalidated by another attempt. Retrying the same SHA/PR retains its earliest waiting
+deadline across block/resume and reevaluation. A timeout alone is never a completed review.
 
 The delivery transition reassesses the collected GitHub snapshot, matching the reviewed PR head.
 PR completion needs its CI and review gates; merge completion additionally needs main CI on the

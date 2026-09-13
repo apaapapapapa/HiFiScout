@@ -104,6 +104,20 @@ test("optional Codex waiting expires once at 15 minutes and requires actual self
       f.event("review-requested", { prNumber: 1, sourceSha: loopSha }, 4),
       /already_requested/u,
     );
+    const saved = await readLoopRun(f.state);
+    const scope = saved.events.find((e) => e.type === "attempt-finished")!.data.scope;
+    await f.event("blocked", { reason: "interrupted_wait" }, 10);
+    await f.event("resumed", { reason: "continue_same_source" }, 11);
+    await beginLoopAttempt(
+      f.state,
+      "Revalidate unchanged source",
+      { externalCalls: 0, reservedCostMicros: 0 },
+      loopTime(12),
+    );
+    await finishLoopAttempt(f.state, loopReport("pass", 13), loopCheckout, loopTime(13), scope);
+    const repeated = await f.event("review-requested", { prNumber: 1, sourceSha: loopSha }, 14);
+    assert.equal(repeated.review?.requestedAt, loopTime(3));
+    assert.equal(repeated.review?.deadline, loopTime(903));
     await assert.rejects(
       f.event("reviewed", { receipt: receipt("self", 902) }, 902),
       /wait_not_expired/u,

@@ -134,6 +134,7 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
   };
   let bestPassed = -1;
   let previousFailure: string | null = null;
+  const reviewRequests = new Map<string, { requestedAt: string; deadline: string }>();
   for (const event of run.events.slice(1)) {
     ensure(view.phase !== "stopped" && view.phase !== "completed", "terminal_run");
     const data = event.data;
@@ -225,18 +226,24 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
         );
         ensure(event.at < deadline, "budget_exhausted");
         ensure(requireSha(data.sourceSha) === view.lastVerifiedSha, "review_source_mismatch");
+        const prNumber = integer(data.prNumber, "review_pr_number", 1);
+        const key = `${view.lastVerifiedSha}:${prNumber}`;
+        const previous = reviewRequests.get(key);
         view.review = {
-          prNumber: integer(data.prNumber, "review_pr_number", 1),
+          prNumber,
           sourceSha: view.lastVerifiedSha,
-          requestedAt: event.at,
-          deadline: new Date(
-            Math.min(
-              Date.parse(deadline),
-              Date.parse(event.at) +
-                (run.spec.delivery.review === "self" ? 0 : run.spec.delivery.reviewWaitMs),
-            ),
-          ).toISOString(),
+          requestedAt: previous?.requestedAt ?? event.at,
+          deadline:
+            previous?.deadline ??
+            new Date(
+              Math.min(
+                Date.parse(deadline),
+                Date.parse(event.at) +
+                  (run.spec.delivery.review === "self" ? 0 : run.spec.delivery.reviewWaitMs),
+              ),
+            ).toISOString(),
         };
+        reviewRequests.set(key, view.review);
         view.reason = "review_requested";
         view.lastProgressAt = event.at;
         break;
