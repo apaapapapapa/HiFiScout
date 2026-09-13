@@ -569,3 +569,142 @@ test("Lambda truncates an oversized robots.txt at a line boundary", async () => 
   assert.equal(result.statusCode, 200);
   assert.equal(calls[1], DETAIL_URL);
 });
+
+test("Lambda follows a same-host redirect but refuses one that leaves the allowed hosts", async () => {
+  const requested: string[] = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      if (url === DETAIL_URL) {
+        return new Response(null, {
+          status: 301,
+          headers: { location: "https://www.audiounion.jp/ct/detail/used/223257/?moved=1" },
+        });
+      }
+      return new Response("<html>moved</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const moved = await handler(event({ url: DETAIL_URL }));
+  assert.equal(moved.statusCode, 200);
+  assert.equal(Buffer.from(moved.body, "base64").toString("utf8"), "<html>moved</html>");
+
+  const offHost: string[] = [];
+  const escaping = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      offHost.push(url);
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://169.254.169.254/latest/meta-data/" },
+      });
+    },
+  });
+
+  const refused = await escaping(event({ url: DETAIL_URL }));
+  assert.equal(refused.statusCode, 502);
+  assert.equal(JSON.parse(refused.body).error, "redirect_rejected");
+  assert.equal(
+    // Whole-host comparison, matching how the Lambda decides.
+    offHost.some((url) => new URL(url).hostname === "169.254.169.254"),
+    false,
+    "the refused destination must never receive a request from the Lambda",
+  );
+});
+
+test("Lambda refuses a robots.txt redirect that leaves the allowed hosts", async () => {
+  const requested: string[] = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://attacker.test/robots.txt" },
+        });
+      }
+      return new Response("<html>ok</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: DETAIL_URL }));
+
+  assert.equal(result.statusCode, 502);
+  assert.equal(JSON.parse(result.body).error, "redirect_rejected");
+  assert.equal(
+    requested.some((url) => new URL(url).hostname === "attacker.test"),
+    false,
+  );
+});
+
+test("Lambda applies robots rules to a redirect destination, not just the original target", async () => {
+  const requested: string[] = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nDisallow: /ct/search\n", { status: 200 });
+      }
+      if (url === DETAIL_URL) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://www.audiounion.jp/ct/search/secret" },
+        });
+      }
+      return new Response("<html>excluded</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: DETAIL_URL }));
+
+  assert.equal(result.statusCode, 502);
+  assert.equal(JSON.parse(result.body).error, "robots_disallowed_redirect");
+  assert.equal(
+    requested.some((url) => new URL(url).pathname === "/ct/search/secret"),
+    false,
+    "a destination the seller excludes must not be requested",
+  );
+});
+
+test("Lambda still follows a same-host redirect the policy allows", async () => {
+  const moved = "https://www.audiounion.jp/ct/detail/used/223257/?moved=1";
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nDisallow: /ct/search\n", { status: 200 });
+      }
+      if (url === DETAIL_URL) {
+        return new Response(null, { status: 301, headers: { location: moved } });
+      }
+      return new Response("<html>allowed</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: DETAIL_URL }));
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(Buffer.from(result.body, "base64").toString("utf8"), "<html>allowed</html>");
+});

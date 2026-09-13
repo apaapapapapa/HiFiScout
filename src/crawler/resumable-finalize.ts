@@ -15,6 +15,7 @@ import { syncProductSearchEntities } from "../db/product-search-entity-repositor
 import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
 import { errorMessage } from "../types.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
+import { shopRedirectOrigins } from "./redirects.js";
 import {
   type ResumableCrawlConsumeOptions,
   type ResumableCrawlConsumeResult,
@@ -55,6 +56,7 @@ function stagedFetchFunction(
     requestDelayMs: getShopRequestDelayMs(env, plugin.definition, settings.requestDelayMs),
     fetchFn: globalThis.fetch,
     robotsCache: new Map(),
+    allowedRedirectOrigins: shopRedirectOrigins(plugin),
   };
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =

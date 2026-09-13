@@ -10,6 +10,7 @@ import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
 import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
+import { shopRedirectOrigins } from "./redirects.js";
 import {
   getShopState,
   listShopStates,
@@ -521,6 +522,7 @@ export async function crawlShop(
             requestDelayMs,
             fetchFn,
             robotsCache,
+            allowedRedirectOrigins: shopRedirectOrigins(adapter),
           }),
         );
       } catch (error) {
@@ -645,6 +647,7 @@ export async function crawlShop(
             requestDelayMs,
             fetchFn,
             robotsCache,
+            allowedRedirectOrigins: shopRedirectOrigins(adapter),
           },
           // Pinned by a resumable crawl to the instant its detail fetches were planned. The policy
           // is time-dependent -- an unresolved check expires and its listing becomes a target -- so

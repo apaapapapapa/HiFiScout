@@ -1,5 +1,6 @@
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
 import { CRAWL_MAX_HTML_RESPONSE_BYTES, CrawlResponseTooLargeError } from "./response-limits.js";
+import { CrawlRedirectRejectedError, allowedOriginSet } from "./redirects.js";
 import { isRecord } from "../types.js";
 import type {
   AugmentedCrawlError,
@@ -20,9 +21,17 @@ interface BrowserPageLike {
   url(): string;
   content(): Promise<string>;
   evaluate(
-    pageFunction: (argument: string) => Promise<{ status: number; html: string }>,
+    pageFunction: (argument: string) => Promise<BrowserFetchResult>,
     argument: string,
-  ): Promise<{ status: number; html: string }>;
+  ): Promise<BrowserFetchResult>;
+}
+
+/** What the in-page fetch reports back. `url` is the destination it actually ended on. */
+interface BrowserFetchResult {
+  status: number;
+  html: string;
+  url: string;
+  redirected: boolean;
 }
 
 interface BrowserLike {
@@ -68,7 +77,9 @@ async function prepareRequest(
   if (robotsCache.has(origin)) {
     robotsText = robotsCache.get(origin);
   } else {
-    robotsText = await fetchRobotsPolicy(fetchFn, origin, userAgent);
+    robotsText = await fetchRobotsPolicy(fetchFn, origin, userAgent, {
+      allowedOrigins: allowedOriginSet([origin]),
+    });
     robotsCache.set(origin, robotsText);
     fetchedRobots = true;
   }
@@ -119,14 +130,37 @@ export function createBrowserHtmlFetcher(
     return html;
   }
 
+  /**
+   * The remote browser follows redirects itself, so this transport can only check where the request
+   * ended up. That is a weaker guarantee than the direct and relay transports, which validate each
+   * hop before sending, and it is why this check rejects the *content*: the request already
+   * happened. No shop currently uses this transport.
+   *
+   * Both browser paths report a final URL — `page.url()` after a navigation, `response.url` from the
+   * in-page fetch — so neither can accept a body from an undeclared origin.
+   */
+  function assertLandedOnAllowedOrigin(
+    finalUrl: string,
+    allowedOrigins: ReadonlySet<string>,
+  ): void {
+    const landed = new URL(finalUrl);
+    if (landed.protocol !== "https:" || !allowedOrigins.has(landed.origin)) {
+      throw new CrawlRedirectRejectedError(
+        `browser navigation ended on ${landed.origin}, which is not allowed for this shop`,
+      );
+    }
+  }
+
   async function navigate(
     targetPage: BrowserPageLike,
     url: string,
+    allowedOrigins: ReadonlySet<string>,
     maxBytes: number,
   ): Promise<string> {
     const response = await targetPage.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const status = response?.status() ?? 0;
     if (status < 200 || status >= 400) throw crawlError(status);
+    assertLandedOnAllowedOrigin(targetPage.url(), allowedOrigins);
     pageOrigin = new URL(targetPage.url()).origin;
     return boundedContent(await targetPage.content(), maxBytes);
   }
@@ -134,18 +168,33 @@ export function createBrowserHtmlFetcher(
   async function browserFetch(
     targetPage: BrowserPageLike,
     url: string,
+    allowedOrigins: ReadonlySet<string>,
     maxBytes: number,
   ): Promise<string> {
     const result = await targetPage.evaluate(async (targetUrl) => {
       const response = await fetch(targetUrl, { cache: "no-store", credentials: "same-origin" });
-      return { status: response.status, html: await response.text() };
+      // `response.url` is the destination after any redirects the browser followed on its own; the
+      // transport cannot see the hops, so it reports where it landed instead.
+      return {
+        status: response.status,
+        html: await response.text(),
+        url: response.url,
+        redirected: response.redirected,
+      };
     }, url);
     if (result.status < 200 || result.status >= 400) throw crawlError(result.status);
+    // An older page runtime may report neither field; fall back to the URL that was requested so a
+    // missing value cannot be read as "no redirect happened".
+    assertLandedOnAllowedOrigin(result.url || url, allowedOrigins);
     return boundedContent(result.html, maxBytes);
   }
 
   return {
     async fetchHtmlPage(url: string, options: FetchHtmlPageOptions): Promise<string> {
+      const allowedOrigins = allowedOriginSet([
+        options.baseUrl || url,
+        ...(options.allowedRedirectOrigins ?? []),
+      ]);
       const effectiveDelayMs = await prepareRequest(url, {
         ...options,
         fetchFn: options.fetchFn ?? globalThis.fetch,
@@ -157,14 +206,15 @@ export function createBrowserHtmlFetcher(
         const targetOrigin = new URL(url).origin;
         const html =
           pageOrigin === targetOrigin
-            ? await browserFetch(targetPage, url, maxBytes)
-            : await navigate(targetPage, url, maxBytes);
+            ? await browserFetch(targetPage, url, allowedOrigins, maxBytes)
+            : await navigate(targetPage, url, allowedOrigins, maxBytes);
         if (effectiveDelayMs > 0) await sleep(effectiveDelayMs);
         return html;
       } catch (error) {
         if (isRecord(error) && typeof error.status === "number" && error.status) throw error;
-        // An oversized page must stay identifiable as such rather than becoming a generic failure.
+        // A size or destination refusal must stay identifiable rather than becoming a generic failure.
         if (error instanceof CrawlResponseTooLargeError) throw error;
+        if (error instanceof CrawlRedirectRejectedError) throw error;
         throw new Error(
           `browser crawl failed: ${error instanceof Error ? error.message : String(error)}`,
         );

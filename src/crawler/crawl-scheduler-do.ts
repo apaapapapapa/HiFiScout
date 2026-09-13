@@ -18,6 +18,7 @@ import {
 } from "../db/read-accounting.js";
 import { crawlDispatchToken, setShopAdminPaused } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
+import { shopRedirectOrigins } from "./redirects.js";
 import { planStagedCategoryDetailInputs } from "./category-enrichment-pacing.js";
 import {
   advanceDetailPlanCursor,
@@ -568,6 +569,7 @@ export class CrawlScheduler extends DurableObject<Env> {
             userAgent: settings.userAgent,
             requestDelayMs,
             fetchFn: globalThis.fetch,
+            allowedRedirectOrigins: shopRedirectOrigins(plugin),
           });
         }
       } catch (error) {
@@ -672,6 +674,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         html = await fetchPreparedDirectHtmlPage(directPermit, targetUrl, {
           userAgent: settings.userAgent,
           fetchFn: globalThis.fetch,
+          allowedRedirectOrigins: shopRedirectOrigins(plugin),
         });
       }
       htmlBytes = html == null ? 0 : new TextEncoder().encode(html).byteLength;
@@ -818,6 +821,7 @@ export class CrawlScheduler extends DurableObject<Env> {
             userAgent: settings.userAgent,
             requestDelayMs,
             fetchFn: globalThis.fetch,
+            allowedRedirectOrigins: shopRedirectOrigins(plugin),
           });
           await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
             ...execution,
@@ -923,6 +927,9 @@ export class CrawlScheduler extends DurableObject<Env> {
                       fetchPreparedDirectHtmlPage(directPermit, url, {
                         userAgent: options.userAgent,
                         fetchFn: globalThis.fetch,
+                        allowedRedirectOrigins:
+                          options.allowedRedirectOrigins ?? shopRedirectOrigins(plugin),
+                        robotsCache: options.robotsCache,
                       }),
                   }
                 : {}),

@@ -16,6 +16,7 @@ import {
 import { errorMessage } from "../types.js";
 import { createInvocationDeadline } from "../deadline.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
+import { shopRedirectOrigins } from "./redirects.js";
 import {
   acceptCollectionProgress,
   nextCollectionProgress,
@@ -61,6 +62,7 @@ export async function processFetch(
     requestDelayMs,
     fetchFn: globalThis.fetch,
     robotsCache,
+    allowedRedirectOrigins: shopRedirectOrigins(plugin),
   };
   const startedAtMs = Date.now();
   try {
