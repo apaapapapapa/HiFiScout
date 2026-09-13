@@ -91,6 +91,8 @@ test("reviewed Audio Union product-type buckets classify without broadening sell
       "SPK.LOUDSPEAKER",
     ],
     ["Mark Levinson No5302", "デュアルモノラル・パワーアンプ", "AMP.POWER"],
+    ["ARCAM A25", "インテグレーテッド・アンプ", "AMP.INTEGRATED"],
+    ["ARCAM A5", "インテグレーテッド・アンプ", "AMP.INTEGRATED"],
   ] as const) {
     const product = classify(title, rawCategory);
     assert.equal(product.classificationStatus, "classified", rawCategory);

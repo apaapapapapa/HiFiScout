@@ -23,6 +23,7 @@ const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Ma
   ["中古スピーカー", "SPK.LOUDSPEAKER"],
   ["アンプ内蔵ステレオ・ワイヤレス・スピーカー・システム", "SPK.LOUDSPEAKER"],
   ["管球式プリメインアンプ", "AMP.INTEGRATED"],
+  ["インテグレーテッド・アンプ", "AMP.INTEGRATED"],
   ["デュアルモノラル・パワーアンプ", "AMP.POWER"],
   ["カートリッジ", "ANA.CARTRIDGE"],
   ["cartridge", "ANA.CARTRIDGE"],

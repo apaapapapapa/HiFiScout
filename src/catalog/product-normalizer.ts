@@ -28,7 +28,7 @@ import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js"
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 import { verifiedModelFacetFacts, VERIFIED_MODEL_FACET_SOURCE } from "./verified-model-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 25;
+const CLASSIFICATION_METADATA_VERSION = 26;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -174,7 +174,11 @@ export function normalizeCatalogProduct(
       confidence: 0.8,
       legacyCategoryIds: mappedLegacyCategory ? [mappedLegacyCategory] : [],
     }),
-    ...inferFacetFacts(rawCategory, { source: "seller_category", confidence: 0.7 }),
+    ...inferFacetFacts(rawCategory, {
+      source: "seller_category",
+      confidence: 0.7,
+      legacyCategoryIds: mappedLegacyCategory ? [mappedLegacyCategory] : [],
+    }),
     ...verifiedModelFacetFacts({
       manufacturerId: manufacturer.canonicalManufacturerId,
       model: model.model,

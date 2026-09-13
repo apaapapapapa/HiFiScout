@@ -30,7 +30,7 @@ const EARPHONE_PRODUCT_PATTERN =
 const HEADPHONE_AMPLIFIER_PATTERN =
   /headphone[\s-]?(?:amp|amplifier)|energizer|ヘッドホンアンプ|エナジャイザー/i;
 const INTEGRATED_AMPLIFIER_PATTERN =
-  /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i;
+  /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッド[・\s-]?アンプ/i;
 
 /** `SYS.MULTIFUNCTION` requires explicit co-equal positioning and at least three major roles. */
 function isCoEqualMultifunction(value: string): boolean {
