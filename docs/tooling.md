@@ -196,7 +196,7 @@ configuration, not to these documents.
 Project skills use the repository's `.agents/skills` discovery location and short `description`
 fields. Their `agents/openai.yaml` enables `allow_implicit_invocation`; agents without native discovery
 follow the root routing table directly. Select by requested outcome and current stage, not a keyword
-in inspected data. A contributor typo needs no domain workflow; a catalog replay needs its specific
+in inspected data. A wording-only edit needs no domain workflow; a catalog replay needs its specific
 reference; PR completion uses delivery. Reading an instruction for audit does not invoke it.
 
 When changing a workflow, update its canonical docs and affected skill/routing together. Keep volatile

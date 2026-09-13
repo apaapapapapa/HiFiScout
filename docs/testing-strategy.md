@@ -4,11 +4,12 @@ HiFiScout follows a test pyramid: most behavior is verified in-process with Vite
 
 ## Choosing validation
 
-Match validation to the changed behavior and boundary. Contributor-only prose needs scope/link/diff
-review; published docs and generator changes need `vp run docs:build`. For source/config changes,
-use focused cases while iterating and run the repository's `vp run verify` aggregate on the completed
-candidate. Required CI gates still apply. Reuse applicable existing results; repeat checks for changed
-inputs, failures or a concrete remaining risk, not simply because another instruction says to test.
+Match validation to the changed behavior and boundary. Contributor instructions and wording-only docs
+need scope/link/diff review. Changes to published page structure, links, embeds, navigation or docs
+generators/build configuration need `vp run docs:build`. For source/config changes, use focused cases
+while iterating and run the repository's `vp run verify` aggregate on the completed candidate. Required
+CI gates still apply, including the published docs build. Reuse applicable existing results; repeat
+checks for changed inputs, failures or a concrete risk, not simply because another instruction says to test.
 
 Local unit/D1 tests, the fixture gallery and mocked-auth admin suite use disposable state and may be
 run, fixed and rerun under the implementation task's existing authorization. Deployed public E2E uses

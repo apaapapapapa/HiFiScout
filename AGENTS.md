@@ -55,8 +55,8 @@ should cover a changed boundary or an unresolved risk. Required CI gates remain 
 | Source/config completion | `vp run verify` (fixes, then the checks defined in `package.json`) |
 | Read-only aggregate / format-lint fixes | `vp run check` / `vp run fix` |
 | Focused unit test | `vp test run test/<name>.test.ts` |
-| Published docs or generator change | `vp run docs:build` |
-| Contributor instructions only | Scope/conflict and path review; `git diff --check` |
+| Published page structure/links/embeds/navigation or docs generator/build change | `vp run docs:build` |
+| Contributor instructions or wording-only docs | Scope/conflict and path review; `git diff --check` |
 
 Do not repeat aggregate components or add tests that assert prose/implementation wording. Once the
 applicable checks pass, proceed to delivery; rerun for changed inputs, a failure or a concrete risk.
