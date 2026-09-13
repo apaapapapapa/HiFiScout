@@ -66,18 +66,17 @@ test("shop offer filters are conjoined in one membership set so they hold for th
   );
 
   const { sql, binds } = db.calls[0];
-  const membershipSets =
-    sql.match(/e\.id IN \(\s*SELECT m\.entity_id FROM products p INDEXED BY/g) || [];
-  assert.equal(membershipSets.length, 1);
-  assert.match(sql, /p\.shop_key = \?/);
+  const matchingOffers = sql.match(/FROM products p INDEXED BY[\s\S]+?GROUP BY m\.entity_id/)?.[0];
+  assert.ok(matchingOffers);
+  assert.match(matchingOffers, /p\.shop_key = \?/);
   assert.match(sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
-  assert.match(sql, /p\.stock_status = 'in_stock'/);
+  assert.match(matchingOffers, /p\.stock_status = 'in_stock'/);
   assert.match(
-    sql,
+    matchingOffers,
     /COALESCE\(p\.source_published_at, p\.first_seen_at\) >= strftime\([^\n]+-48 hours/,
   );
-  assert.match(sql, /p\.price_yen < p\.previous_price_yen/);
-  assert.match(sql, /p\.price_yen >= \?/);
+  assert.match(matchingOffers, /p\.price_yen < p\.previous_price_yen/);
+  assert.match(matchingOffers, /p\.price_yen >= \?/);
   // The request-scoped sort subquery is bound before the main WHERE clause.
   assert.deepEqual(binds.slice(0, 2), ["fujiya-avic", 100000]);
   assert.deepEqual(JSON.parse(String(binds[2])), ["luxman", "brand-6mvady"]);

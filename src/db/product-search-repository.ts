@@ -359,8 +359,8 @@ function offerSortScopeKey(query: ProductQuery): string {
 /**
  * Aggregate sort values over exactly the offers accepted by {@link offerFilter}.
  *
- * This is an inner join, so it also proves a matching offer exists. The membership predicate remains
- * in the WHERE clause because the count query shares that predicate and must not depend on ORDER BY.
+ * This inner join also proves a matching offer exists. Only the separate count query still needs
+ * the membership predicate; repeating it on the page would scan the same filtered offers twice.
  */
 function requestScopedSortJoin(filter: OfferFilter): string {
   return ` JOIN (
@@ -464,14 +464,17 @@ export async function searchProducts(
     query.minPrice == null &&
     query.maxPrice == null,
   );
-  addOfferFilter(filter, where, binds, inStockOnly);
+  const relevance = usesRelevanceOrder(query);
+  const requestScopedSort = needsRequestScopedSort(query, filter, relevance, inStockOnly);
 
-  // Snapshot before the cursor predicate: the total must count the whole result set.
+  // Totals have no sort join and must count the whole result set, before the cursor predicate.
   const countWhere = [...where];
   const countBinds = [...binds];
-  const relevance = usesRelevanceOrder(query);
+  addOfferFilter(filter, countWhere, countBinds, inStockOnly);
+  // matching_sort already selects exactly the entities with a matching offer, including an empty
+  // result. Relevance, persisted sorts and dealScore have no such join and still need this filter.
+  if (!requestScopedSort) addOfferFilter(filter, where, binds, inStockOnly);
   const baseSort = sortDefinition(query.sort, query.inStock);
-  const requestScopedSort = needsRequestScopedSort(query, filter, relevance, inStockOnly);
   const inStockDateColumn = inStockOnly
     ? query.sort === "updated"
       ? "latest_in_stock_activity_at"

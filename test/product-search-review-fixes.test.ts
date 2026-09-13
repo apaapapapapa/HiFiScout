@@ -54,7 +54,7 @@ test("offer-filtered price sort orders by the same matching offers shown on the 
     page.sql,
     /ORDER BY matching_sort\.lowest_in_stock_price_yen ASC NULLS LAST, e\.id ASC/,
   );
-  assert.equal(page.binds.filter((value) => value === "hifido").length, 2);
+  assert.equal(page.binds.filter((value) => value === "hifido").length, 1);
 
   assert.ok(result.nextCursor);
   const cursor = decodeCursor(result.nextCursor);

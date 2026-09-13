@@ -4,6 +4,7 @@ import { searchProducts } from "../src/db/product-search-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
 import { productQuery } from "./helpers/product-query.js";
+import { type PlanStep, recordingDatabase } from "./helpers/query-plan.js";
 
 test("shop totals and pages stay scoped when other shops grow", async () => {
   const { db, dispose } = await database();
@@ -114,6 +115,79 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
       assert.ok(matching[2].rowsRead <= matching[0].rowsRead + 30, JSON.stringify(matching));
       assert.ok(matching[2].rowsRead < matching[2].legacyCount / 10, JSON.stringify(matching));
     }
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
+test("filtered price pages bound reads as the matching shops grow", async () => {
+  const { db, dispose } = await database();
+  try {
+    const costs: { size: number; rowsRead: number; statements: number }[] = [];
+    let previous = 0;
+    for (const size of [100, 1_000, 10_000]) {
+      await db
+        .prepare(`WITH RECURSIVE n(i) AS (
+          SELECT CAST(? AS INTEGER) UNION ALL SELECT i+1 FROM n WHERE i<?
+        ) INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,
+          first_seen_at,last_seen_at,last_changed_at,last_activity_at,price_yen)
+          SELECT i,CASE WHEN i%2=0 THEN 'hifido' ELSE 'audiounion' END,CAST(i AS TEXT),
+            'amplifier','https://example.test/'||i,'in_stock',
+            '${AT}','${AT}','${AT}','${AT}',100000 FROM n`)
+        .bind(previous + 1, size)
+        .run();
+      await db
+        .prepare(`INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,
+          offer_count,in_stock_offer_count,shop_count)
+          SELECT id,'l-'||id,'unresolved_listing',id,1,1,1 FROM products WHERE id>?`)
+        .bind(previous)
+        .run();
+      await db
+        .prepare(`INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+          SELECT id,id,shop_key FROM products WHERE id>?`)
+        .bind(previous)
+        .run();
+      const recorded = recordingDatabase(db);
+      const measured = accountReads(recorded.db);
+      const result = await searchProducts(
+        measured.db,
+        productQuery(
+          "?shop=hifido&shop=audiounion&inStock=true&minPrice=75000&maxPrice=125000&sort=priceAsc&limit=25&includeTotal=true",
+        ),
+      );
+      assert.equal(result.totalCount, size);
+      assert.deepEqual(
+        result.items.map((item) => item.key),
+        Array.from({ length: 25 }, (_, i) => `l-${i + 1}`),
+      );
+      assert.ok(result.hasMore && result.nextCursor);
+      assert.equal(measured.rowsWritten(), 0);
+      assert.equal(measured.countedStatements(), 5);
+      // Includes the independent exact count and all page loaders. Re-evaluating membership on
+      // the page used 16 * size + 272 reads; the matching sort join already proves membership.
+      assert.ok(measured.rowsRead() <= 12 * size + 350, `${size}: ${measured.rowsRead()}`);
+      costs.push({
+        size,
+        rowsRead: measured.rowsRead(),
+        statements: measured.countedStatements(),
+      });
+      const page = recorded.executed.find((statement) => statement.sql.includes("matching_sort"));
+      assert.ok(page);
+      const plan = await db
+        .prepare(`EXPLAIN QUERY PLAN ${page.sql}`)
+        .bind(...page.binds)
+        .all<PlanStep>();
+      assert.ok(
+        plan.results?.some((step: PlanStep) =>
+          /SEARCH p USING INDEX idx_products_shop_active_quality/.test(step.detail),
+        ),
+        JSON.stringify(plan.results),
+      );
+      if (size === 10_000)
+        console.log(JSON.stringify({ event: "filtered_price_query_plan", plan: plan.results }));
+      previous = size;
+    }
+    console.log(JSON.stringify({ event: "filtered_price_read_budget", costs }));
   } finally {
     await dispose();
   }
