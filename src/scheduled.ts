@@ -67,6 +67,7 @@ import {
 } from "./knowledge-catalog/queue-write-quota.js";
 import { recoverStaleKnowledgeCatalogExportJobs } from "./knowledge-catalog-export/service.js";
 import { runRetentionCleanup } from "./maintenance.js";
+import { maintainAiCatalogJobs } from "./ai-suggestions/service.js";
 import { maintainMarketAnalysis } from "./db/market-analysis-repository.js";
 import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
@@ -719,6 +720,14 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     everyTicks: 2,
     offset: 4,
     run: (env) => recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
+  },
+  {
+    name: "ai_catalog_maintenance",
+    everyTicks: 12,
+    offset: 4,
+    // One maintenance claim plus the twenty-call maximum of the bounded recovery slice.
+    minimumRemainingCalls: 21,
+    run: (env, now) => maintainAiCatalogJobs(env, now),
   },
   {
     // The normal bootstrap remains hourly. This narrow task adds a ten-minute recovery path after a

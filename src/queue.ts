@@ -6,6 +6,9 @@ import {
   consumeKnowledgeCatalogVerificationBatch,
   consumeKnowledgeCatalogVerificationDeadLetterBatch,
 } from "./knowledge-catalog/consumer.js";
+import { consumeAiCatalogBatch, isAiCatalogMessage } from "./ai-suggestions/service.js";
+import { AI_CATALOG_QUEUE, AI_CATALOG_DLQ } from "./ai-suggestions/types.js";
+import type { AiCatalogMessage } from "./ai-suggestions/types.js";
 import {
   consumeKnowledgeCatalogExportBatch,
   consumeKnowledgeCatalogExportDeadLetterBatch,
@@ -30,6 +33,7 @@ import type { KnowledgeCatalogQueueMessage } from "./knowledge-catalog/types.js"
 import type { ProductAuditExportQueueMessage } from "./product-audit-export/types.js";
 
 export type WorkerQueueMessage =
+  | AiCatalogMessage
   | KnowledgeCatalogQueueMessage
   | KnowledgeCatalogExportQueueMessage
   | ProductAuditExportQueueMessage;
@@ -62,6 +66,17 @@ export async function handleQueue(
   batch: MessageBatch<WorkerQueueMessage>,
   env: Env,
 ): Promise<void> {
+  if (batch.queue === AI_CATALOG_QUEUE || batch.queue === AI_CATALOG_DLQ) {
+    if (batch.messages.every((m) => isAiCatalogMessage(m.body)))
+      return consumeAiCatalogBatch(
+        env,
+        batch as MessageBatch<AiCatalogMessage>,
+        batch.queue === AI_CATALOG_DLQ,
+      );
+    // Poison input must not create an inference/retry storm.
+    for (const message of batch.messages) message.ack();
+    return;
+  }
   if (batch.queue === PRODUCT_AUDIT_EXPORT_QUEUE && isProductAuditExportBatch(batch)) {
     return consumeProductAuditExportBatch(env, batch);
   }
