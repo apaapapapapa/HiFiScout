@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { loopSpecDigest, parseLoopSpec } from "./contract.js";
-import { assessLoopRun, beginLoopAttempt, recordLoopEvent } from "./controller.js";
+import { beginLoopAttempt, recordLoopEvent } from "./controller.js";
 import { isRecord } from "../../../src/types.js";
 import { applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
 import { evaluateLoopAttempt } from "./evaluation.js";
@@ -12,6 +12,7 @@ import {
 } from "./publication.js";
 import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
+import { loopStatus, loopStatusMarkdown, writeLoopStatus } from "./status.js";
 
 export async function runLoopCli(args: string[]): Promise<number> {
   const json = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
@@ -22,8 +23,19 @@ export async function runLoopCli(args: string[]): Promise<number> {
   } else if (args[0] === "init" && args.length === 3)
     result = await createLoopRun(await json(args[1]), args[2]);
   else if (args[0] === "history" && args.length === 2) result = await readLoopRun(args[1]);
-  else if (args[0] === "status" && args.length === 2)
-    result = assessLoopRun(await readLoopRun(args[1]));
+  else if (
+    args[0] === "status" &&
+    (args.length === 2 || (args.length === 3 && args[2] === "--markdown"))
+  ) {
+    result = loopStatus(await readLoopRun(args[1]));
+    if (args[2] === "--markdown") {
+      console.log(loopStatusMarkdown(result as ReturnType<typeof loopStatus>));
+      return 0;
+    }
+  } else if (args[0] === "snapshot" && args.length === 3)
+    result = await writeLoopStatus(await readLoopRun(args[1]), args[2]);
+  else if (args[0] === "heartbeat" && args.length === 2)
+    result = await recordLoopEvent(args[1], await readLoopRun(args[1]), "heartbeat", {});
   else if (args[0] === "ingest" && args.length === 3) {
     const item = await ingestLoopSignal(await json(args[1]), args[2]);
     result = { item, spec: specFromSignal(item.signal) };

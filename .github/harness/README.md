@@ -66,6 +66,20 @@ retains fresh GitHub snapshots and advances only when the contracted target is v
 main run is pending, not success. These commands retain their journal and evidence on interruption;
 rerunning publish does not create duplicate PRs or restart a recorded review wait.
 
+## Progress visibility
+
+`loop status <state>` returns phase, reservations, remaining budgets, blockers, review deadline,
+last recorded progress, last evaluation improvement and heartbeat separately. `--markdown` renders
+the same snapshot as a table; `loop snapshot <state> <directory>` writes `status.json` and `status.md`
+for artifacts or a GitHub step summary. `loop heartbeat <state>` records liveness reporting without
+moving progress or deadlines. Status is evidence of the saved run, not a live process probe or an ETA;
+completion time remains unknown and `nextCheckAt` is only a suggested observation time.
+
+For an agent/CI handoff, retain the journal, owned worktrees/manifests and `.generated/loop` evidence
+together, and append the generated Markdown to `$GITHUB_STEP_SUMMARY` in the owning runner. The CLI's
+successful return means its operation was recorded: inspect `phase`, `reason` and `nextAction` to
+continue or stop. A source failure that permits another attempt is not a completed repair.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
