@@ -77,12 +77,40 @@ jobs:
       - run: vp run ci:test-shard-${{ matrix.shard }}
         if: steps.scope.outputs.application == 'true'
       - name: Preserve unit timing profiles
-        if: success() && steps.scope.outputs.application == 'true'
+        if: always() && steps.scope.outputs.application == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-timings-${{ matrix.shard }}
           path: .generated/unit-timings-${{ matrix.shard }}.json
           retention-days: 7
+          if-no-files-found: error
+
+  product-replay:
+    needs: unit-test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
+      - uses: ./.github/actions/setup-node-deps
+        if: steps.scope.outputs.application == 'true'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: steps.scope.outputs.application == 'true'
+        with:
+          pattern: unit-timings-*
+          path: .generated/replay-input
+          merge-multiple: true
+      - name: Assemble fixed product regression evidence from all four CI shards
+        if: steps.scope.outputs.application == 'true'
+        run: vp run harness replay .generated/product-replay .generated/replay-input/unit-timings-{1,2,3,4}.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && steps.scope.outputs.application == 'true'
+        with:
+          name: product-replay
+          path: .generated/product-replay/
+          retention-days: 30
           if-no-files-found: error
 
   integration:
@@ -172,6 +200,7 @@ jobs:
     needs:
       - static-checks
       - unit-test
+      - product-replay
       - integration
       - migration-safety
       - component
@@ -185,6 +214,7 @@ jobs:
         env:
           STATIC_RESULT: ${{ needs.static-checks.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
+          REPLAY_RESULT: ${{ needs.product-replay.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           MIGRATION_RESULT: ${{ needs.migration-safety.result }}
           COMPONENT_RESULT: ${{ needs.component.result }}
@@ -194,6 +224,7 @@ jobs:
           for result in \
             "${STATIC_RESULT}" \
             "${UNIT_RESULT}" \
+            "${REPLAY_RESULT}" \
             "${INTEGRATION_RESULT}" \
             "${MIGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \
