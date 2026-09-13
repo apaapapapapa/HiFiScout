@@ -3,8 +3,16 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "delivery" && args.length === 4) {
+    const { collectDelivery } = await import("./harness/github.js");
+    const report = await collectDelivery(args[1], Number(args[2]), args[3]);
+    console.log(JSON.stringify(report, null, 2));
+    return reportExitCode(report.status);
+  }
   if (args[0] !== "report" || args.length !== 2) {
-    throw new Error("usage: vp run harness report <report.json>");
+    throw new Error(
+      "usage: vp run harness report <report.json> | delivery <owner/repo> <PR> <output-dir>",
+    );
   }
   const input: unknown = JSON.parse(await readFile(args[1], "utf8"));
   const report = assessHarnessReport(input);
