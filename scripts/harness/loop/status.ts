@@ -50,10 +50,17 @@ export function loopStatus(value: unknown, now = new Date().toISOString()) {
               : Infinity,
           ),
         ).toISOString();
-  const checks = bindRequiredChecks(
-    run.spec.task.requirements,
-    view.lastDeliveryReport?.checks ?? view.lastReport?.checks ?? [],
-  );
+  const observed = [...(view.lastReport?.checks ?? []), ...(view.lastDeliveryReport?.checks ?? [])];
+  const selected = new Map(observed.map((check) => [check.id, check]));
+  for (const requirement of run.spec.task.requirements) {
+    const match = observed
+      .slice()
+      .reverse()
+      .find((check) => check.id === requirement.id && check.scope === requirement.scope);
+    if (match) selected.set(requirement.id, match);
+    else selected.delete(requirement.id);
+  }
+  const checks = bindRequiredChecks(run.spec.task.requirements, [...selected.values()]);
   return {
     ...view,
     generatedAt: at,
