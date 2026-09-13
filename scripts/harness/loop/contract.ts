@@ -110,11 +110,11 @@ export function parseLoopSpec(value: unknown): LoopSpec {
   const delivery = {
     target,
     review,
-    reviewWaitMs: integer(value.delivery.reviewWaitMs, "review_wait", 1, 86_400_000),
+    reviewWaitMs: integer(value.delivery.reviewWaitMs, "review_wait", 1, 900_000),
   } as LoopSpec["delivery"];
   // Materialize mandatory milestones in the frozen task so checkpoint/resume cannot omit them.
   const mandatory = deliveryRequirements(delivery);
-  if (value.kind === "ai") mandatory.push({ id: "ai:holdout", scope: "source" });
+  if (value.kind === "ai") mandatory.push({ id: "ai/offline-holdout", scope: "source" });
   for (const requirement of mandatory) {
     const existing = task.requirements.find((r) => r.id === requirement.id);
     if (existing && existing.scope !== requirement.scope)
@@ -163,6 +163,8 @@ const protectedPaths = [
   "src/types.ts",
   "test/harness",
   "test/loop",
+  "test/fixtures/ai-catalog-holdout.ts",
+  "e2e",
   "evaluations",
   "migrations",
   "wrangler.jsonc",

@@ -17,6 +17,7 @@ test("loop contracts freeze acceptance, scope, budget and delivery policy", () =
     ".github/workflows/ci.yml",
     "test/loop-contract.test.ts",
     "test/harness-ai.test.ts",
+    "test/fixtures/ai-catalog-holdout.ts",
     "scripts/harness.ts",
     "src/types.ts",
     "scripts/check-no-first-party-js.ts",
@@ -35,6 +36,10 @@ test("malformed budgets and acceptance cannot become permissive defaults", () =>
       parseLoopSpec({ ...example, budget: { ...example.budget, maxIterations: value } }),
     );
   assert.throws(() => parseLoopSpec({ ...example, allowedPaths: ["src/"] }));
+  assert.throws(
+    () => parseLoopSpec({ ...example, delivery: { ...example.delivery, reviewWaitMs: 900_001 } }),
+    /review_wait/u,
+  );
   const deployed = parseLoopSpec({
     ...example,
     delivery: { ...example.delivery, target: "deployment", review: "required" },
@@ -75,7 +80,9 @@ test("domain loops cannot opt out of their comparison or AI gate", () => {
     "cost",
   ]);
   assert.ok(
-    parseLoopSpec({ ...example, kind: "ai" }).task.requirements.some((r) => r.id === "ai:holdout"),
+    parseLoopSpec({ ...example, kind: "ai" }).task.requirements.some(
+      (r) => r.id === "ai/offline-holdout",
+    ),
   );
   const broad = parseLoopSpec({
     ...example,
@@ -87,4 +94,7 @@ test("domain loops cannot opt out of their comparison or AI gate", () => {
   assert.equal(pathAllowed(controls, ".claude/settings.json"), false);
   assert.equal(pathAllowed(controls, ".npmrc"), false);
   assert.equal(pathAllowed(controls, "src/.claude/settings.json"), false);
+  const browser = parseLoopSpec({ ...example, allowedPaths: ["e2e"] });
+  assert.equal(pathAllowed(browser, "e2e/playwright.components.config.ts"), false);
+  assert.equal(pathAllowed(browser, "e2e/playwright.admin.config.ts"), false);
 });

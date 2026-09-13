@@ -36,6 +36,37 @@ export interface LoopRun {
   events: LoopEvent[];
 }
 
+function assertJsonData(value: unknown, seen = new Set<object>()): void {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number" && Number.isFinite(value)) return;
+  if (typeof value !== "object" || value === null || seen.has(value))
+    throw new Error("non_json_loop_event_data");
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      Reflect.ownKeys(value).length !== value.length + 1
+    )
+      throw new Error("non_json_loop_event_data");
+    for (let i = 0; i < value.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+      if (!descriptor || !Object.hasOwn(descriptor, "value"))
+        throw new Error("non_json_loop_event_data");
+      assertJsonData(descriptor.value, seen);
+    }
+  } else {
+    if (Object.getPrototypeOf(value) !== Object.prototype)
+      throw new Error("non_json_loop_event_data");
+    for (const key of Reflect.ownKeys(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+      if (typeof key !== "string" || !descriptor.enumerable || !Object.hasOwn(descriptor, "value"))
+        throw new Error("non_json_loop_event_data");
+      assertJsonData(descriptor.value, seen);
+    }
+  }
+  seen.delete(value);
+}
+
 function makeEvent(
   sequence: number,
   at: string,
@@ -43,13 +74,13 @@ function makeEvent(
   data: Record<string, unknown>,
   previousDigest: string,
 ): LoopEvent {
-  const fields = { sequence, at: requireTimestamp(at), type, data, previousDigest };
+  assertJsonData(data);
+  const payload: Record<string, unknown> = JSON.parse(JSON.stringify(data));
+  const fields = { sequence, at: requireTimestamp(at), type, data: payload, previousDigest };
   return { ...fields, digest: digest(fields) };
 }
 
 export function parseLoopRun(value: unknown): LoopRun {
-  if (JSON.stringify(value, null, 2).length + 1 > 4_194_304)
-    throw new Error("loop_state_too_large");
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
@@ -95,7 +126,17 @@ export function parseLoopRun(value: unknown): LoopRun {
   const updatedAt = requireTimestamp(value.updatedAt);
   if (revision !== events.length || updatedAt !== previousAt || events[0].at !== startedAt)
     throw new Error("invalid_loop_revision_or_interval");
-  return { schemaVersion: 1, revision, spec, specDigest, startedAt, updatedAt, events };
+  const run: LoopRun = {
+    schemaVersion: 1,
+    revision,
+    spec,
+    specDigest,
+    startedAt,
+    updatedAt,
+    events,
+  };
+  if (JSON.stringify(run, null, 2).length + 1 > 4_194_304) throw new Error("loop_state_too_large");
+  return run;
 }
 
 export async function readLoopRun(path: string): Promise<LoopRun> {

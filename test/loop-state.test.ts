@@ -86,3 +86,26 @@ test("an append cannot make a persisted journal too large to read", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("event data cannot be silently lost or normalized during persistence", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "loop-json-"));
+  const path = join(dir, "state.json");
+  try {
+    const run = await createLoopRun(example, path);
+    for (const value of [undefined, NaN, Infinity, new Date(), { nested: undefined }, Array(1)]) {
+      await assert.rejects(
+        appendLoopEvent(path, run.revision, run.specDigest, "heartbeat", { value }),
+        /non_json_loop_event_data/u,
+      );
+      assert.deepEqual(await readLoopRun(path), run);
+    }
+    const value = { nested: [1, "text", null, true] };
+    const updated = await appendLoopEvent(path, run.revision, run.specDigest, "heartbeat", {
+      value,
+    });
+    value.nested[0] = 2;
+    assert.deepEqual(await readLoopRun(path), updated);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
