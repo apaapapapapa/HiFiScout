@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import worker from "../src/index.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { captureDatabase } from "./helpers/d1.js";
 
 test("malformed queue bodies are retried without throwing during route detection", async () => {
@@ -73,6 +74,7 @@ test("Knowledge Catalog export routing requires the complete cursor guard", asyn
 test("Knowledge Catalog exports use the existing serialized main queue", async () => {
   let acknowledgements = 0;
   let retries = 0;
+  let sends = 0;
   const batch = {
     queue: "hifiscout-product-audit-export",
     messages: [
@@ -95,13 +97,29 @@ test("Knowledge Catalog exports use the existing serialized main queue", async (
   const env = {
     DB: captureDatabase(),
     EVIDENCE_BUCKET: {},
-    PRODUCT_AUDIT_EXPORT_QUEUE: { async send() {} },
+    PRODUCT_AUDIT_EXPORT_QUEUE: {
+      async send() {
+        sends++;
+      },
+    },
   } as unknown as Parameters<typeof worker.queue>[1];
 
   await worker.queue(batch, env);
 
   assert.equal(acknowledgements, 1);
   assert.equal(retries, 0);
+  await worker.queue(batch, env);
+  assert.equal(acknowledgements, 2);
+  assert.equal(sends, 0);
+  await recordCostSample(
+    "queue-export-redelivery",
+    "local-mock",
+    { queueSends: sends, queueRetries: retries },
+    ["test/queue-routing.test.ts"],
+    [
+      "two deliveries for an absent export job; routing and idempotent acknowledgement only; no service billing",
+    ],
+  );
 });
 
 test("Knowledge Catalog exports use the existing serialized dead-letter queue", async () => {

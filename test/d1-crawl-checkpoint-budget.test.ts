@@ -10,6 +10,8 @@ import {
   getCrawlFetchSession,
 } from "../src/db/crawl-fetch-session-repository.js";
 import { AT, database, listing } from "./helpers/d1-write-budget.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 
 test("inline listing checkpoints reduce billed D1 writes and duplicate deliveries write zero rows", async () => {
   const { db, dispose } = await database();
@@ -31,7 +33,8 @@ test("inline listing checkpoints reduce billed D1 writes and duplicate deliverie
         pages: [pages[0]],
         createdAt: AT,
       });
-      const measured = accountReads(db);
+      const boundary = measureD1Cost(db);
+      const measured = accountReads(boundary.db);
       let sequence = 0;
       for (const [i, page] of pages.entries()) {
         if (!inline) {
@@ -84,6 +87,15 @@ test("inline listing checkpoints reduce billed D1 writes and duplicate deliverie
         rowsRead: measured.rowsRead(),
         statements: measured.countedStatements(),
       };
+      await recordCostSample(
+        `crawl-checkpoint-${inline ? "inline" : "split"}`,
+        "local-workerd",
+        boundary.metrics(),
+        ["test/d1-crawl-checkpoint-budget.test.ts"],
+        [
+          "20 pages; fixture setup and duplicate-delivery assertions excluded; workerd metadata, not production billing",
+        ],
+      );
     }
     assert.ok(costs.inline.rowsWritten <= costs.split.rowsWritten * 0.75, JSON.stringify(costs));
     assert.ok(costs.inline.statements < costs.split.statements, JSON.stringify(costs));

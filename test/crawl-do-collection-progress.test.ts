@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { test } from "vite-plus/test";
 import { CrawlScheduler } from "../src/crawler/crawl-scheduler-do.js";
 import { getCrawlerSettings } from "../src/config.js";
@@ -356,12 +357,14 @@ test("a failure after direct HTTP cannot reuse its consumed permit before a new 
     ],
   ]);
   const alarms: number[] = [];
+  let storageWrites = 0;
   const ctx = {
     storage: {
       async get(key: string) {
         return structuredClone(stored.get(key));
       },
       async put(key: string, value: unknown) {
+        storageWrites++;
         stored.set(key, structuredClone(value));
       },
       async setAlarm(at: number) {
@@ -402,6 +405,15 @@ test("a failure after direct HTTP cannot reuse its consumed permit before a new 
     assert.equal(prepared.permit.notBeforeMs, now + 1000, "retry receives a new delayed permit");
     await new CrawlScheduler(ctx, env as unknown as Env).alarm();
     assert.equal(sellerFetches, 1);
+    await recordCostSample(
+      "crawl-do-retry",
+      "local-mock",
+      { doAlarms: alarms.length, doStorageWrites: storageWrites },
+      ["test/crawl-do-collection-progress.test.ts"],
+      [
+        "failed inline commit and early retry; fake clock and storage; seller HTTP stubbed; counts are calls, not billed rows",
+      ],
+    );
   } finally {
     Date.now = originalNow;
     globalThis.fetch = originalFetch;

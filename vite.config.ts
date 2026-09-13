@@ -37,9 +37,10 @@ function ciTestShard(shard: number) {
   const report = `.generated/unit-timings-${shard}.json`;
   return {
     command: ciShell(
-      `vp exec tsx scripts/ensure-directories.ts .generated && ${packageJson.scripts.test} --reporter=dot --reporter=json --outputFile.json=${report} --shard=${shard}/4`,
+      `vp exec tsx scripts/ensure-directories.ts .generated && HARNESS_COST_OUTPUT=.generated/harness-cost ${packageJson.scripts.test} --reporter=dot --reporter=json --outputFile.json=${report} --shard=${shard}/4`,
     ),
-    output: [report],
+    env: ["GITHUB_SHA"],
+    output: [report, ".generated/harness-cost"],
   };
 }
 
@@ -87,8 +88,11 @@ export default defineConfig(({ mode }) => ({
       "ci:test-shard-3": ciTestShard(3),
       "ci:test-shard-4": ciTestShard(4),
       "ci:parser-benchmark": {
-        command: ciScript("benchmark:parser"),
-        output: [],
+        command: ciShell(
+          `HARNESS_COST_OUTPUT=.generated/harness-cost ${packageJson.scripts["benchmark:parser"]}`,
+        ),
+        env: ["GITHUB_SHA"],
+        output: [".generated/harness-cost"],
       },
       "ci:build-public": ciScript("build:frontend:public"),
       "ci:build-admin": ciScript("build:frontend:admin"),

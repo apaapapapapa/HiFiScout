@@ -3,6 +3,18 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "cost-report" && args.length === 3) {
+    const { costReport } = await import("./harness/cost.js");
+    const result = await costReport(args[1], args[2]);
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
+  if (args[0] === "compare-cost" && args.length === 3) {
+    const { compareCosts, readCostSamples } = await import("./harness/cost.js");
+    const result = compareCosts(await readCostSamples(args[1]), await readCostSamples(args[2]));
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
   if (args[0] === "replay" && args.length >= 2) {
     const { runReplay } = await import("./harness/replay.js");
     const result = await runReplay(args[1], args.slice(2));
