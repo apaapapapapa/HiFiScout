@@ -291,11 +291,6 @@ export function createMockAdminRpc() {
     getModelFacts: unsupported("getModelFacts"),
     saveModelFacts: unsupported("saveModelFacts"),
     getOfferFactReplay: async () => (state.replay.stepCalls ? replayProgress() : null),
-    async stepOfferFactReplay() {
-      state.replay.stepCalls++;
-      state.replay.scannedCount = Math.min(state.replay.scannedCount + 25, state.replay.totalCount);
-      return replayProgress();
-    },
     async listManufacturers({ query, afterId, limit }) {
       const matching = [
         { id: "accuphase", name: "Accuphase" },

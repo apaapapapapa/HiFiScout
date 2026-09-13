@@ -11,7 +11,14 @@ import { AdminCrawls } from "./admin-crawls.js";
 import { AdminJobsPanel } from "./admin-jobs.js";
 import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
-import { ADMIN_VIEWS, adminLocation, adminViewUrl, isCatalogView } from "./admin-navigation.js";
+import {
+  ADMIN_VIEWS,
+  ADMIN_WORKSPACES,
+  adminWorkspace,
+  adminLocation,
+  adminViewUrl,
+  isCatalogView,
+} from "./admin-navigation.js";
 import type { AdminView } from "./admin-navigation.js";
 import { adminWorkCountLabel, useAdminWorkCounts } from "./admin-work-counts.js";
 
@@ -29,14 +36,23 @@ export function AdminConsole() {
   const focusNextView = useRef(false);
   const active = ADMIN_VIEWS.find((view) => view.id === location.view)!;
   const catalogView = isCatalogView(location.view) ? location.view : null;
-  const listingActive = location.view === "listings" || location.view === "maintenance";
+  const listingActive = location.view === "listings";
+  const workspace = adminWorkspace(location.view);
+  const tasks = workspace.views.map((id) => ADMIN_VIEWS.find((view) => view.id === id)!);
 
   useEffect(() => {
     const sync = () => {
       const next = adminLocation(window.location);
+      if (window.location.hash === "#maintenance")
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${window.location.search}#jobs`,
+        );
       setLocation(next);
       setVisited((current) => new Set(current).add(next.view));
     };
+    sync();
     window.addEventListener("popstate", sync);
     window.addEventListener("hashchange", sync);
     return () => {
@@ -95,51 +111,35 @@ export function AdminConsole() {
           </span>
         </a>
         <nav className="admin-navigation" aria-label="管理メニュー">
-          {["日常の管理", "データの整備"].map((group) => (
-            <div className="admin-nav-group" key={group}>
-              <p>{group}</p>
-              {ADMIN_VIEWS.filter((view) => view.group === group).map((view) => (
-                <a
-                  key={view.id}
-                  id={`admin-nav-${view.id}`}
-                  href={adminViewUrl(window.location.href, view.id)}
-                  aria-current={view.id === location.view ? "page" : undefined}
-                  aria-label={view.label}
-                  aria-description={
-                    workCount(view.id) !== null ? `作業件数 ${workCount(view.id)}` : undefined
-                  }
-                  onClick={(event) => navigate(event, view.id)}
-                >
-                  {view.label}
-                  {workCount(view.id) !== null ? (
-                    <span className="admin-work-count" aria-hidden="true">
-                      {workCount(view.id)}
-                    </span>
-                  ) : (
-                    <span className="admin-nav-arrow" aria-hidden="true">
-                      ›
-                    </span>
-                  )}
-                </a>
-              ))}
-            </div>
-          ))}
+          <div className="admin-nav-group">
+            {ADMIN_WORKSPACES.map((item) => (
+              <a
+                key={item.id}
+                href={adminViewUrl(window.location.href, item.views[0])}
+                aria-current={workspace.id === item.id ? "true" : undefined}
+                onClick={(event) => navigate(event, item.views[0])}
+              >
+                {item.label}
+                <span className="admin-nav-arrow" aria-hidden="true">
+                  ›
+                </span>
+              </a>
+            ))}
+          </div>
         </nav>
         <label className="admin-mobile-navigation">
-          <span>作業を選ぶ</span>
+          <span>管理分野を選ぶ</span>
           <select
-            value={location.view}
-            onChange={(event) => selectView(event.currentTarget.value as AdminView)}
+            value={workspace.id}
+            onChange={(event) => {
+              const next = ADMIN_WORKSPACES.find((item) => item.id === event.currentTarget.value);
+              if (next) selectView(next.views[0]);
+            }}
           >
-            {["日常の管理", "データの整備"].map((group) => (
-              <optgroup key={group} label={group}>
-                {ADMIN_VIEWS.filter((view) => view.group === group).map((view) => (
-                  <option key={view.id} value={view.id}>
-                    {view.label}
-                    {workCount(view.id) !== null ? `　${workCount(view.id)}` : ""}
-                  </option>
-                ))}
-              </optgroup>
+            {ADMIN_WORKSPACES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
             ))}
           </select>
         </label>
@@ -155,13 +155,48 @@ export function AdminConsole() {
       <main className="admin-content" id="admin-content" tabIndex={-1}>
         <header className="admin-workspace-heading">
           <p className="admin-breadcrumb">
-            管理コンソール <span aria-hidden="true">/</span> {active.group}
+            管理コンソール <span aria-hidden="true">/</span> {workspace.label}
           </p>
           <h1 ref={title} tabIndex={-1}>
             {active.label}
           </h1>
           <p>{active.description}</p>
         </header>
+        <nav className="admin-task-navigation" aria-label={`${workspace.label}の作業`}>
+          {tasks.map((view) => (
+            <a
+              key={view.id}
+              href={adminViewUrl(window.location.href, view.id)}
+              aria-current={view.id === location.view ? "page" : undefined}
+              aria-label={view.label}
+              aria-description={
+                workCount(view.id) !== null ? `作業件数 ${workCount(view.id)}` : undefined
+              }
+              onClick={(event) => navigate(event, view.id)}
+            >
+              {view.label}
+              {workCount(view.id) !== null ? (
+                <span className="admin-work-count" aria-hidden="true">
+                  {workCount(view.id)}
+                </span>
+              ) : null}
+            </a>
+          ))}
+        </nav>
+        <label className="admin-mobile-navigation admin-task-selector">
+          <span>作業を選ぶ</span>
+          <select
+            value={location.view}
+            onChange={(event) => selectView(event.currentTarget.value as AdminView)}
+          >
+            {tasks.map((view) => (
+              <option key={view.id} value={view.id}>
+                {view.label}
+                {workCount(view.id) !== null ? `　${workCount(view.id)}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
         <div hidden={location.view !== "quality"}>
           {visited.has("quality") ? <AdminQualityPanel /> : null}
         </div>
@@ -186,6 +221,9 @@ export function AdminConsole() {
         <div hidden={location.view !== "jobs"}>
           {visited.has("jobs") ? (
             <AdminJobsPanel
+              active={location.view === "jobs"}
+              revision={dataRevision}
+              search={location.search}
               onDataChanged={() => {
                 setBackgroundRevision((value) => value + 1);
                 setDataRevision((value) => value + 1);
@@ -213,10 +251,9 @@ export function AdminConsole() {
           ) : null}
         </div>
         <div hidden={!listingActive}>
-          {visited.has("listings") || visited.has("maintenance") ? (
+          {visited.has("listings") ? (
             <ListingAdmin
               revision={dataRevision}
-              view={location.view === "maintenance" ? "maintenance" : "listings"}
               active={listingActive}
               search={listingActive ? location.search : ""}
             />

@@ -1,3 +1,4 @@
+import { AdminConsolePage } from "../pages/admin-console-page.js";
 import { test, expect } from "./fixtures.js";
 import { RESOLUTION_VERSIONS } from "../../src/catalog/resolution-versions.js";
 
@@ -27,14 +28,13 @@ test("observing a successful retry invalidates previously loaded catalog and rep
   await expect(page.getByRole("region", { name: "バックグラウンド処理一覧" })).toContainText(
     "失敗 1件",
   );
-  const nav = page.getByRole("navigation", { name: "管理メニュー" });
-  await nav.getByRole("link", { name: "製品カタログ", exact: true }).click();
+  const admin = new AdminConsolePage(page.locator("#admin-root"), page);
+  await admin.openCatalog();
   await expect(page.getByRole("button", { name: "LUXMAN D-1000", exact: true })).toBeVisible();
-  await nav.getByRole("link", { name: "出品条件の再処理", exact: true }).click();
+  await admin.openSection("バックグラウンド処理");
   await expect(page.getByRole("region", { name: "出品条件の再処理・充足率" })).toContainText(
     "再処理できます",
   );
-  await nav.getByRole("link", { name: "バックグラウンド処理", exact: true }).click();
   app.state.catalog.canonicalName = "再試行後のカタログ";
   app.state.replay.scannedCount = 550;
   app.state.replay.stepCalls = 1;
@@ -43,9 +43,9 @@ test("observing a successful retry invalidates previously loaded catalog and rep
   job.status = "completed";
   await page.getByRole("button", { name: "進捗を再読み込み" }).click();
   await expect(page.getByRole("cell", { name: /^完了/u })).toBeVisible();
-  await nav.getByRole("link", { name: "製品カタログ", exact: true }).click();
+  await admin.openCatalog();
   await expect(page.getByRole("button", { name: "再試行後のカタログ", exact: true })).toBeVisible();
-  await nav.getByRole("link", { name: "出品条件の再処理", exact: true }).click();
+  await admin.openSection("バックグラウンド処理");
   await expect(page.getByRole("region", { name: "出品条件の再処理・充足率" })).toContainText(
     "再処理は完了しています",
   );
@@ -133,7 +133,9 @@ test("a fully uploaded job can start after navigation and cancellation confirms 
     await dialog.accept();
   });
   await page.getByRole("button", { name: "中止", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("適用済みの変更は保持");
+  await expect(page.getByRole("status", { name: "処理一覧の状態" })).toContainText(
+    "適用済みの変更は保持",
+  );
   expect(app.state.jobs.get(id)?.status).toBe("cancelled");
 });
 
@@ -156,7 +158,7 @@ test("model and category replay confirms, survives navigation, and displays curr
     await dialog.accept();
   });
   await panel.getByRole("button", { name: "旧バージョンの商品を一括再判定" }).click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status", { name: "処理一覧の状態" })).toContainText(
     "型番・カテゴリの一括再判定を受け付けました",
   );
   const job = [...app.state.jobs.values()][0];
@@ -212,7 +214,9 @@ test("catalog replay confirms its scope and retains separate replay and skip cou
   expect(app.state.jobs.size).toBe(0);
   page.once("dialog", (dialog) => dialog.accept());
   await panel.getByRole("button", { name: "カタログの変更を反映" }).click();
-  await expect(page.getByRole("status")).toContainText("カタログ更新の再反映を受け付けました");
+  await expect(page.getByRole("status", { name: "処理一覧の状態" })).toContainText(
+    "カタログ更新の再反映を受け付けました",
+  );
   const job = [...app.state.jobs.values()][0];
   expect(job.kind).toBe("catalog");
   expect(app.state.replay.stepCalls).toBe(0);

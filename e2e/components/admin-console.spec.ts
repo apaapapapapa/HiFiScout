@@ -70,6 +70,7 @@ async function mockAdminApi(page: Page): Promise<void> {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname === "/api/admin/offer-facts/replay") return json(null);
+    if (url.pathname === "/api/admin/jobs") return json({ items: [], nextBefore: null });
     if (url.pathname === "/api/admin/work-counts")
       return json({
         reports: 0,
@@ -196,7 +197,7 @@ test("admin exports expose every ZIP volume and retain the legacy CSV download",
   );
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.catalog.csvSummary.click();
+  await admin.openSection("CSV入出力");
   for (let part = 1; part <= 3; part += 1) {
     const link = component.getByRole("link", { name: `ZIP ${part} / 3`, exact: true });
     await expect(link).toBeVisible();
@@ -237,6 +238,7 @@ async function mockBackgroundUpload(page: Page, failure?: "outage" | "expired" |
   };
   await page.route("**/api/admin/jobs", async (route) => {
     const command = route.request().postDataJSON();
+    if (command.action === "list") return route.fulfill({ json: { items: [], nextBefore: null } });
     state.commands.push(command);
     if (command.action === "create")
       state.job ||= {
@@ -303,13 +305,16 @@ test("CSV upload requires a reviewed diff and retries with the same job and oper
   const state = await mockBackgroundUpload(page, "outage");
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.catalog.csvSummary.click();
+  await admin.openSection("CSV入出力");
   const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
   await panel
     .getByLabel("編集済みCSV（100MiB以内）")
     .setInputFiles({ name: "corrections.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
   await expect(panel.getByRole("button", { name: "0件の更新を実行" })).toBeDisabled();
   await panel.getByRole("button", { name: "差分を確認" }).click();
+  await expect(panel.getByRole("table")).toContainText("C10 → C11");
+  await admin.openListings();
+  await admin.openSection("CSV入出力");
   await expect(panel.getByRole("table")).toContainText("C10 → C11");
   expect(state.commands).toHaveLength(0);
   await panel.getByRole("button", { name: "1件の更新を実行" }).click();
@@ -347,7 +352,7 @@ test("CSV background submission preserves both catalog creation and correction t
   const state = await mockBackgroundUpload(page);
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.catalog.csvSummary.click();
+  await admin.openSection("CSV入出力");
   const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
   await panel
     .getByLabel("編集済みCSV（100MiB以内）")
@@ -388,7 +393,7 @@ for (const failure of ["expired", "redirect"] as const)
     const state = await mockBackgroundUpload(page, failure);
     const component = await mount("frontend/admin-console/Default");
     const admin = new AdminConsolePage(component, page);
-    await admin.catalog.csvSummary.click();
+    await admin.openSection("CSV入出力");
     const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
     await panel
       .getByLabel("編集済みCSV（100MiB以内）")
@@ -420,10 +425,10 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   await expect(admin.catalog.heading).toBeVisible();
   await expect(admin.catalog.duplicateHeading).not.toBeVisible();
   await expect(admin.catalog.candidateHeading).not.toBeVisible();
-  await expect(admin.catalog.csvSummary).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(14);
-  await expect(admin.sectionLinks.filter({ hasText: "AIの型番候補" })).toBeVisible();
-  await expect(admin.sectionLinks.filter({ hasText: "ショップ別クロール" })).toBeVisible();
+  await expect(admin.catalog.csvSummary).not.toBeVisible();
+  await expect(admin.sectionLinks).toHaveCount(5);
+  await expect(admin.sectionLink("AIの型番候補")).toBeVisible();
+  await expect(admin.sectionLinks.filter({ hasText: "稼働管理" })).toBeVisible();
 
   await admin.catalog.searchFor("D-1000");
   await expect(admin.catalog.resultSummary).toContainText("検索「D-1000」");
@@ -451,7 +456,7 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listingsTab).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/#listings$/u);
   await expect(admin.listings.heading).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(14);
+  await expect(admin.sectionLinks).toHaveCount(5);
 
   await admin.listings.searchFor("D-1000");
   await expect(admin.listings.status).toContainText("検索条件を反映しました");
@@ -645,49 +650,49 @@ test("offer editor saves only changed decisions and can restore seller authority
   await expect(editor.getByLabel("リモコン", { exact: true })).toHaveValue("inherit");
 });
 
-test("offer replay resumes server progress after an interrupted response", async ({
+test("offer replay retains read-only coverage and retries missing progress without foreground writes", async ({
   page,
   mount,
 }) => {
-  let scanned = 0;
+  let fail = true;
   let writes = 0;
-  await page.route("**/api/admin/offer-facts/replay", async (route) => {
-    if (route.request().method() === "POST") {
-      expect(route.request().postDataJSON()).toEqual({});
-      writes++;
-      scanned += 25;
-      if (writes === 1) return route.fulfill({ status: 503, json: { error: "interrupted" } });
-    }
-    return route.fulfill({
-      json: {
-        ruleVersion: 1,
-        scannedCount: scanned,
-        activeCount: scanned,
-        completedAt: scanned >= 50 ? "2026-09-07T00:00:00Z" : null,
-        coverage: {
-          byShop: [{ key: "fixture", listings: scanned, appearance: scanned, maintenance: 0 }],
-          byCategory: [],
-        },
-      },
-    });
+  await page.route("**/api/admin/offer-facts/replay", (route) => {
+    if (route.request().method() !== "GET") writes++;
+    return fail
+      ? route.fulfill({ status: 503, json: { error: "unavailable" } })
+      : route.fulfill({
+          json: {
+            ruleVersion: 1,
+            scannedCount: 50,
+            activeCount: 50,
+            completedAt: "2026-09-07T00:00:00Z",
+            coverage: {
+              byShop: [{ key: "audiounion", listings: 50, appearance: 50, maintenance: 0 }],
+              byCategory: [{ key: "digital", listings: 50, appearance: 50 }],
+            },
+          },
+        });
   });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.sectionLink("出品条件の再処理").click();
+  await admin.openSection("バックグラウンド処理");
   const replay = page.getByRole("region", { name: "出品条件の再処理・充足率" });
-  await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
-  await expect(replay.getByRole("status")).toContainText("中断しました");
-  await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
-  await expect(replay.getByRole("status")).toContainText("完了しました");
+  await expect(replay.getByRole("alert")).toContainText("unavailable");
+  await expect(replay.getByRole("button", { name: "全商品を再処理", exact: true })).toBeDisabled();
+  await replay.getByText("出品条件の充足率を確認", { exact: true }).click();
+  await expect(replay).toContainText("進捗は未取得です");
+  fail = false;
+  await replay.getByRole("button", { name: "出品条件の進捗を再取得" }).click();
   await expect(replay).toContainText("処理済み 50件");
-  await expect(replay.getByRole("columnheader", { name: "外観", exact: true })).toBeVisible();
+  await expect(replay.getByRole("rowheader", { name: "Audio Union", exact: true })).toBeVisible();
   await expect(replay.locator('td[data-label="外観"]')).toHaveText("50 / 50");
   await expect(replay.locator('td[data-label="整備・修理・改造歴"]')).toHaveText("0 / 50");
   await expect(replay.locator('td[data-label="動作"]')).toHaveText("未集計");
-  expect(writes).toBe(2);
-  await expect(
-    replay.getByRole("button", { name: "最大500件を再処理", exact: true }),
-  ).toBeDisabled();
+  await replay.getByRole("combobox", { name: "集計単位" }).selectOption("byCategory");
+  await expect(replay.getByRole("rowheader", { name: "デジタル", exact: true })).toBeVisible();
+  await expect(replay.getByRole("button", { name: "全商品を再処理", exact: true })).toBeDisabled();
+  await expect(replay.getByRole("button", { name: /最大(25|500)件/ })).toHaveCount(0);
+  expect(writes).toBe(0);
 });
 
 test("model relations verify an explicitly selected product and retain optimistic versions", async ({
@@ -791,7 +796,7 @@ test("shop filters use names and manual merge requires a full identity preview",
   await expect(page.locator("#listings-shop-key")).toHaveJSProperty("tagName", "SELECT");
   await page.locator("#listings-shop-key").selectOption({ label: "Audio Union" });
   await expect(page.locator("#listings-shop-key")).toHaveValue("audiounion");
-  await admin.catalogTab.click();
+  await admin.openCatalog();
   await admin.catalog.openEditor(11);
   const dialog = admin.catalog.editDialog;
   await dialog.getByText("詳細操作：別のカタログをこの製品へ統合", { exact: true }).click();
@@ -906,7 +911,11 @@ test("task selector and sidebar show capped work counts without loading their li
   );
   const component = await mount("frontend/admin-console/Default");
   const select = component.getByRole("combobox", { name: "作業を選ぶ" });
+  const workspaces = component.getByRole("combobox", { name: "管理分野を選ぶ" });
+  await expect(workspaces.locator("option")).toHaveCount(5);
+  await workspaces.selectOption("quality");
   await expect(select.locator('option[value="reports"]')).toHaveText("誤り報告　99");
+  await workspaces.selectOption("catalog");
   await expect(select.locator('option[value="duplicates"]')).toHaveText("重複の整理　99+");
   await expect(select.locator('option[value="candidates"]')).toHaveText("未検証候補　0");
   await expect(select.locator('option[value="catalog"]')).toHaveText("製品カタログ");
@@ -931,7 +940,10 @@ test("count failures keep the task selector usable and never claim zero work", a
   );
   const component = await mount("frontend/admin-console/Default");
   const select = component.getByRole("combobox", { name: "作業を選ぶ" });
-  for (const view of ["reports", "duplicates", "candidates"])
+  await component.getByRole("combobox", { name: "管理分野を選ぶ" }).selectOption("quality");
+  await expect(select.locator('option[value="reports"]')).toContainText("—");
+  await component.getByRole("combobox", { name: "管理分野を選ぶ" }).selectOption("catalog");
+  for (const view of ["duplicates", "candidates"])
     await expect(select.locator(`option[value="${view}"]`)).toContainText("—");
   await select.selectOption("candidates");
   await expect(component.locator(".admin-workspace-heading h1")).toHaveText("未検証候補");
@@ -957,7 +969,7 @@ test("mobile task selection and listing editing fit the viewport", async ({ page
   await page.setViewportSize({ width: 390, height: 844 });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await component.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("listings");
+  await admin.openListings();
   await expect(admin.listings.listingRow(21)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -1016,7 +1028,7 @@ test("correction reports submit filters explicitly and retain the typed audit no
   );
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.sectionLink("誤り報告").click();
+  await admin.openSection("誤り報告");
   const reports = component.getByRole("region", { name: "情報の誤り報告" });
   const note = reports.getByRole("textbox", { name: "監査メモ" });
   const reportCount = admin.sectionLink("誤り報告").locator(".admin-work-count");

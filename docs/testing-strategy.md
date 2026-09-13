@@ -65,6 +65,10 @@ The suite covers protected HTML/assets/read and write APIs, catalog/listing edit
 during editing and reauthentication, plus same-origin/JSON guards. It runs in CI's `component` job
 with failure traces/screenshots retained alongside the gallery suite. These are local browser/Worker
 boundary tests, not a simulation of Cloudflare's interactive login challenge or proof of D1 persistence.
+The admin navigation cases cover the five workspaces, workspace-specific task counts, stable deep
+links, browser history and retained CSV input. Replay coverage includes the retired foreground POST
+(410 without writes), `#maintenance` to `#jobs` compatibility, lost submission-response recovery using
+the same job ID, read-only coverage retry and pause/resume through the common jobs screen.
 Domain logic, CSV variants and infrastructure behavior remain in their existing lower-level suites.
 
 #### Deployed public smoke coverage

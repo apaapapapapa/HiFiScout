@@ -1,3 +1,4 @@
+import { AdminOfferFactReplay } from "./admin-offer-fact-replay.js";
 import { UNKNOWN_ACTOR_LABEL } from "../src/api/admin-listing-contracts.js";
 import { useEffect, useRef, useState } from "react";
 import type {
@@ -27,8 +28,19 @@ function ReplayRuleVersions({ model, category }: { model?: number; category?: nu
   );
 }
 
-export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void }) {
+export function AdminJobsPanel({
+  active = true,
+  revision = 0,
+  search = "",
+  onDataChanged,
+}: {
+  active?: boolean;
+  revision?: number;
+  search?: string;
+  onDataChanged: () => void;
+}) {
   const replayId = useRef<string | null>(null);
+  const loadedJobLink = useRef<{ id: string | null } | null>(null);
   const catalogReplayId = useRef<string | null>(null);
   const seenProgress = useRef(new Map<string, { processed: number; failed: number }>());
   const [list, setList] = useState<AdminJobList | null>(null);
@@ -39,6 +51,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [coverageRevision, setCoverageRevision] = useState(0);
   function remember(value: AdminJobList) {
     const changed = value.items.some((job) => {
       const previous = seenProgress.current.get(job.id);
@@ -64,6 +77,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
         }),
       );
       setBefore(cursor);
+      setCoverageRevision((value) => value + 1);
       if (detail)
         setDetail(
           await adminJobRequest<AdminJobDetail>({ action: "get", id: detail.job.id, failedOnly }),
@@ -92,12 +106,14 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       setBusy(false);
     }
   }
+  const jobId = new URLSearchParams(search).get("jobId");
   useEffect(() => {
+    if (!active || loadedJobLink.current?.id === jobId) return;
     let cancelled = false;
     void (async () => {
       setBusy(true);
       try {
-        const id = new URLSearchParams(window.location.search).get("jobId");
+        const id = jobId;
         const [jobs, result] = await Promise.all([
           adminJobRequest<AdminJobList>({ action: "list" }),
           id ? adminJobRequest<AdminJobDetail>({ action: "get", id }) : Promise.resolve(null),
@@ -105,6 +121,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
         if (!cancelled) {
           remember(jobs);
           setDetail(result);
+          loadedJobLink.current = { id: jobId };
         }
       } catch (reason) {
         if (!cancelled) setError(genericErrorText(reason));
@@ -115,7 +132,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [active, jobId]);
   async function control(id: string, action: "start" | "pause" | "resume" | "retry" | "cancel") {
     setBusy(true);
     setError("");
@@ -214,6 +231,14 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
           旧バージョンの商品を一括再判定
         </button>
       </section>
+      <AdminOfferFactReplay
+        active={active}
+        revision={revision + coverageRevision}
+        onSubmitted={() => {
+          setHistory([]);
+          void refresh(undefined);
+        }}
+      />
       <div className="panel-heading">
         <h2>処理一覧</h2>
         <button type="button" disabled={busy} onClick={() => void refresh(before)}>
@@ -224,16 +249,14 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
         送信が完了した処理は画面を閉じても継続します。更新日時と進捗は保存済みの情報です。必要なときに再読み込みしてください。
       </p>
       {busy || message ? (
-        <p role="status">
+        <p role="status" aria-label="処理一覧の状態">
           {busy ? "処理の状態を確認しています… " : ""}
           {message}
         </p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
-        <p>
-          処理の記録はありません。カタログ更新の再反映、型番・カテゴリの一括再判定、CSV入出力または出品条件の再処理から開始できます。
-        </p>
+        <p>処理の記録はありません。上の再処理メニュー、またはCSV入出力から開始できます。</p>
       ) : null}
       <div className="table-wrap">
         <table>
@@ -452,7 +475,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                   : detail.job.kind === "manufacturer"
                     ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
                     : detail.job.kind === "replay"
-                      ? "充足率の集計は出品条件の再処理画面で確認できます。"
+                      ? "充足率はこの画面の「出品条件の充足率を確認」から確認できます。"
                       : "表示できる詳細はありません。"}
             </p>
           ) : null}
