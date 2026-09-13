@@ -1,56 +1,42 @@
 ---
 name: hifiscout-ui-changes
-description: "HiFiScoutの検索・フィルター・商品詳細・比較・管理画面のUI/UXを改善しブラウザーで検証する。Use for public/admin interaction changes and UI regressions; SQL cost or product identity defects require their domain skills."
+description: "HiFiScoutの公開検索・フィルター・商品詳細・比較・管理画面の操作、表示、ブラウザー不具合の修正に使う。"
 ---
 
 # HiFiScout UI changes
 
-## Reproduce the user task
+Use [DESIGN.md](../../../DESIGN.md) for public UI and the relevant [listing admin](../../../docs/listing-admin.md)
+section for admin tasks. Trace the affected route, state and current React components/contracts.
+Use local fixtures for deterministic states; live investigation needs the target environment/version.
 
-Identify the route, device/viewport, current filter state and expected result. Read
-[DESIGN.md](../../../DESIGN.md) for public UI and
-[listing admin](../../../docs/listing-admin.md) for admin behavior. Inspect the current React
-components/contracts before introducing a new pattern. Apply requested improvements within the
-existing product language and shared controls; avoid unrelated framework/design replacement.
+## Preserve the affected interaction
 
-For live-site investigation, verify the target environment and deployed version. Prefer a local
-fixture for deterministic states; use available authorized browser capabilities when actual
-interaction is needed. Do not introduce or weaken production authentication for browser testing.
+- Public filters: URL and draft/applied state, page reset, Back/Forward and direct links stay consistent.
+  Shortcuts preserve unrelated filters; unknown category IDs must not become guessed links. Sticky
+  conditions reflect applied state without hiding results/focus.
+- Product cards represent entities; offers retain their own shop, price, condition, stock and URL.
+  Count/filter/sort semantics refer to the same matching offer. Trace wrong identity or predicates
+  to catalog/query owners instead of masking the data in rendering.
+- Admin: preserve preview/apply, optimistic revisions, durable operation IDs, partial failures and
+  saved progress. Reuse bounded endpoints/shared contracts; navigation must not add constant polling
+  or full-table counts. Keep completion, retry/resume and session-expiry recovery understandable.
+- Retain keyboard/focus behavior, responsive layout and loading/empty/error states. Images/links need
+  the real CSP/security headers when those behaviors change. Local fixtures must not weaken production
+  Access or add test-token bypasses.
 
-## Protect the interaction contract
+## Verify the changed boundary
 
-- For public search, keep URL state, structured manufacturer/category filters, draft/applied
-  conditions, page reset, Back/Forward and direct product links consistent. Preserve unrelated
-  filters when following category/manufacturer shortcuts. Unknown category IDs must not become
-  guessed links. Sticky conditions must reflect applied state and not obscure results or focus.
-- Product cards represent entities; individual offers retain their own shop, price, condition,
-  stock and URL. Keep filter/count/sort semantics on the same matching offer. If the issue is
-  wrong identity or SQL predicates, use the catalog/load skill instead of hiding the bad result.
-- For admin operations, retain preview/apply distinctions, optimistic revisions, durable operation
-  IDs, partial failures and saved job progress. Make resume/retry behavior and actual completion
-  visible without adding constant polling or full-table counts on navigation. Prefer existing
-  bounded endpoints and shared contracts over duplicated API definitions.
-- Preserve keyboard labels/focus, mobile and tablet layout, loading/empty/error/retry states,
-  dialog dismissal and session-expiry recovery. Keep public `/api/admin/*` unavailable and admin
-  changes behind the Access-protected Worker/Service Binding boundary. Validate images and links
-  under the actual CSP/security headers when those behaviors change.
+Choose relevant cases from [testing strategy](../../../docs/testing-strategy.md):
 
-## Choose the smallest meaningful browser check
-
-Read [testing strategy](../../../docs/testing-strategy.md); run relevant cases in these suites:
-
-| Changed boundary | Existing command |
+| Boundary | Existing suite |
 | --- | --- |
-| Public React interaction/responsive state | `vp exec playwright test --config e2e/playwright.components.config.ts` |
-| Admin frontend with real Worker entry and mocked Access/JWKS/RPC | `vp run test:e2e:admin` |
-| Deployed public wiring | `vp run test:e2e` with an explicitly verified `E2E_BASE_URL` |
+| Public React interaction/layout | `vp exec playwright test --config e2e/playwright.components.config.ts` |
+| Admin UI, real Worker entry, mocked Access/JWKS/RPC | `vp run test:e2e:admin` (local writes; ignores `E2E_BASE_URL`) |
+| Actual deployed public wiring | `vp run test:e2e` with verified `E2E_BASE_URL` |
 
-Use local admin fixtures for write operations. They exercise JWT verification with test keys and
-mock only the external Access/RPC boundaries; do not ask for production login credentials or add
-a test-token bypass. The admin suite deliberately ignores `E2E_BASE_URL`.
-
-Use representative desktop/mobile/tablet views for layout changes and inspect screenshots when
-geometry matters. Assert observable interaction and network/URL outcomes rather than incidental
-DOM structure. Live E2E should not depend on a specific changing product, price or exact inventory
-count. Apply `AGENTS.md` source validation once, then follow delivery and report the user-visible
-result and material limitations.
+Inspect representative viewport screenshots when geometry changes and interaction/network/URL results
+when behavior changes. Assert user outcomes rather than incidental DOM structure; live tests cannot
+depend on a fixed product/price/count. Use existing CI browser evidence, or [harness ui](../../../.github/harness/README.md#isolated-ui-evidence)
+when a fresh full gallery/admin evidence bundle is needed. It is not required for every visual edit.
+Complete the requested visible behavior and report validation/limitations through the repository's
+delivery flow; a screenshot alone does not establish successful interaction.
