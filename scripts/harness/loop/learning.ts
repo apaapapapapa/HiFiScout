@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { isRecord } from "../../../src/types.js";
@@ -123,79 +124,89 @@ export async function proveLoopRegression(
       maxBuffer: 1_048_576,
     });
     const uri = `.generated/loop/learning/${proposal.id}`,
-      output = resolve(workspace, uri);
+      attempt = randomUUID(),
+      reportDirectory = `${uri}/attempt-${attempt}`,
+      output = resolve(workspace, reportDirectory);
     await mkdir(dirname(output), { recursive: true });
     await mkdir(output);
-    const baseline = `${workspace}.regression-${proposal.id}`;
+    const baseline = `${workspace}.regression-${proposal.id}-${attempt}`;
     loopGit(workspace, ["worktree", "add", "--detach", baseline, run.spec.baselineSha]);
-    await mkdir(dirname(join(baseline, proposal.testPath)), { recursive: true });
-    await writeFile(join(baseline, proposal.testPath), code, { flag: "wx" });
-    const baselineOutput = resolve(baseline, uri);
-    await mkdir(baselineOutput, { recursive: true });
-    const setup = await invoke({
-      cwd: baseline,
-      args: ["install", "--frozen-lockfile"],
-      logPath: join(output, "baseline-install.log"),
-      deadline: view.deadline,
-    });
-    if (setup.status !== "pass") throw new Error("regression_baseline_setup_incomplete");
-    const startedAt = new Date().toISOString();
-    const outcomes = [];
-    for (const [name, cwd, directory] of [
-      ["baseline", baseline, baselineOutput],
-      ["candidate", workspace, output],
-    ]) {
-      const reportPath = join(directory, `${name}-vitest.json`);
-      const execution = await invoke({
-        cwd,
-        args: ["test", "run", proposal.testPath, "--reporter=json", `--outputFile=${reportPath}`],
-        logPath: join(output, `${name}.log`),
+    try {
+      await mkdir(dirname(join(baseline, proposal.testPath)), { recursive: true });
+      await writeFile(join(baseline, proposal.testPath), code, { flag: "wx" });
+      const baselineOutput = resolve(baseline, uri);
+      await mkdir(baselineOutput, { recursive: true });
+      const setup = await invoke({
+        cwd: baseline,
+        args: ["install", "--frozen-lockfile"],
+        logPath: join(output, "baseline-install.log"),
         deadline: view.deadline,
       });
-      const report = await json(reportPath);
-      if (name === "baseline")
-        await writeFile(join(output, "baseline-vitest.json"), JSON.stringify(report, null, 2), {
-          flag: "wx",
+      if (setup.status !== "pass") throw new Error("regression_baseline_setup_incomplete");
+      const startedAt = new Date().toISOString();
+      const outcomes = [];
+      for (const [name, cwd, directory] of [
+        ["baseline", baseline, baselineOutput],
+        ["candidate", workspace, output],
+      ]) {
+        const reportPath = join(directory, `${name}-vitest.json`);
+        const execution = await invoke({
+          cwd,
+          args: ["test", "run", proposal.testPath, "--reporter=json", `--outputFile=${reportPath}`],
+          logPath: join(output, `${name}.log`),
+          deadline: view.deadline,
         });
-      outcomes.push({
-        name,
-        execution,
-        reportHash: digest(report),
-        status:
-          execution.status === (name === "baseline" ? "fail" : "pass")
-            ? assertionOutcome(report, proposal)
-            : "unknown",
+        const report = await json(reportPath);
+        if (name === "baseline")
+          await writeFile(join(output, "baseline-vitest.json"), JSON.stringify(report, null, 2), {
+            flag: "wx",
+          });
+        outcomes.push({
+          name,
+          execution,
+          reportHash: digest(report),
+          status:
+            execution.status === (name === "baseline" ? "fail" : "pass")
+              ? assertionOutcome(report, proposal)
+              : "unknown",
+        });
+      }
+      const extra = loopGit(baseline, ["ls-files", "--others", "--exclude-standard", "-z"])
+        .split("\0")
+        .filter(Boolean);
+      if (
+        readCheckout(workspace).sourceSha !== checkout.sourceSha ||
+        readCheckout(workspace).dirty ||
+        loopGit(baseline, ["rev-parse", "HEAD"]) !== run.spec.baselineSha ||
+        loopGit(baseline, ["diff", "--name-only", "HEAD"]) ||
+        extra.length !== 1 ||
+        extra[0] !== proposal.testPath ||
+        (await readFile(join(baseline, proposal.testPath), "utf8")) !== code
+      )
+        throw new Error("regression_source_or_test_changed");
+      if (outcomes[0].status !== "fail" || outcomes[1].status !== "pass")
+        throw new Error("regression_not_reproduced_and_fixed");
+      if (Date.now() >= Date.parse(view.deadline)) throw new Error("regression_deadline_exceeded");
+      const proof = {
+        schemaVersion: 1 as const,
+        specDigest: run.specDigest,
+        proposalDigest: digest(proposal),
+        baselineSha: run.spec.baselineSha,
+        sourceSha: checkout.sourceSha,
+        testDigest: digest(code),
+        reportDirectory,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        outcomes,
+      };
+      await writeFile(resolve(workspace, uri, "proof.json"), JSON.stringify(proof, null, 2), {
+        flag: "wx",
       });
+      return { proposal, proof, artifactUri: `${uri}/proof.json` };
+    } finally {
+      // This disposable baseline is created by this invocation; keep attempt logs outside it.
+      loopGit(workspace, ["worktree", "remove", "--force", baseline]);
     }
-    const extra = loopGit(baseline, ["ls-files", "--others", "--exclude-standard", "-z"])
-      .split("\0")
-      .filter(Boolean);
-    if (
-      readCheckout(workspace).sourceSha !== checkout.sourceSha ||
-      readCheckout(workspace).dirty ||
-      loopGit(baseline, ["rev-parse", "HEAD"]) !== run.spec.baselineSha ||
-      loopGit(baseline, ["diff", "--name-only", "HEAD"]) ||
-      extra.length !== 1 ||
-      extra[0] !== proposal.testPath ||
-      (await readFile(join(baseline, proposal.testPath), "utf8")) !== code
-    )
-      throw new Error("regression_source_or_test_changed");
-    if (outcomes[0].status !== "fail" || outcomes[1].status !== "pass")
-      throw new Error("regression_not_reproduced_and_fixed");
-    if (Date.now() >= Date.parse(view.deadline)) throw new Error("regression_deadline_exceeded");
-    const proof = {
-      schemaVersion: 1 as const,
-      specDigest: run.specDigest,
-      proposalDigest: digest(proposal),
-      baselineSha: run.spec.baselineSha,
-      sourceSha: checkout.sourceSha,
-      testDigest: digest(code),
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      outcomes,
-    };
-    await writeFile(join(output, "proof.json"), JSON.stringify(proof, null, 2), { flag: "wx" });
-    return { proposal, proof, artifactUri: `${uri}/proof.json` };
   });
 }
 
@@ -253,14 +264,17 @@ export async function learnFromLoop(
     )
       throw new Error("learning_requires_completed_verified_delivery");
     const uri = `.generated/loop/learning/${proposal.id}`,
-      output = resolve(workspace, uri),
-      proof = await json(join(output, "proof.json"));
+      proof = await json(resolve(workspace, uri, "proof.json"));
     if (
       !isRecord(proof) ||
       proof.specDigest !== run.specDigest ||
       proof.proposalDigest !== digest(proposal) ||
       proof.baselineSha !== run.spec.baselineSha ||
       proof.sourceSha !== checkout.sourceSha ||
+      typeof proof.reportDirectory !== "string" ||
+      !new RegExp(`^${uri.replaceAll(".", "\\.")}/attempt-[a-f0-9-]{36}$`, "u").test(
+        proof.reportDirectory,
+      ) ||
       !Array.isArray(proof.outcomes) ||
       proof.outcomes.length !== 2
     )
@@ -268,6 +282,7 @@ export async function learnFromLoop(
     requireSha(proof.sourceSha);
     requireTimestamp(proof.startedAt);
     requireTimestamp(proof.finishedAt);
+    const output = resolve(workspace, proof.reportDirectory);
     for (const [i, name] of ["baseline", "candidate"].entries()) {
       const report = await json(join(output, `${name}-vitest.json`)),
         outcome = proof.outcomes[i];

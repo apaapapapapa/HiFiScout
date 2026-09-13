@@ -1,10 +1,14 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loopGitFixture } from "./helpers/loop-git.js";
 import { loopReport } from "./helpers/loop.js";
-import { prepareLoopWorkspace, applyLoopPatch } from "../scripts/harness/loop/workspace.js";
+import {
+  prepareLoopWorkspace,
+  applyLoopPatch,
+  loopGit,
+} from "../scripts/harness/loop/workspace.js";
 import {
   beginLoopAttempt,
   finishLoopAttempt,
@@ -174,10 +178,7 @@ test("only a reproduced assertion can become an idempotent regression lesson aft
       learnFromLoop(f.state, f.workspaces, { ...proposal, procedure: ["changed"] }, index),
       /proof_identity/u,
     );
-    await writeFile(
-      join(f.workspace, ".generated/loop/learning/value-regression/candidate-vitest.json"),
-      "{}",
-    );
+    await writeFile(join(f.workspace, proof.proof.reportDirectory, "candidate-vitest.json"), "{}");
     await assert.rejects(
       learnFromLoop(f.state, f.workspaces, proposal, index),
       /report_changed_or_incomplete/u,
@@ -195,6 +196,21 @@ test("passing baselines, import errors and late process failures cannot prove a 
         proveLoopRegression(f.state, f.workspaces, proposal, f.invoke(mode)),
         /not_reproduced_and_fixed/u,
       );
+      assert.ok(
+        !loopGit(f.workspace, ["worktree", "list", "--porcelain"]).includes(".regression-"),
+      );
+      const recovered = await proveLoopRegression(
+        f.state,
+        f.workspaces,
+        proposal,
+        f.invoke("normal"),
+      );
+      assert.equal(recovered.proof.sourceSha, f.owner.headSha);
+      const artifacts = await readdir(
+        join(f.workspace, ".generated/loop/learning/value-regression"),
+      );
+      assert.equal(artifacts.filter((name) => name.startsWith("attempt-")).length, 2);
+      assert.ok(artifacts.includes("proof.json"));
     } finally {
       await rm(f.root, { recursive: true, force: true });
     }

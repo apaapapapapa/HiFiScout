@@ -85,6 +85,10 @@ continue or stop. A source failure that permits another attempt is not a complet
 
 ## Retaining failures as regression knowledge
 
+Each proof attempt retains its logs/reports in a unique directory and removes its disposable
+baseline worktree on completion or failure. Retry the same proposal after an unsuccessful attempt;
+failed evidence is retained and only a successful demonstration writes the immutable proof pointer.
+
 Add the regression test with the repair. `loop regression <state> <workspace-root> <proposal.json>`
 copies only that newly added regular test into an isolated frozen-baseline worktree and runs the
 same named assertion on baseline and candidate. The baseline must fail an actual assertion and the
