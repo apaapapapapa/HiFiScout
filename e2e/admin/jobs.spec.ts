@@ -185,6 +185,9 @@ test("model and category replay confirms, survives navigation, and displays curr
     `カテゴリ v${RESOLUTION_VERSIONS.category - 1}`,
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  await panel
+    .getByRole("button", { name: "旧バージョンの商品を一括再判定" })
+    .scrollIntoViewIfNeeded();
   await expect(
     panel.getByRole("button", { name: "旧バージョンの商品を一括再判定" }),
   ).toBeInViewport();
@@ -192,4 +195,40 @@ test("model and category replay confirms, survives navigation, and displays curr
     path: "test-results/admin-resolution-replay-mobile.png",
     fullPage: true,
   });
+});
+
+test("catalog replay confirms its scope and retains separate replay and skip counts across navigation", async ({
+  page,
+  context,
+  app,
+}) => {
+  await context.setExtraHTTPHeaders(await app.headers());
+  await page.goto("/#jobs");
+  const panel = page.getByRole("region", { name: "カタログ更新の再反映", exact: true });
+  await expect(panel).toContainText("掲載終了を含む");
+  await expect(panel).toContainText("スキップ");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await panel.getByRole("button", { name: "カタログの変更を反映" }).click();
+  expect(app.state.jobs.size).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await panel.getByRole("button", { name: "カタログの変更を反映" }).click();
+  await expect(page.getByRole("status")).toContainText("カタログ更新の再反映を受け付けました");
+  const job = [...app.state.jobs.values()][0];
+  expect(job.kind).toBe("catalog");
+  expect(app.state.replay.stepCalls).toBe(0);
+  job.processed = 2;
+  job.catalogReplay = { scanned: 25, skipped: 23 };
+  await page.reload();
+  await expect(page.getByRole("cell", { name: /確認済み 25件/u })).toContainText(
+    "再判定 2件 · スキップ 23件",
+  );
+  await page.getByRole("button", { name: "一時停止", exact: true }).click();
+  expect(job.status).toBe("paused");
+  await page.getByRole("button", { name: "続きから再開" }).click();
+  expect(job.status).toBe("queued");
+  await page.getByRole("button", { name: "結果を見る" }).click();
+  await expect(page.getByText(/処理中に追加・修正した内容は/u)).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByRole("button", { name: "カタログの変更を反映" }).scrollIntoViewIfNeeded();
+  await expect(panel.getByRole("button", { name: "カタログの変更を反映" })).toBeInViewport();
 });

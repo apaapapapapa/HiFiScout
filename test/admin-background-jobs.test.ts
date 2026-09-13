@@ -13,6 +13,8 @@ import type {
 } from "../src/api/admin-csv-contracts.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
+import { readCatalogReplaySnapshot } from "../src/db/admin-catalog-replay.js";
+import { getCategory } from "../src/catalog/categories.js";
 
 function harness() {
   const data = migratedSqlite();
@@ -21,6 +23,7 @@ function harness() {
   let crashAfterApply = false;
   let crashModelCheckpoint = false;
   let beforeReplayWrite: (() => void) | undefined;
+  let beforeCatalogApply: (() => void) | undefined;
   let afterBatch: (() => Promise<void>) | undefined;
   let alarm: number | null = null;
   const ctx = {
@@ -28,6 +31,11 @@ function harness() {
       sql: {
         exec(query: string, ...bindings: (string | number | null)[]) {
           queries.push(query);
+          if (query.startsWith("SELECT fingerprint,applied_job_id")) {
+            const callback = beforeCatalogApply;
+            beforeCatalogApply = undefined;
+            callback?.();
+          }
           if (crashModelCheckpoint && query.startsWith("UPDATE model_replays SET pending_ids=")) {
             crashModelCheckpoint = false;
             throw new Error("simulated model checkpoint loss");
@@ -113,6 +121,9 @@ function harness() {
     },
     beforeReplayWrite: (callback: () => void) => {
       beforeReplayWrite = callback;
+    },
+    beforeCatalogApply: (callback: () => void) => {
+      beforeCatalogApply = callback;
     },
     afterBatch: (callback: () => Promise<void>) => {
       afterBatch = callback;
@@ -497,6 +508,302 @@ function modelListings(h: ReturnType<typeof harness>, count: number, start = 100
       'https://example.test/model','2026-01-01','2026-01-02','2026-01-03',100000,1)`);
   for (let i = start; i < start + count; i++) insert.run(i, String(i));
 }
+
+function catalogListings(h: ReturnType<typeof harness>, count = 2) {
+  h.sqlite.exec(`DELETE FROM knowledge_catalog_products;
+    INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,verification_status,created_at,updated_at)
+      VALUES ('luxman','LUXMAN','verified','','');`);
+  const insert = h.sqlite
+    .prepare(`INSERT INTO products(id,shop_key,source_id,title,raw_manufacturer,
+    raw_model,manufacturer,manufacturer_id,canonical_manufacturer_id,model,normalized_model,
+    model_resolution_status,source_url,first_seen_at,last_seen_at,last_changed_at,
+    price_yen,model_resolver_version,metadata_json)
+    VALUES (?,'audiounion',?,'LUXMAN TEST-700','LUXMAN','TEST-700','LUXMAN','luxman','luxman',
+      'TEST-700','TEST700','resolved','https://example.test/catalog','','','',100000,?,?)`);
+  for (let i = 0; i < count; i++)
+    insert.run(
+      100001 + i,
+      String(100001 + i),
+      RESOLUTION_VERSIONS.model,
+      JSON.stringify({ categoryClassification: { version: RESOLUTION_VERSIONS.category } }),
+    );
+}
+
+function addReplayCatalog(h: ReturnType<typeof harness>, model = "TEST-700", id = 900001) {
+  h.sqlite
+    .prepare(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,
+    normalized_model,canonical_name,verification_status,created_at,updated_at,last_verified_at)
+    VALUES (?,'luxman',?,?,?,'verified','','','2026-09-13')`)
+    .run(id, model, model.replaceAll("-", ""), model);
+  h.sqlite
+    .prepare(`INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary)
+    VALUES (?,?,1)`)
+    .run(id, getCategory("pre_amp")!.id);
+}
+
+const catalogCommand = (id = crypto.randomUUID()): AdminJobCommand => ({
+  action: "create",
+  id,
+  kind: "catalog",
+  total: 0,
+  label: "カタログ更新を登録商品に反映",
+});
+
+async function drainCatalog(h: ReturnType<typeof harness>, id = crypto.randomUUID()) {
+  await h.command(catalogCommand(id));
+  await h.command({ action: "start", id });
+  for (let i = 0; i < 30; i++) {
+    await h.alarm();
+    const job = (await h.command({ action: "get", id })).job;
+    if (job.status === "completed") return job;
+    assert.notEqual(job.status, "failed", job.error);
+  }
+  assert.fail("catalog replay failed to drain bounded fixture");
+}
+
+test("catalog replay prunes deleted tail receipts and an empty listing table in bounded chunks", async () => {
+  const h = harness();
+  try {
+    catalogListings(h, 26);
+    await drainCatalog(h);
+    const receiptCount = () =>
+      h.local.prepare("SELECT COUNT(*) n FROM catalog_replay_marks").get()?.n;
+    assert.equal(receiptCount(), 26);
+    // Delete the captured maximum after the first 25-ID window was saved. The final scan is empty.
+    h.beforeCatalogApply(() => h.sqlite.exec("DELETE FROM products WHERE id=100026"));
+    assert.equal((await drainCatalog(h)).catalogReplay?.skipped, 25);
+    assert.equal(receiptCount(), 25);
+    // The next job's captured maximum is now below the highest retained receipt.
+    h.sqlite.exec("DELETE FROM products WHERE id=100025");
+    assert.equal((await drainCatalog(h)).catalogReplay?.skipped, 24);
+    assert.equal(receiptCount(), 24);
+    h.sqlite.exec("DELETE FROM products");
+    assert.equal((await drainCatalog(h)).catalogReplay?.scanned, 0);
+    assert.equal(receiptCount(), 0);
+    h.local.exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<1001)
+      INSERT INTO catalog_replay_marks(listing_product_id,fingerprint,applied_job_id)
+      SELECT i,'deleted','expired-job' FROM n`);
+    const changes = h.sqlite.prepare("SELECT total_changes() n").get()?.n;
+    await drainCatalog(h);
+    assert.equal(receiptCount(), 1);
+    await drainCatalog(h);
+    assert.equal(receiptCount(), 0);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() n").get()?.n, changes);
+  } finally {
+    h.close();
+  }
+});
+
+test("catalog replay applies additions and category changes to current and inactive listings, then skips unchanged input", async () => {
+  const h = harness();
+  try {
+    catalogListings(h);
+    h.sqlite.exec("UPDATE products SET is_active=0 WHERE id=100002");
+    await drainCatalog(h);
+    addReplayCatalog(h);
+    const added = await drainCatalog(h);
+    assert.equal(added.processed, 2);
+    assert.deepEqual(added.catalogReplay, { scanned: 2, skipped: 0 });
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT COUNT(*) n FROM product_identity_resolutions WHERE catalog_product_id=900001 AND status='matched'",
+        )
+        .get()?.n,
+      2,
+    );
+    assert.equal(
+      h.sqlite
+        .prepare("SELECT COUNT(*) n FROM products WHERE primary_category_id=?")
+        .get(getCategory("pre_amp")!.id)?.n,
+      2,
+    );
+    const before = h.sqlite.prepare("SELECT total_changes() n").get()?.n;
+    const unchanged = await drainCatalog(h);
+    assert.equal(unchanged.processed, 0);
+    assert.deepEqual(unchanged.catalogReplay, { scanned: 2, skipped: 2 });
+    assert.equal(h.sqlite.prepare("SELECT total_changes() n").get()?.n, before);
+    // Same manufacturer, unrelated model: candidate-scoped receipts remain valid.
+    addReplayCatalog(h, "OTHER-900", 900002);
+    assert.equal((await drainCatalog(h)).processed, 0);
+    h.sqlite
+      .prepare(
+        "UPDATE knowledge_catalog_product_categories SET category_id=? WHERE product_id=900001",
+      )
+      .run(getCategory("power_amp")!.id);
+    assert.equal((await drainCatalog(h)).processed, 2);
+    assert.equal(
+      h.sqlite
+        .prepare("SELECT COUNT(*) n FROM products WHERE primary_category_id=?")
+        .get(getCategory("power_amp")!.id)?.n,
+      2,
+    );
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT primary_category_id FROM product_search_entities WHERE entity_key='c-900001'",
+        )
+        .get()?.primary_category_id,
+      getCategory("power_amp")!.id,
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("catalog replay invalidates aliases, ambiguous candidates, manual decisions and changed source without reacting to prices or observation dates", async () => {
+  const h = harness();
+  try {
+    catalogListings(h, 1);
+    addReplayCatalog(h, "OFFICIAL-700");
+    await drainCatalog(h);
+    h.sqlite
+      .exec(`INSERT INTO knowledge_catalog_aliases(product_id,alias,normalized_alias,alias_type,created_at)
+      VALUES (900001,'TEST-700','TEST700','model','');`);
+    assert.equal((await drainCatalog(h)).processed, 1);
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT catalog_product_id FROM product_identity_resolutions WHERE listing_product_id=100001",
+        )
+        .get()?.catalog_product_id,
+      900001,
+    );
+    h.sqlite.exec(
+      "UPDATE products SET price_yen=200000,last_seen_at='2026-09-15',last_changed_at='2026-09-15' WHERE id=100001",
+    );
+    assert.equal((await drainCatalog(h)).processed, 0);
+    await updateListingAdminProduct(h.db, 100001, { primaryCategoryId: "dac" });
+    assert.equal((await drainCatalog(h)).processed, 1);
+    assert.equal(
+      h.sqlite.prepare("SELECT primary_category_id FROM products WHERE id=100001").get()
+        ?.primary_category_id,
+      getCategory("dac")!.id,
+    );
+    h.sqlite.exec("UPDATE products SET title='LUXMAN TEST-700 専用ケース' WHERE id=100001");
+    assert.equal((await drainCatalog(h)).processed, 1);
+    assert.notEqual(
+      h.sqlite
+        .prepare("SELECT status FROM product_identity_resolutions WHERE listing_product_id=100001")
+        .get()?.status,
+      "matched",
+    );
+    h.sqlite.exec("UPDATE products SET title='LUXMAN TEST-700' WHERE id=100001");
+    await drainCatalog(h);
+    addReplayCatalog(h, "ANOTHER-700", 900002);
+    h.sqlite
+      .exec(`INSERT INTO knowledge_catalog_aliases(product_id,alias,normalized_alias,alias_type,created_at)
+      VALUES (900002,'TEST-700','TEST700','model','');`);
+    assert.equal((await drainCatalog(h)).processed, 1);
+    assert.notEqual(
+      h.sqlite
+        .prepare("SELECT status FROM product_identity_resolutions WHERE listing_product_id=100001")
+        .get()?.status,
+      "matched",
+    );
+    h.sqlite.exec("DELETE FROM knowledge_catalog_aliases WHERE product_id=900002");
+    assert.equal((await drainCatalog(h)).processed, 1);
+    h.sqlite.exec(
+      "UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=900001",
+    );
+    assert.equal((await drainCatalog(h)).processed, 1);
+    assert.notEqual(
+      h.sqlite
+        .prepare("SELECT status FROM product_identity_resolutions WHERE listing_product_id=100001")
+        .get()?.status,
+      "matched",
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("catalog replay reuses cursors, persists receipts across checkpoint loss, and resumes after pause and deployment", async () => {
+  const h = harness();
+  try {
+    catalogListings(h);
+    const id = crypto.randomUUID();
+    await h.command(catalogCommand(id));
+    assert.equal((await h.command(catalogCommand())).job.id, id);
+    assert.notEqual((await h.command(modelCommand())).job.id, id);
+    await h.command({ action: "start", id });
+    h.crashModelCheckpoint();
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "failed");
+    const writes = h.sqlite.prepare("SELECT total_changes() n").get()?.n;
+    assert.equal(h.local.prepare("SELECT COUNT(*) n FROM catalog_replay_marks").get()?.n, 1);
+    h.restart();
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.equal(h.sqlite.prepare("SELECT total_changes() n").get()?.n, writes);
+    assert.equal((await h.command({ action: "get", id })).job.processed, 1);
+    await h.command({ action: "pause", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "paused");
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "completed");
+    const next = crypto.randomUUID();
+    await h.command(catalogCommand(next));
+    h.local.prepare("UPDATE model_replays SET versions_json='{}' WHERE job_id=?").run(next);
+    await h.command({ action: "resume", id: next }, 409);
+    await h.command({ action: "start", id: next });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id: next })).job.status, "failed");
+    assert.match(
+      (await h.command({ action: "get", id: next })).job.error,
+      /判定ルールまたは対象範囲/,
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("catalog replay retries catalog changes during a step and never records failed downstream work as current", async () => {
+  const h = harness();
+  try {
+    catalogListings(h, 1);
+    addReplayCatalog(h);
+    const id = crypto.randomUUID();
+    await h.command(catalogCommand(id));
+    await h.command({ action: "start", id });
+    h.beforeCatalogApply(() => {
+      h.sqlite
+        .prepare(
+          "UPDATE knowledge_catalog_product_categories SET category_id=? WHERE product_id=900001",
+        )
+        .run(getCategory("power_amp")!.id);
+    });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "queued");
+    assert.equal(h.local.prepare("SELECT COUNT(*) n FROM catalog_replay_marks").get()?.n, 0);
+    h.beforeCatalogApply(() => {
+      h.afterBatch(async () => {
+        throw new Error("projection unavailable");
+      });
+    });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "failed");
+    assert.equal(h.local.prepare("SELECT COUNT(*) n FROM catalog_replay_marks").get()?.n, 0);
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "completed");
+    const snapshot = await readCatalogReplaySnapshot(h.db, 100001);
+    assert.equal(
+      h.local
+        .prepare("SELECT fingerprint FROM catalog_replay_marks WHERE listing_product_id=100001")
+        .get()?.fingerprint,
+      snapshot?.fingerprint,
+    );
+    assert.equal(
+      h.sqlite.prepare("SELECT primary_category_id FROM products WHERE id=100001").get()
+        ?.primary_category_id,
+      getCategory("power_amp")!.id,
+    );
+  } finally {
+    h.close();
+  }
+});
 
 const modelCommand = (id = crypto.randomUUID()): AdminJobCommand => ({
   action: "create",

@@ -96,6 +96,45 @@ Review these gaps and sample the seller evidence before promoting filters more w
 `GET/POST /api/admin/offer-facts/replay` is Access protected; POST takes only an empty JSON object,
 and the client cannot supply a cursor or override the server's batch size.
 
+## Catalog updates applied to stored listings {#catalog-change-replay}
+
+**バックグラウンド処理 → カタログ更新を登録商品に反映 → カタログの変更を反映**
+starts a durable `catalog` job. Use it after adding or correcting catalog records, including records
+added outside the admin import flow. It covers all stored listings, including inactive ones and
+listings whose deterministic rule versions are already current. It uses retained seller evidence;
+shops are not contacted and explicit listing overrides retain their authority.
+
+The job shares the existing listing replay cursor, version pinning, pause/resume and failure recovery.
+It captures the maximum product ID when execution starts, scans at most 25 IDs at a time, and applies
+at most one listing per alarm. The first pass establishes a comparison baseline in the admin Durable
+Object. Later passes compare the current listing inputs/results with the verified catalog candidates
+read by the existing indexed identity/category lookups, including model aliases and bounded fuzzy
+candidates. Unrelated model additions do not invalidate a listing's baseline. Candidate additions,
+category changes, removed aliases, verification withdrawals, manual edits, pending projections and
+resolver changes do. Manufacturer registry changes conservatively invalidate the baseline too.
+Price and observation-time changes alone do not invalidate a catalog decision.
+
+A matching fingerprint skips canonical writes and downstream projection work. A changed input runs
+the existing stored-listing derivation and identity/search refresh, then applies category authority
+only from a verified, matched catalog product. A second snapshot checks the source and catalog inputs
+before recording completion; detected concurrent changes retry the same pending listing, and three
+consecutive conflicts stop for review. A failed refresh never receives a completion fingerprint.
+Receipts are saved before the job cursor, so a lost cursor checkpoint can reuse completed work.
+
+**確認済み** counts IDs discovered so far, including pending ones. **再判定** counts completed replay
+targets, not changed rows; **スキップ** counts unchanged or subsequently deleted targets. These counts
+remain readable after navigation. Changes made behind the cursor during a run are checked by a later
+run; starting again after a concurrent catalog import finishes is safe. New IDs beyond the captured
+boundary are handled by normal ingestion or the next manual run.
+
+Only one fingerprint per listing is retained in the admin DO; job-detail expiry does not discard
+the comparison baseline. Deleted-listing receipts are pruned in bounded chunks from ID windows
+already read. The terminal window also cleans receipts above the last surviving listing ID, including
+when no listings remain; each window deletes at most 1,000 receipts. No D1 schema or normal-ingestion
+writes are added for this feature. The
+`admin_catalog_replay_check` log measures the read-only fingerprint check's D1 reads, writes and
+statement count; it does not claim to measure the subsequent replay or account-wide production load.
+
 ## Bounded model and category replay {#bounded-model-resolver-replay}
 
 **バックグラウンド処理 → 型番・カテゴリの一括再判定 → 旧バージョンの商品を一括再判定**

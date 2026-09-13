@@ -29,6 +29,7 @@ function ReplayRuleVersions({ model, category }: { model?: number; category?: nu
 
 export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void }) {
   const replayId = useRef<string | null>(null);
+  const catalogReplayId = useRef<string | null>(null);
   const seenProgress = useRef(new Map<string, { processed: number; failed: number }>());
   const [list, setList] = useState<AdminJobList | null>(null);
   const [before, setBefore] = useState<string | undefined>();
@@ -135,17 +136,20 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       setBusy(false);
     }
   }
-  async function startResolutionReplay() {
+  async function startResolutionReplay(kind: "model" | "catalog" = "model") {
     setBusy(true);
     setError("");
     setMessage("");
-    replayId.current ||= crypto.randomUUID();
+    const requestId = kind === "catalog" ? catalogReplayId : replayId;
+    requestId.current ||= crypto.randomUUID();
     try {
-      const job = await submitAdminReplayJob(replayId.current, "model");
-      replayId.current = null;
+      const job = await submitAdminReplayJob(requestId.current, kind);
+      requestId.current = null;
       setMessage(
         job.status === "queued" || job.status === "running"
-          ? "型番・カテゴリの一括再判定を受け付けました。画面を閉じても継続します。"
+          ? kind === "catalog"
+            ? "カタログ更新の再反映を受け付けました。画面を閉じても継続します。"
+            : "型番・カテゴリの一括再判定を受け付けました。画面を閉じても継続します。"
           : "同じ判定ルールの処理があります。処理一覧から状態を確認して再開してください。",
       );
       setHistory([]);
@@ -158,6 +162,32 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
   }
   return (
     <section className="panel workspace-panel" aria-label="バックグラウンド処理一覧">
+      <section className="model-replay-launch" aria-label="カタログ更新の再反映">
+        <h2>カタログ更新を登録商品に反映</h2>
+        <p>
+          カタログを追加・修正した後に、保存済みの全商品（掲載終了を含む）を再照合します。
+          商品の紐付け・カテゴリ・検索表示を更新し、手動修正は保持します。
+        </p>
+        <p>
+          初回は比較の基準を保存します。2回目以降は、関連するカタログ情報と商品情報に変更がなく、反映済みの商品をスキップします。
+          店舗への再アクセスは行いません。
+        </p>
+        <p>画面を閉じても継続します。進捗確認・一時停止・再開は下の処理一覧から行えます。</p>
+        <button
+          type="button"
+          disabled={busy || !list}
+          onClick={() => {
+            if (
+              window.confirm(
+                "全商品（掲載終了を含む）をカタログと再照合します。変更のない反映済み商品はスキップし、手動修正は保持します。開始しますか？",
+              )
+            )
+              void startResolutionReplay("catalog");
+          }}
+        >
+          カタログの変更を反映
+        </button>
+      </section>
       <section className="model-replay-launch" aria-label="型番・カテゴリの一括再判定">
         <h2>型番・カテゴリの一括再判定</h2>
         <p>
@@ -202,7 +232,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
         <p>
-          処理の記録はありません。型番・カテゴリの一括再判定、CSV入出力または出品条件の再処理から開始できます。
+          処理の記録はありません。カタログ更新の再反映、型番・カテゴリの一括再判定、CSV入出力または出品条件の再処理から開始できます。
         </p>
       ) : null}
       <div className="table-wrap">
@@ -246,6 +276,11 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                         処理済み {job.processed} / {job.total}件 · 失敗 {job.failed}件
                       </p>
                     </>
+                  ) : job.catalogReplay ? (
+                    <p>
+                      確認済み {job.catalogReplay.scanned}件 · 再判定 {job.processed}件 · スキップ{" "}
+                      {job.catalogReplay.skipped}件
+                    </p>
                   ) : job.modelReplay ? (
                     <div>
                       <p>
@@ -410,13 +445,15 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
           </div>
           {!detail.items.length ? (
             <p>
-              {detail.job.kind === "model"
-                ? "確認済み件数は保存済み商品の探索範囲です。旧バージョンの商品と検索表示の更新待ちを処理します。対象処理済みには、クロールなどで先に更新された商品も含みます。"
-                : detail.job.kind === "manufacturer"
-                  ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
-                  : detail.job.kind === "replay"
-                    ? "充足率の集計は出品条件の再処理画面で確認できます。"
-                    : "表示できる詳細はありません。"}
+              {detail.job.kind === "catalog"
+                ? "初回は比較基準を保存し、次回から関連カタログと商品情報が同じ反映済み商品をスキップします。再判定件数は変更件数とは異なります。処理中に追加・修正した内容は、完了後にもう一度実行すると確認できます。"
+                : detail.job.kind === "model"
+                  ? "確認済み件数は保存済み商品の探索範囲です。旧バージョンの商品と検索表示の更新待ちを処理します。対象処理済みには、クロールなどで先に更新された商品も含みます。"
+                  : detail.job.kind === "manufacturer"
+                    ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
+                    : detail.job.kind === "replay"
+                      ? "充足率の集計は出品条件の再処理画面で確認できます。"
+                      : "表示できる詳細はありません。"}
             </p>
           ) : null}
           <div className="pagination">
