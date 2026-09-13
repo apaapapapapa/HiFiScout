@@ -42,6 +42,11 @@ test("status distinguishes heartbeat, evaluation improvement, remaining reservat
     await finishLoopAttempt(path, loopReport("pass", 6), loopCheckout, loopTime(6), loopScope);
     const passed = loopStatus(await readLoopRun(path), loopTime(7));
     assert.equal(passed.lastImprovementAt, loopTime(6));
+    assert.ok(passed.blockers.some((item) => item.id === "ci" && item.status === "unknown"));
+    assert.ok(
+      passed.blockers.some((item) => item.id === "review-threads" && item.status === "unknown"),
+    );
+    assert.ok(!passed.blockers.some((item) => item.id === "source-checks"));
     assert.equal(passed.deadline, failed.deadline);
     const expired = loopStatus(await readLoopRun(path), loopTime(1800));
     assert.equal(expired.phase, "stopped");

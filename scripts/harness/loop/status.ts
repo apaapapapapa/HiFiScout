@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { assessLoopRun, assessLoopSource } from "./controller.js";
 import type { CheckoutState } from "../checkpoint.js";
 import { parseLoopRun } from "./state.js";
-import { requireTimestamp } from "../report.js";
+import { bindRequiredChecks, requireTimestamp } from "../report.js";
 import { isDeliveryCheck } from "./contract.js";
 
 export function loopStatus(value: unknown, now = new Date().toISOString()) {
@@ -50,7 +50,10 @@ export function loopStatus(value: unknown, now = new Date().toISOString()) {
               : Infinity,
           ),
         ).toISOString();
-  const checks = view.lastDeliveryReport?.checks ?? view.lastReport?.checks ?? [];
+  const checks = bindRequiredChecks(
+    run.spec.task.requirements,
+    view.lastDeliveryReport?.checks ?? view.lastReport?.checks ?? [],
+  );
   return {
     ...view,
     generatedAt: at,
