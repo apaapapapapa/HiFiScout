@@ -14,11 +14,35 @@ import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
 import { loopStatus, loopStatusMarkdown, writeLoopStatus } from "./status.js";
 import { proveLoopRegression, learnFromLoop } from "./learning.js";
+import { collectReportIntake } from "./report-intake.js";
+import { loopProfiles } from "./profiles.js";
+
+const usage = `usage: harness loop <command>
+  help | profiles
+  validate <spec> | init <spec> <state> | history <state>
+  status <state> [--markdown] | snapshot <state> <directory> | heartbeat <state>
+  ingest <signal> <index> | intake-report <envelope.json> <directory>
+  intake-ci <owner/repo> <run-id> <directory> [automatic|manual]
+  prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json>
+  apply <state> <workspace-root> <iteration> <base-sha> <patch>
+  evaluate <state> <workspace-root> [AI-recording]
+  publish <state> <workspace-root> | review <state> <workspace-root> [self-receipt]
+  merge <state> <workspace-root> | observe <state> <workspace-root>
+  regression <state> <workspace-root> <proposal.json>
+  learn <state> <workspace-root> <proposal.json> <index>
+  block/resume/stop <state> <reason>`;
 
 export async function runLoopCli(args: string[]): Promise<number> {
+  if (args.length === 1 && ["help", "--help"].includes(args[0])) {
+    console.log(usage);
+    return 0;
+  }
   const json = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
   let result: unknown;
-  if (args[0] === "validate" && args.length === 2) {
+  if (args[0] === "profiles" && args.length === 1) result = Object.values(loopProfiles);
+  else if (args[0] === "intake-report" && args.length === 3)
+    result = await collectReportIntake(await json(args[1]), args[2]);
+  else if (args[0] === "validate" && args.length === 2) {
     const spec = parseLoopSpec(await json(args[1]));
     result = { spec, digest: loopSpecDigest(spec) };
   } else if (args[0] === "init" && args.length === 3)
@@ -89,10 +113,7 @@ export async function runLoopCli(args: string[]): Promise<number> {
   else if (["block", "resume", "stop"].includes(args[0]) && args.length === 3) {
     const type = args[0] === "block" ? "blocked" : args[0] === "resume" ? "resumed" : "stopped";
     result = await recordLoopEvent(args[1], await readLoopRun(args[1]), type, { reason: args[2] });
-  } else
-    throw new Error(
-      "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory> | evaluate <state> <workspace-root> [AI-recording] | prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json> | apply <state> <workspace-root> <iteration> <base-sha> <patch> | block/resume/stop <state> <reason>",
-    );
+  } else throw new Error(usage);
   console.log(JSON.stringify(result, null, 2));
   return 0;
 }
