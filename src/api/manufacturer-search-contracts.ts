@@ -5,6 +5,19 @@ export const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["luxman", "LUXMAN", ["luxman", "ラックスマン"]],
   ["accuphase", "Accuphase", ["accuphase", "アキュフェーズ"]],
   ["acoustic-revive", "ACOUSTIC REVIVE", ["acoustic revive", "アコースティックリバイブ"]],
+  // KOJO TECHNOLOGY is 光城精工's audio brand: https://kojo-seiko.co.jp/
+  [
+    "kojo",
+    "KOJO",
+    [
+      "KOJO TECHNOLOGY",
+      "光城精工",
+      "コージョー",
+      "コウジョウテクノロジー",
+      "KOJO TECHNOLOGY コウジョウテクノロジー",
+      "KOJO（光城精工）",
+    ],
+  ],
   ["tad", "TAD", ["tad", "technical audio devices", "テクニカルオーディオデバイセズ"]],
   [
     "bowers-wilkins",

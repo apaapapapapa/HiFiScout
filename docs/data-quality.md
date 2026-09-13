@@ -300,6 +300,13 @@ Migration 0017 introduced search/identity/evidence foundations and migration 001
 
 Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.
 
+KOJO, KOJO TECHNOLOGY and 光城精工 share the canonical manufacturer `kojo`, as confirmed by the
+[manufacturer's official site](https://kojo-seiko.co.jp/). The shared manufacturer vocabulary owns
+seller normalization and public search aliases. Migration 0126 registers the alternate spellings
+and marks affected legacy listings for bounded replay, preserving catalog IDs, raw seller evidence
+and manual overrides. Active listings converge through remediation; inactive listings are
+reevaluated on reactivation or an explicitly scoped replay.
+
 Fujiya manufacturer placeholders such as `その他` remain in `raw_manufacturer`, but are treated as
 missing for verified title-alias recovery. When a Fujiya title begins with that placeholder, only a
 complete verified manufacturer prefix immediately following it may supply the canonical
