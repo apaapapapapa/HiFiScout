@@ -3,12 +3,13 @@ import { execFileSync } from "node:child_process";
 import { isRecord } from "../../src/types.js";
 import {
   assessHarnessReport,
+  bindRequiredChecks,
   parseHarnessReport,
   requireSha,
   requireText,
   requireTimestamp,
 } from "./report.js";
-import type { CheckScope, HarnessCheck, HarnessReport } from "./report.js";
+import type { CheckScope, HarnessReport } from "./report.js";
 import { updateJsonRevision } from "./store.js";
 
 export interface HarnessTask {
@@ -115,24 +116,7 @@ export function assessCheckpoint(value: unknown, current: CheckoutState) {
   const report = checkpoint.report;
   // The task owns acceptance requirements. A runner cannot waive one by changing required=false,
   // dropping a check, or relabeling a production observation as a source-only test.
-  const checks: HarnessCheck[] = checkpoint.task.requirements.map((requirement) => {
-    const observed = report.checks.find((check) => check.id === requirement.id);
-    return observed?.scope === requirement.scope
-      ? { ...observed, required: true }
-      : {
-          ...requirement,
-          required: true,
-          status: "unknown",
-          reason: "Required evidence missing or scope changed",
-          evidence: [],
-        };
-  });
-  // Collectors may add integrity requirements (for example snapshot-stable). The task is a
-  // minimum acceptance set, not permission to discard additional required evidence.
-  const taskIds = new Set(checks.map((check) => check.id));
-  checks.push(
-    ...report.checks.filter((check) => !taskIds.has(check.id)).map((check) => ({ ...check })),
-  );
+  const checks = bindRequiredChecks(checkpoint.task.requirements, report.checks);
   const sourceStable =
     current.sourceSha === report.sourceSha &&
     checkpoint.checkout.sourceSha === report.sourceSha &&

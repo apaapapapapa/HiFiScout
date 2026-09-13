@@ -40,6 +40,18 @@ journal size ceiling, so a successful write cannot create a journal rejected by 
 Lock removal is synced as well. Event data must be plain JSON: non-finite numbers, undefined,
 accessors, sparse arrays and class instances are rejected; stored payloads are detached from callers.
 
+`vp run harness loop status <state.json>` reconstructs the controller state from the journal.
+An attempt reserves its external calls and microdollar allocation before execution. Interrupted work
+keeps those charges when deliberately resumed. Unknown/skipped/missing or stale-SHA evidence blocks
+progress; a source pass advances to review, not deployment/completion. The controller binds the same
+required checks as checkpoints, including explicitly requested comparisons. Repeated failures without
+improvement, the iteration ceiling and the original wall-clock deadline stop the run. Heartbeats do
+not extend deadlines or count as progress. A terminal run requires a new contract/run to try again.
+Source acceptance also requires the complete Git change list bound to the frozen baseline and
+candidate SHA. `collectLoopScope` records this evidence; protected paths, existing acceptance-test
+edits, symlinks/gitlinks and mode changes block the attempt. Requested comparisons must name the
+contract's baseline. A passing JSON assertion alone cannot replace these collector inputs.
+
 ## Evidence reports
 
 Run `vp run harness report .generated/harness/report.json` to validate and assess a report.
