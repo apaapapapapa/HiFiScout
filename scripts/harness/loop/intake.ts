@@ -152,6 +152,7 @@ export function signalsFromCi(
   repository: string,
   runValue: unknown,
   jobsValue: unknown,
+  manual = false,
 ): { signals: LoopSignal[]; reason: string } {
   const repo = requireRepository(repository);
   if (!isRecord(runValue) || !isRecord(jobsValue) || !Array.isArray(jobsValue.jobs))
@@ -166,6 +167,8 @@ export function signalsFromCi(
   const branch = requireText(runValue.head_branch, "ci_branch");
   if (branch.startsWith("automation/loop/"))
     return { signals: [], reason: "existing_loop_owns_this_ci" };
+  if (!manual && (branch !== "main" || runValue.event !== "push"))
+    return { signals: [], reason: "automatic_intake_requires_main_push" };
   if (
     runValue.path !== ".github/workflows/ci.yml" ||
     runValue.status !== "completed" ||
@@ -208,6 +211,7 @@ export async function collectCiIntake(
   runId: number,
   output: string,
   invoke = gh,
+  manual = false,
 ) {
   const repo = requireRepository(repository),
     id = integer(runId, "ci_run_id", 1);
@@ -219,6 +223,7 @@ export async function collectCiIntake(
     repo,
     await get(`actions/runs/${id}`),
     await get(`actions/runs/${id}/jobs?per_page=100`),
+    manual,
   );
   await mkdir(output, { recursive: true });
   for (const signal of snapshot.signals) {

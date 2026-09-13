@@ -20,9 +20,17 @@ export async function runLoopCli(args: string[]): Promise<number> {
   else if (args[0] === "ingest" && args.length === 3) {
     const item = await ingestLoopSignal(await json(args[1]), args[2]);
     result = { item, spec: specFromSignal(item.signal) };
-  } else if (args[0] === "intake-ci" && args.length === 4)
-    result = await collectCiIntake(args[1], Number(args[2]), args[3]);
-  else if (args[0] === "prepare" && args.length === 4)
+  } else if (args[0] === "intake-ci" && (args.length === 4 || args.length === 5)) {
+    if (args[4] !== undefined && args[4] !== "automatic" && args[4] !== "manual")
+      throw new Error("invalid_intake_mode");
+    result = await collectCiIntake(
+      args[1],
+      Number(args[2]),
+      args[3],
+      undefined,
+      args[4] === "manual",
+    );
+  } else if (args[0] === "prepare" && args.length === 4)
     result = await prepareLoopWorkspace(args[1], args[2], args[3]);
   else if (args[0] === "begin" && args.length === 3) {
     const request = await json(args[2]);

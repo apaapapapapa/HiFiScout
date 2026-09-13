@@ -81,7 +81,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LOOP_CI_RUN_ID: ${{ github.event.workflow_run.id || inputs.ci_run_id }}
-        run: vp run harness loop intake-ci "$GITHUB_REPOSITORY" "$LOOP_CI_RUN_ID" .generated/loop-intake
+          LOOP_INTAKE_MODE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}
+        run: vp run harness loop intake-ci "$GITHUB_REPOSITORY" "$LOOP_CI_RUN_ID" .generated/loop-intake "$LOOP_INTAKE_MODE"
       - name: Preserve intake and contracts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
