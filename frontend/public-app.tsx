@@ -74,8 +74,8 @@ import { specificationErrors, specificationFromFilterId } from "./specification-
 import type { SpecificationFilterId } from "../src/api/catalog-specification-contracts.js";
 import { canonicalComparisonKeys, comparisonKeysFromSearch } from "./product-comparison.js";
 import { ProductComparison } from "./product-comparison-ui.js";
-import { applyProductFilter } from "./product-filter-links.js";
-import type { ProductFilterNavigation } from "./product-filter-links.js";
+import { applyProductFilter, enhanceProductFilterLinks } from "./product-filter-links.js";
+import type { ProductFilter, ProductFilterNavigation } from "./product-filter-links.js";
 import { isOfferFactId } from "../src/api/contracts.js";
 import type { OfferFactId } from "../src/api/contracts.js";
 import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
@@ -779,23 +779,32 @@ export function PublicApp() {
     [loadProducts, syncUrl, cancelPendingInput],
   );
 
-  const productFilterNavigation = useMemo<ProductFilterNavigation>(
-    () => ({
-      href: (filter) => {
-        const params = filterUrlParams(applyProductFilter(filters, filter), view);
-        if (comparisonKeys.length) params.set("compare", comparisonKeys.join(","));
-        return `/?${params}`;
-      },
+  const productFilterNavigation = useMemo<ProductFilterNavigation>(() => {
+    const href = (filter: ProductFilter) => {
+      const params = filterUrlParams(applyProductFilter(filters, filter), view);
+      if (comparisonKeys.length) params.set("compare", comparisonKeys.join(","));
+      return `/?${params}`;
+    };
+    return {
+      href,
       select: (filter) => {
+        if (!bootedRef.current) {
+          location.assign(href(filter));
+          return;
+        }
         setDraftFilters((draft) => (draft ? applyProductFilter(draft, filter) : null));
         commitFilters(applyProductFilter(filtersRef.current, filter), false, "/");
         // Change the route before closing the dialog so its close handler cannot go Back and
         // undo the selected filter. The existing history controller restores details on Back.
         restoreProductFromHistory();
       },
-    }),
-    [filters, view, comparisonKeys, commitFilters],
-  );
+    };
+  }, [filters, view, comparisonKeys, commitFilters]);
+
+  useEffect(() => {
+    const permalink = document.getElementById("product-permalink-page");
+    return permalink ? enhanceProductFilterLinks(permalink, productFilterNavigation) : undefined;
+  }, [productFilterNavigation]);
 
   const changeValue = useCallback(
     (id: UrlValueId, value: string, debounced = false) => {

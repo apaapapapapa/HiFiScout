@@ -89,6 +89,8 @@ for (const { width, view } of [
   }) => {
     await page.setViewportSize({ width, height: 900 });
     const searches = await mockCatalog(page);
+    await mount("frontend/public-app/Default");
+    await expect(page.locator(".card")).toHaveCount(1);
     await page.evaluate(
       ({ manufacturer, view }) => {
         const params = new URLSearchParams({
@@ -101,10 +103,11 @@ for (const { width, view } of [
         params.append("manufacturer", manufacturer);
         params.append("manufacturer", "LUXMAN");
         history.replaceState(null, "", `/?${params}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
       },
       { manufacturer, view },
     );
-    await mount("frontend/public-app/Default");
+    await expect.poll(() => searches.at(-1)?.searchParams.get("q")).toBe("Reference");
     await page.getByRole("button", { name: "2ページ目", exact: true }).click();
     await expect(page.locator('.page-button[aria-current="page"]')).toHaveText("2");
     const dac = page.locator('.card [data-category-filter="PRC.DAC"]');
@@ -207,8 +210,12 @@ test("older snapshots keep their primary category link and unpaired labels stay 
 
 test("comparison metadata uses the same search links", async ({ page, mount }) => {
   const searches = await mockCatalog(page);
-  await page.evaluate(() => history.replaceState(null, "", "/?compare=c-1,c-2"));
   await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.evaluate(() => {
+    history.replaceState(null, "", "/?compare=c-1,c-2");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
   const table = page.locator(".comparison-table");
   await table.locator('[data-category-filter="PRC.DAC"]').first().click();
   await expect.poll(() => searches.at(-1)?.searchParams.get("category")).toBe("PRC.DAC");
@@ -217,4 +224,67 @@ test("comparison metadata uses the same search links", async ({ page, mount }) =
     .poll(() => searches.at(-1)?.searchParams.getAll("manufacturer"))
     .toEqual([manufacturer]);
   expect(new URL(page.url()).searchParams.get("compare")).toBe("c-1,c-2");
+});
+
+test("direct detail links outside the React root retain filters in their href and navigation", async ({
+  page,
+  mount,
+}) => {
+  const searches = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.evaluate((manufacturer) => {
+    const params = new URLSearchParams({
+      q: "Reference",
+      shop: "shop-a",
+      minPrice: "10000",
+      view: "cards",
+      compare: "c-1,c-2",
+    });
+    history.replaceState(null, "", `/p/c-1?${params}`);
+    const detail = document.createElement("section");
+    detail.id = "product-permalink-page";
+    detail.dataset.productKey = "c-1";
+    // The server-rendered document is outside the story's React root. The SSR unit test checks
+    // these data attributes and neutral hrefs against the real HTML renderer.
+    for (const [field, value, label] of [
+      ["manufacturer", manufacturer, manufacturer],
+      ["category", "PRC.DAC", "DAC"],
+    ]) {
+      const link = document.createElement("a");
+      link.setAttribute(`data-${field}-filter`, value);
+      link.href = `/?${new URLSearchParams({ [field]: value })}`;
+      link.textContent = label;
+      detail.appendChild(link);
+    }
+    document.body.insertBefore(detail, document.body.firstChild);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, manufacturer);
+  await expect.poll(() => searches.at(-1)?.searchParams.get("q")).toBe("Reference");
+  const detail = page.locator("#product-permalink-page");
+  const maker = detail.locator("[data-manufacturer-filter]");
+  await expect(page.locator(".card")).toHaveCount(1);
+  for (const link of [maker, detail.locator("[data-category-filter]")]) {
+    const target = new URL((await link.getAttribute("href"))!, page.url());
+    expect(target.pathname).toBe("/");
+    expect(target.searchParams.get("q")).toBe("Reference");
+    expect(target.searchParams.get("shop")).toBe("shop-a");
+    expect(target.searchParams.get("minPrice")).toBe("10000");
+    expect(target.searchParams.get("view")).toBe("cards");
+    expect(target.searchParams.get("compare")).toBe("c-1,c-2");
+  }
+  await maker.focus();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => searches.at(-1)?.searchParams.getAll("manufacturer"))
+    .toEqual([manufacturer]);
+  await expect(detail).toBeHidden();
+  expect(new URL(page.url()).pathname).toBe("/");
+  await page.goBack();
+  await expect(detail).toBeVisible();
+  await detail.locator("[data-category-filter]").click();
+  await expect.poll(() => searches.at(-1)?.searchParams.get("category")).toBe("PRC.DAC");
+  expect(searches.at(-1)!.searchParams.get("q")).toBe("Reference");
+  expect(searches.at(-1)!.searchParams.getAll("shop")).toEqual(["shop-a"]);
+  await expect(detail).toBeHidden();
 });

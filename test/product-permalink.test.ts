@@ -90,6 +90,7 @@ test("SSR product HTML exposes factual detail with canonical OGP and noindex", (
   assert.match(html, /name="twitter:card" content="summary"/);
   assert.match(html, /LUX&amp;MAN/);
   assert.match(html, /href="\/\?manufacturer=LUX%26MAN"/);
+  assert.match(html, /data-manufacturer-filter="LUX&amp;MAN"/);
   assert.match(html, /D&lt;10X&gt;&quot;/);
   assert.match(html, /D-10X &lt;展示品&gt;/);
   assert.match(html, /660,000円/);
@@ -119,6 +120,7 @@ test("SSR category links retain ID-label pairing for sets and support older prim
     "https://example.test",
   );
   assert.match(setHtml, /href="\/\?category=PRC.DAC"[^>]*>DAC<\/a>/);
+  assert.match(setHtml, /data-category-filter="PRC.DAC"/);
   assert.doesNotMatch(setHtml, /href="\/\?category=AMP.INTEGRATED"/);
   assert.doesNotMatch(setHtml, /href="\/\?category=undefined"/);
 });

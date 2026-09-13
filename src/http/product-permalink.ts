@@ -61,7 +61,7 @@ function productFilterHtml(
 ): string {
   if (!value) return escapeHtml(label);
   const path = `/?${new URLSearchParams({ [field]: value })}`;
-  return `<a class="product-filter-link ${field === "category" ? "category" : "manufacturer-filter-link"}" href="${escapeHtml(path)}" aria-label="${escapeHtml(`${label}の商品に絞り込む`)}">${escapeHtml(label)}</a>`;
+  return `<a class="product-filter-link ${field === "category" ? "category" : "manufacturer-filter-link"}" href="${escapeHtml(path)}" data-${field}-filter="${escapeHtml(value)}" aria-label="${escapeHtml(`${label}の商品に絞り込む`)}">${escapeHtml(label)}</a>`;
 }
 
 function stockLabel(offer: ProductOffer): string {
