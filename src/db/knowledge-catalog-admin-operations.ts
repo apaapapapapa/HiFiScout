@@ -1,3 +1,5 @@
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
+import { adminChangeJournalStatement } from "./admin-change-journal.js";
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import { manufacturerFilterIds } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
@@ -778,6 +780,7 @@ export async function mergeKnowledgeCatalogAdminProducts(
   targetProductId: number,
   sourceProductId: number,
   mergedAt = new Date().toISOString(),
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<KnowledgeCatalogAdminMergeResult | null> {
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
   const [target, source] = await Promise.all([
@@ -817,6 +820,20 @@ export async function mergeKnowledgeCatalogAdminProducts(
     },
     mergedAt,
   );
+
+  // One history row per merge, on the product that disappears: without it the merge is the only
+  // manual catalog operation with no trace of who performed it. A merge is a rare, deliberate
+  // action, so this is one extra INSERT per operation, not per row moved.
+  const mergeJournal = adminChangeJournalStatement(
+    db,
+    "catalog",
+    sourceProductId,
+    { merged_into: "" },
+    { merged_into: String(targetProductId) },
+    mergedAt,
+    { actor },
+  );
+  if (mergeJournal.length) await db.batch(mergeJournal);
 
   await recordManualSource(db, targetProductId, "", mergedAt);
   const completed = await completeManualWrite(

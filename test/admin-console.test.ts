@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 
 import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 
@@ -42,6 +43,7 @@ test("admin root serves the single React console entrypoint", async () => {
   const response = await handleAuthenticatedAdminEntryRequest(
     new Request("https://admin.example.test/?ignored=1"),
     adminEnv(seenPaths),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);
@@ -54,6 +56,7 @@ test("authenticated count API returns no-store counts and rejects invalid cursor
   const response = await handleAuthenticatedAdminEntryRequest(
     new Request("https://admin.example.test/api/admin/work-counts"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
@@ -67,6 +70,7 @@ test("authenticated count API returns no-store counts and rejects invalid cursor
   const invalid = await handleAuthenticatedAdminEntryRequest(
     new Request("https://admin.example.test/api/admin/work-counts?afterId=-1"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(invalid.status, 400);
 });
@@ -76,6 +80,7 @@ test("admin brand image is served through the protected static asset binding", a
   const response = await handleAuthenticatedAdminEntryRequest(
     new Request("https://admin.example.test/hifiscout-mark.jpg"),
     adminEnv(seenPaths),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);
@@ -106,6 +111,7 @@ test("all legacy admin pages, fragments, and scripts are retired", async () => {
       const response = await handleAuthenticatedAdminEntryRequest(
         new Request(`https://admin.example.test${pathname}`, { headers }),
         adminEnv(seenPaths),
+        TEST_ADMIN_PRINCIPAL,
       );
 
       assert.equal(response.status, 404, `${pathname} must stay retired`);

@@ -5,7 +5,18 @@ import type {
   AdminRestoreSelection,
 } from "../src/api/admin-listing-contracts.js";
 import type { AdminCsvChange, AdminCsvResult } from "../src/api/admin-csv-contracts.js";
+import { UNKNOWN_ACTOR_LABEL } from "../src/api/admin-listing-contracts.js";
 import { adminJson, dateText, genericErrorText } from "./admin-shared.js";
+
+/**
+ * Shows the recorded subject, or says so plainly when there is none.
+ *
+ * Rows written before attribution existed, and automated remediation, genuinely have no subject.
+ * Showing the current operator there would be a fabrication, so they read as unknown instead.
+ */
+function actorText(actor: string | null): string {
+  return actor?.trim() || UNKNOWN_ACTOR_LABEL;
+}
 
 const LABELS: Record<string, string> = {
   manufacturer_id: "メーカー",
@@ -182,7 +193,7 @@ export function AdminChangeHistoryPanel({
                     : "保存済み判定イベント"}
               </h3>
               <small>
-                {item.status} · {item.operationId}
+                {item.status} · 実行者: {actorText(item.actor)} · {item.operationId}
               </small>
               <div className="table-wrap">
                 <table>

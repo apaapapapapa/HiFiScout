@@ -1,4 +1,5 @@
 import { adminChangeJournalStatement, adminHistoryGuardStatement } from "./admin-change-journal.js";
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
 import {
   categoryClosureIds,
   categoryIdForClassification,
@@ -378,6 +379,7 @@ export async function updateKnowledgeCatalogAdminProduct(
   productId: number,
   input: KnowledgeCatalogAdminUpdateInput,
   updatedAt = new Date().toISOString(),
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<KnowledgeCatalogAdminUpdateResult | null> {
   const existing = await loadAdminProduct(db, productId);
   if (!existing) return null;
@@ -408,7 +410,9 @@ export async function updateKnowledgeCatalogAdminProduct(
       JSON.stringify(beforeValues),
       existing.updatedAt,
     ),
-    ...adminChangeJournalStatement(db, "catalog", productId, beforeValues, afterValues, updatedAt),
+    ...adminChangeJournalStatement(db, "catalog", productId, beforeValues, afterValues, updatedAt, {
+      actor,
+    }),
     db
       .prepare(`
         UPDATE knowledge_catalog_products

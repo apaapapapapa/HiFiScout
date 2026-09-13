@@ -1,3 +1,4 @@
+import { UNKNOWN_ADMIN_ACTOR, trustedActor } from "../api/admin-actor.js";
 import type { QueryableDatabase } from "./types.js";
 
 export const ADMIN_HISTORY_STATE_SQL = {
@@ -25,6 +26,19 @@ export function adminHistoryGuardStatement(
     .bind(id, valuesJson, updatedAt);
 }
 
+export interface AdminChangeJournalOptions {
+  operationId?: string;
+  restoredFrom?: string;
+  /**
+   * The verified subject behind the change, or the unknown actor.
+   *
+   * This travels with the row the change already writes, so attribution costs no extra statement
+   * and no extra round trip. It is an audit record, not an authorization input: nothing reads it
+   * back to decide what a caller may do.
+   */
+  actor?: string;
+}
+
 /** Called in the same transaction as an actual editor change; CSV reuses its own receipt. */
 export function adminChangeJournalStatement(
   db: QueryableDatabase,
@@ -33,15 +47,18 @@ export function adminChangeJournalStatement(
   before: Record<string, string>,
   after: Record<string, string>,
   now: string,
-  operationId: string = crypto.randomUUID(),
-  restoredFrom = "",
+  {
+    operationId = crypto.randomUUID(),
+    restoredFrom = "",
+    actor = UNKNOWN_ADMIN_ACTOR,
+  }: AdminChangeJournalOptions = {},
 ): D1PreparedStatement[] {
   if (Object.keys(after).every((field) => before[field] === after[field])) return [];
   return [
     db
       .prepare(`INSERT INTO admin_product_change_log
-    (operation_id, target_kind, target_id, before_json, after_json, created_at, restored_from)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    (operation_id, target_kind, target_id, before_json, after_json, created_at, restored_from, actor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(
         operationId,
         kind,
@@ -50,6 +67,7 @@ export function adminChangeJournalStatement(
         JSON.stringify(after),
         now,
         restoredFrom,
+        trustedActor(actor),
       ),
   ];
 }

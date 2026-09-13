@@ -1,4 +1,5 @@
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 import assert from "node:assert/strict";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import {
@@ -29,6 +30,7 @@ test("replay requests cannot override the durable cursor or server batch size", 
         body: JSON.stringify(body),
       }),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
   for (const body of [null, [], { afterId: 100 }, { limit: 10000 }]) {
     assert.equal((await send(body)).status, 400);

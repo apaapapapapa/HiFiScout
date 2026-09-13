@@ -1,4 +1,5 @@
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 import assert from "node:assert/strict";
 import { parseOfferFactChanges } from "../src/catalog/offer-fact-decisions.js";
 import { readOfferFactAdmin, updateOfferFactAdmin } from "../src/db/offer-fact-admin-repository.js";
@@ -83,6 +84,7 @@ test("offer fact routes keep Access, same-origin, content-type and request valid
         body: JSON.stringify(body),
       }),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
   assert.equal(
     (await send({ remote_control: "absent" }, "https://other.example.test")).status,
@@ -93,6 +95,10 @@ test("offer fact routes keep Access, same-origin, content-type and request valid
   assert.equal((await send({ remote_control: "x".repeat(5000) })).status, 413);
   assert.equal(calls, 0);
   assert.equal((await send({ remote_control: "unknown" })).status, 200);
-  assert.equal((await handleAuthenticatedAdminEntryRequest(new Request(url), env)).status, 200);
+  assert.equal(
+    (await handleAuthenticatedAdminEntryRequest(new Request(url), env, TEST_ADMIN_PRINCIPAL))
+      .status,
+    200,
+  );
   assert.equal(calls, 2);
 });

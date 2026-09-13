@@ -22,6 +22,7 @@ import {
   catalogAdminCategoryIds,
   propagateCatalogCategoryToMatchedListings,
 } from "./knowledge-catalog-admin-repository.js";
+import { UNKNOWN_ADMIN_ACTOR, trustedActor } from "../api/admin-actor.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 import { firstMeasured } from "./read-accounting.js";
 import { catalogCsvBootstrapManufacturer } from "./admin-csv-catalog-manufacturer.js";
@@ -324,6 +325,7 @@ function receiptStatement(
   input: AdminCsvApplyInput,
   values: AdminCsvValues,
   now: string,
+  actor: string,
 ): D1PreparedStatement {
   const { original } = input.change;
   if (original.id === null) throw new Error("csv_import_update_requires_id");
@@ -343,11 +345,11 @@ function receiptStatement(
     JSON.stringify(original.values),
   ];
   if (original.kind === "catalog") parameters.push(original.id, original.id);
-  parameters.push(JSON.stringify(values), input.revision, now, now);
+  parameters.push(JSON.stringify(values), input.revision, now, now, trustedActor(actor));
   return db
     .prepare(`INSERT INTO admin_csv_import_changes(
-    operation_id, target_kind, target_id, before_json, after_json, revision, status, created_at, updated_at
-  ) VALUES (?, ?, ?, ${before}, ?, ?, 'pending', ?, ?)`)
+    operation_id, target_kind, target_id, before_json, after_json, revision, status, created_at, updated_at, actor
+  ) VALUES (?, ?, ?, ${before}, ?, ?, 'pending', ?, ?, ?)`)
     .bind(...parameters);
 }
 
@@ -357,6 +359,7 @@ async function updateCatalog(
   values: AdminCsvValues,
   now: string,
   revision: string,
+  actor: string,
 ): Promise<void> {
   const { original } = input.change;
   const id = original.id;
@@ -367,7 +370,7 @@ async function updateCatalog(
     normalizeCatalogModel(before.canonical_model) !== normalizeCatalogModel(values.canonical_model);
   const statements = [
     transactionGuard(db, "catalog", id, revision),
-    receiptStatement(db, input, values, now),
+    receiptStatement(db, input, values, now, actor),
     db
       .prepare(`UPDATE knowledge_catalog_products
       SET manufacturer_id = ?, canonical_model = ?,
@@ -591,6 +594,7 @@ async function resumeReceipt(
 export async function applyAdminCsvChange(
   db: QueryableDatabase,
   input: AdminCsvApplyInput,
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<AdminCsvResult> {
   const { change } = input;
   const values = valuesFor(change);
@@ -632,7 +636,7 @@ export async function applyAdminCsvChange(
             "conflict",
             "差分確認後にカタログが変更されました。再確認してください。",
           );
-        await createCatalogCsvProduct(db, input, values, now, creation.snapshot);
+        await createCatalogCsvProduct(db, input, values, now, creation.snapshot, actor);
       } else {
         const state = await loadState(db, change.original.kind, change.original.id);
         if (!state || (await revisionToken(state.revision)) !== input.revision) {
@@ -659,7 +663,7 @@ export async function applyAdminCsvChange(
             now,
             [
               transactionGuard(db, "listing", change.original.id, state.revision),
-              receiptStatement(db, input, values, now),
+              receiptStatement(db, input, values, now, actor),
             ],
           );
           // The existing listing path has already completed all projections. Only recovery
@@ -673,7 +677,7 @@ export async function applyAdminCsvChange(
             operationId: input.operationId,
           });
         } else {
-          await updateCatalog(db, input, values, now, state.revision);
+          await updateCatalog(db, input, values, now, state.revision, actor);
         }
       }
       receipt = await firstMeasured<Receipt>(

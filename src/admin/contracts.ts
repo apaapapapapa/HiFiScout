@@ -106,7 +106,12 @@ export interface CatalogAdminRpc {
   saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string): Promise<unknown>;
   listManufacturers(options: AdminManufacturerQuery): Promise<AdminManufacturerPage>;
   previewCsvImport(changes: AdminCsvChange[]): Promise<AdminCsvResult[]>;
-  applyCsvImport(input: AdminCsvApplyInput): Promise<AdminCsvResult>;
+  /**
+   * `actor` is optional so the admin Worker can be a release behind this one during a rollout: an
+   * older deployment sends nothing and the change is recorded with no subject, rather than failing.
+   * It is never taken from a request body — only an authenticated admin entry point supplies it.
+   */
+  applyCsvImport(input: AdminCsvApplyInput, actor?: string): Promise<AdminCsvResult>;
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
   listCandidates(options: CatalogAdminListOptions): Promise<unknown>;
   listDuplicates(options: CatalogAdminDuplicateListOptions): Promise<unknown>;
@@ -117,8 +122,12 @@ export interface CatalogAdminRpc {
     productId: number,
     input: import("../catalog/types.js").CatalogSpecifications,
   ): Promise<unknown>;
-  updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
-  mergeProducts(targetProductId: number, sourceProductId: number): Promise<unknown>;
+  updateProduct(
+    productId: number,
+    input: CatalogAdminUpdateInput,
+    actor?: string,
+  ): Promise<unknown>;
+  mergeProducts(targetProductId: number, sourceProductId: number, actor?: string): Promise<unknown>;
   startKnowledgeCatalogExport(format?: DataExportFormat): Promise<KnowledgeCatalogExportJob>;
   latestKnowledgeCatalogExportJob(): Promise<KnowledgeCatalogExportJob | null>;
   getKnowledgeCatalogExportJob(jobId: string): Promise<KnowledgeCatalogExportJob | null>;

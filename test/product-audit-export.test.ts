@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 
 import type { CatalogAdminProductExportRow, CatalogAdminRpc } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
@@ -183,6 +184,7 @@ test("protected product export starts one asynchronous job and reports queue fai
         return acceptedJob;
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(accepted.status, 202);
@@ -201,6 +203,7 @@ test("protected product export starts one asynchronous job and reports queue fai
         throw new Error("queue unavailable");
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(unavailable.status, 503);
   assert.deepEqual(await unavailable.json(), { error: "product_audit_export_start_failed" });
@@ -229,7 +232,11 @@ test("product export validates scopes before invoking the service binding", asyn
     new Request("https://admin.example.test/api/admin/product-audit-exports"),
     new Request("https://admin.example.test/api/admin/product-audit-exports?scope=deleted"),
   ]) {
-    const response = await handleAuthenticatedCatalogAdminRequest(request, env);
+    const response = await handleAuthenticatedCatalogAdminRequest(
+      request,
+      env,
+      TEST_ADMIN_PRINCIPAL,
+    );
     assert.equal(response.status, 400);
     assertAdminSecurityHeaders(response);
   }
@@ -255,6 +262,7 @@ test("product export rejects cross-site, non-JSON, and oversized generation requ
       body: JSON.stringify({ scope: "active" }),
     }),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(crossSite.status, 403);
 
@@ -265,6 +273,7 @@ test("product export rejects cross-site, non-JSON, and oversized generation requ
       body: JSON.stringify({ scope: "active" }),
     }),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(simpleCrossSite.status, 415);
 
@@ -275,6 +284,7 @@ test("product export rejects cross-site, non-JSON, and oversized generation requ
       body: JSON.stringify({ scope: "active", padding: "x".repeat(1_024) }),
     }),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(oversized.status, 413);
   assert.equal(calls, 0);
@@ -303,6 +313,7 @@ test("product export restores the latest job and polls an individual UUID", asyn
   const latest = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/admin/product-audit-exports?scope=active"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(latest.status, 200);
   assert.deepEqual(await latest.json(), { job: readyJob });
@@ -311,6 +322,7 @@ test("product export restores the latest job and polls an individual UUID", asyn
   const found = await handleAuthenticatedCatalogAdminRequest(
     new Request(`https://admin.example.test/api/admin/product-audit-exports/${readyJob.id}`),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(found.status, 200);
   assert.deepEqual(await found.json(), readyJob);
@@ -320,6 +332,7 @@ test("product export restores the latest job and polls an individual UUID", asyn
   const missing = await handleAuthenticatedCatalogAdminRequest(
     new Request(`https://admin.example.test/api/admin/product-audit-exports/${missingId}`),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(missing.status, 404);
   assert.deepEqual(await missing.json(), { error: "not_found" });
@@ -343,6 +356,7 @@ test("product export download preserves attachment metadata and admin security h
         });
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);

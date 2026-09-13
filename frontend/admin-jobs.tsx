@@ -1,3 +1,4 @@
+import { UNKNOWN_ACTOR_LABEL } from "../src/api/admin-listing-contracts.js";
 import { useEffect, useRef, useState } from "react";
 import type {
   AdminJobList,
@@ -221,6 +222,9 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                   {job.label}
                   <br />
                   {dateText(job.createdAt)}
+                  <br />
+                  {/* The job runs in the background coordinator; this names who asked for it. */}
+                  <small>依頼者: {job.requestedBy?.trim() || UNKNOWN_ACTOR_LABEL}</small>
                   <details>
                     <summary>処理ID</summary>
                     <code>{job.id}</code>

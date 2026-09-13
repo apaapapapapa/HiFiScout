@@ -23,6 +23,7 @@ import { adminAiCatalog } from "./ai-suggestions/admin.js";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
+import { trustedActor } from "./api/admin-actor.js";
 import type { AdminManufacturerQuery } from "./api/admin-manufacturer-contracts.js";
 import type { ModelFactWriteInput } from "./catalog/types.js";
 import { readModelFactsAdmin, saveModelFactsAdmin } from "./db/model-fact-admin-repository.js";
@@ -124,8 +125,8 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
   async getOperations() {
     return readAdminOperations(this.env);
   }
-  async adminJobs(input: unknown) {
-    return requestAdminJobs(this.env, input);
+  async adminJobs(input: unknown, actor?: string) {
+    return requestAdminJobs(this.env, input, trustedActor(actor));
   }
   async getCrawlOverview() {
     return readAdminCrawls(this.env);
@@ -145,7 +146,9 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
   async saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string) {
     const parsed = parseModelFactWrite(input);
     if (!parsed) throw new Error("catalog_model_fact_invalid");
-    return saveModelFactsAdmin(this.env.DB, productId, parsed, actor);
+    // The argument crossed a process boundary, so it is narrowed here rather than trusted; only an
+    // authenticated admin entry point ever supplies it.
+    return saveModelFactsAdmin(this.env.DB, productId, parsed, trustedActor(actor));
   }
   async listManufacturers(options: AdminManufacturerQuery) {
     return listAdminManufacturers(this.env.DB, options);
@@ -158,10 +161,10 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return results;
   }
 
-  async applyCsvImport(input: AdminCsvApplyInput) {
+  async applyCsvImport(input: AdminCsvApplyInput, actor?: string) {
     const parsed = parseAdminCsvApply(input);
     if (!parsed) throw new Error("invalid_csv_import");
-    return applyAdminCsvChange(this.env.DB, parsed);
+    return applyAdminCsvChange(this.env.DB, parsed, trustedActor(actor));
   }
 
   async listProducts(options: CatalogAdminListOptions) {
@@ -192,12 +195,24 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return updateCatalogSpecifications(this.env.DB, productId, input);
   }
 
-  async updateProduct(productId: number, input: CatalogAdminUpdateInput) {
-    return updateKnowledgeCatalogAdminProduct(this.env.DB, productId, input);
+  async updateProduct(productId: number, input: CatalogAdminUpdateInput, actor?: string) {
+    return updateKnowledgeCatalogAdminProduct(
+      this.env.DB,
+      productId,
+      input,
+      new Date().toISOString(),
+      trustedActor(actor),
+    );
   }
 
-  async mergeProducts(targetProductId: number, sourceProductId: number) {
-    return mergeKnowledgeCatalogAdminProducts(this.env.DB, targetProductId, sourceProductId);
+  async mergeProducts(targetProductId: number, sourceProductId: number, actor?: string) {
+    return mergeKnowledgeCatalogAdminProducts(
+      this.env.DB,
+      targetProductId,
+      sourceProductId,
+      new Date().toISOString(),
+      trustedActor(actor),
+    );
   }
 
   async getChangeHistory(kind: "listing" | "catalog", id: number) {
@@ -210,10 +225,21 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     if (!parsed) throw new Error("invalid_history_restore");
     return previewAdminHistoryRestore(this.env.DB, parsed);
   }
-  async restoreHistoryColor(input: AdminRestoreSelection, revision: string, operationId: string) {
+  async restoreHistoryColor(
+    input: AdminRestoreSelection,
+    revision: string,
+    operationId: string,
+    actor?: string,
+  ) {
     const parsed = parseAdminRestoreSelection(input);
     if (!parsed) throw new Error("invalid_history_restore");
-    return restoreAdminHistoryColor(this.env.DB, parsed, revision, operationId);
+    return restoreAdminHistoryColor(
+      this.env.DB,
+      parsed,
+      revision,
+      operationId,
+      trustedActor(actor),
+    );
   }
   async getListingDiagnosis(listingId: number) {
     return readAdminListingDiagnosis(this.env.DB, listingId);
@@ -239,8 +265,15 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return updateOfferFactAdmin(this.env.DB, listingId, changes);
   }
 
-  async updateListing(listingId: number, input: ListingAdminUpdateInput) {
-    return updateListingAdminProduct(this.env.DB, listingId, input);
+  async updateListing(listingId: number, input: ListingAdminUpdateInput, actor?: string) {
+    return updateListingAdminProduct(
+      this.env.DB,
+      listingId,
+      input,
+      new Date().toISOString(),
+      [],
+      trustedActor(actor),
+    );
   }
 
   async listCorrectionReports(options: ProductCorrectionReportListOptions) {

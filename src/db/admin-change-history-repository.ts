@@ -11,6 +11,7 @@ interface HistoryRow {
   after_json: string;
   created_at: string;
   status: string;
+  actor: string;
 }
 
 function item(
@@ -29,6 +30,9 @@ function item(
     after: JSON.parse(row.after_json) as Record<string, string>,
     createdAt: row.created_at,
     status: row.status,
+    // Stored as an empty string where the subject was never captured; reported as `null` so the
+    // console cannot mistake "nobody recorded" for "an account named empty string".
+    actor: row.actor || null,
   };
 }
 
@@ -41,7 +45,7 @@ export async function readAdminChangeHistory(
   for (const source of ["editor", "csv"] as const) {
     const table = source === "editor" ? "admin_product_change_log" : "admin_csv_import_changes";
     const rows = await db
-      .prepare(`SELECT operation_id, before_json, after_json, created_at,
+      .prepare(`SELECT operation_id, before_json, after_json, created_at, actor,
       ${source === "editor" ? "'saved'" : "status"} AS status FROM ${table}
       WHERE target_kind = ? AND target_id = ? ORDER BY created_at DESC, operation_id DESC LIMIT 26`)
       .bind(kind, id)
@@ -72,6 +76,8 @@ export async function readAdminChangeHistory(
         after: { [row.field]: row.new_value },
         createdAt: row.processed_at,
         status: row.reason,
+        // Automated remediation has no human subject; it is not attributed to whoever last logged in.
+        actor: null,
       });
   }
   items.sort(
