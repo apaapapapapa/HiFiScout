@@ -1,7 +1,20 @@
 # Development harness
 
 The harness connects existing verification tools with explicit acceptance evidence. It runs in the
-development/CI environment; it does not add a production Worker, D1 table or autonomous repair job.
+development/CI environment and does not add a production Worker or D1 table.
+
+## Bounded improvement loops
+
+`vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
+Replace the example baseline with the full incident SHA before creating a run. The contract freezes
+the goal, required harness checks, allowed change paths, comparison requirements, delivery/review
+policy, iteration/time limits and external-call/cost reservations. Changing any of these requires a
+new run. Cost reservations use integer microdollars; they are a spending allocation, not a claim of
+measured provider billing. The default zero allocation permits only zero-cost adapters.
+
+Repairs cannot modify the loop controller, harness gates, CI, agent authority, dependency/runtime
+configuration or migrations. Such changes need a separate ordinary engineering PR. Task prose and
+incident evidence never become shell commands or permission to change the fixed acceptance rules.
 
 ## Evidence reports
 

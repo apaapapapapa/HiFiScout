@@ -4,6 +4,12 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "loop" && args[1] === "validate" && args.length === 3) {
+    const { parseLoopSpec, loopSpecDigest } = await import("./harness/loop/contract.js");
+    const spec = parseLoopSpec(JSON.parse(await readFile(args[2], "utf8")));
+    console.log(JSON.stringify({ spec, digest: loopSpecDigest(spec) }, null, 2));
+    return 0;
+  }
   if (args[0] === "ai-template" && args.length === 2) {
     const { aiRecordingTemplate } = await import("./harness/ai.js");
     await mkdir(dirname(args[1]), { recursive: true });
