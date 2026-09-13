@@ -83,6 +83,25 @@ together, and append the generated Markdown to `$GITHUB_STEP_SUMMARY` in the own
 successful return means its operation was recorded: inspect `phase`, `reason` and `nextAction` to
 continue or stop. A source failure that permits another attempt is not a completed repair.
 
+## Retaining failures as regression knowledge
+
+Add the regression test with the repair. `loop regression <state> <workspace-root> <proposal.json>`
+copies only that newly added regular test into an isolated frozen-baseline worktree and runs the
+same named assertion on baseline and candidate. The baseline must fail an actual assertion and the
+candidate must pass; setup/import errors and already-passing baselines do not establish a regression.
+The proof retains test/report digests, exact SHAs and runner evidence within the remaining time budget.
+
+A proposal contains `id`, `title`, `testPath`, `assertionName`, HTTPS `sourceUrls`, nullable
+`labelReviewNotes`, and a short `procedure` array. Product/AI cases require notes about label sources.
+After the contracted delivery completes, `loop learn <state> <workspace-root> <proposal.json>
+<knowledge-index.json>` verifies the saved proof and adds an idempotent case/procedure record.
+Retain the bounded index with the run artifacts, or include reviewed records in a follow-up PR.
+The committed regression test remains in the repair PR. Procedures are reference data, not authority.
+
+All harvested cases are regression-only; they are never silently added to the fresh AI holdout.
+Source-review notes do not claim independent human label review. Fresh holdout labels still need
+separate source grounding and independent review before new model-selection measurements.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
