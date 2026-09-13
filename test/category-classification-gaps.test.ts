@@ -95,6 +95,20 @@ test("reviewed Audio Union product-type buckets classify without broadening sell
     const product = classify(title, rawCategory);
     assert.equal(product.classificationStatus, "classified", rawCategory);
     assert.equal(product.primaryCategoryId, expected, rawCategory);
+    if (rawCategory.includes("アンプ内蔵")) {
+      assert.ok(
+        product.facetFacts.some(
+          (fact) => fact.facetId === "amplification_mode" && fact.value === "active",
+        ),
+        rawCategory,
+      );
+    }
+    if (rawCategory.includes("管球式")) {
+      assert.ok(
+        product.facetFacts.some((fact) => fact.facetId === "technology" && fact.value === "tube"),
+        rawCategory,
+      );
+    }
   }
 });
 

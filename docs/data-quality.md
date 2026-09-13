@@ -296,7 +296,8 @@ allow-listed, semantically unambiguous product type. Audio Union's reviewed exac
 `管球式プリメインアンプ`, `デュアルモノラル・パワーアンプ`, and
 `アンプ内蔵ステレオ・ワイヤレス・スピーカー・システム` map respectively to integrated
 amplifier, power amplifier, and loudspeaker. Similar or broader amplifier/speaker buckets remain
-unclassified until independent evidence exists.
+unclassified until independent evidence exists. The corresponding explicit `管球式` and `アンプ内蔵`
+wording independently supplies tube-technology and active-amplification facets.
 
 The AVAC adapter removes a leading standalone `特価` or `特価品` token after the seller's
 authoritative condition marker and before manufacturer/model splitting. The rule is shop-local and
