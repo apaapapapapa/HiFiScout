@@ -6,7 +6,7 @@ HiFiScout's developer documentation is built from complementary generated and cu
 | --- | --- | --- |
 | TypeDoc + Markdown/VitePress plugins | TypeScript/JSDoc API reference | `package.json` documentation commands |
 | Redocly CLI | OpenAPI linting and static HTTP reference | `package.json` documentation commands |
-| dependency-cruiser | Import boundaries and dependency reports | `package.json` documentation commands |
+| dependency-cruiser | Normal-check/CI import boundaries and dependency reports | `package.json` `check:architecture` and documentation commands |
 | Mermaid.js | Generated architecture viewer | `scripts/docs/render-mermaid-architecture.ts` |
 | SchemaSpy + SQLite JDBC | D1/SQLite schema and ER diagrams | `scripts/docs/generate-db-docs.sh` |
 | VitePress | Developer documentation site | `package.json` and `package-lock.json` |
@@ -37,8 +37,15 @@ vp run docs:architecture
 Validate architecture boundaries without generating documentation:
 
 ```sh
-vp run docs:architecture:check
+vp run check:architecture
 ```
+
+This canonical entrypoint runs in normal `check`/`verify` and the required CI `static-checks` job.
+`docs:architecture:check` delegates to it for compatibility. Long diagnostics identify the rule,
+source and target modules and the reason for the boundary; repair that dependency or move the
+shared contract to its owning layer. Do not add a suppression merely to pass the gate. CI's
+`ci:architecture` cache includes `.dependency-cruiser.json`, `tsconfig.json`, `package.json`, the
+dependency lock and both `src/**` and `frontend/**`.
 
 The generated Mermaid source is intentionally published as well as the HTML viewer. It can therefore be reused directly in GitHub/GitLab or other Mermaid-aware tooling without reverse-engineering the HTML report.
 
@@ -79,6 +86,34 @@ separate. `docs:openapi:check` generates then validates the contract; `docs:open
 Database migration and explicit repair commands such as `price-index:backfill` also remain available.
 Production deployment is owned by the `Deploy Cloudflare` workflow, including its quota and smoke
 checks, rather than a separate package script.
+
+## Development harness
+
+The development harness joins existing checks with source-bound evidence. It adds no production
+Worker or repair schedule. The executable entrypoint is `vp run harness`; the
+[harness guide](https://github.com/apaapapapapa/HiFiScout/blob/main/.github/harness/README.md)
+owns schemas, recording formats and full examples.
+
+| Command | Purpose and evidence |
+| --- | --- |
+| `report <report.json>` | Validate required checks, source/deployment identity and explicit unknown/skipped outcomes |
+| `delivery <owner/repo> <PR> <output-dir>` | Read-only GitHub collection of merge, reviews, exact-source CI and deployment-owned receipts; requires authenticated `gh` |
+| `checkpoint <task.json> <report.json> <state.json> <revision>` / `resume <state.json>` | Preserve acceptance conditions and collector integrity checks; compare current Git state and return remaining work |
+| `replay <output-dir> [vitest-reports...]` / `compare-replay <before.json> <after.json>` | Reuse fixed product incident suites and compare the same corpus/cases by processing stage |
+| `cost-report <samples-dir> <report.json>` / `compare-cost <before-dir> <after-dir>` | Collect D1/DO/Queue/CPU evidence and compare matching fixture/runtime profiles |
+| `ui <new-output-dir>` | Run isolated gallery/admin browser suites and retain screenshots, DOM, diagnostics and final Playwright outcomes |
+| `ai-template <new-recording.json>` / `ai <recording.json> <new-output-dir>` | Prepare and replay the independent AI holdout, usage and reviewer outcomes without inference or activation |
+
+Use clean Git checkouts and fresh ignored output directories for recordings. Exit codes are 0 for
+passing required evidence, 1 for failure and 2 for incomplete/invalid evidence. The template command
+only creates an incomplete input, so its successful write is not an evaluation pass. Checkpoints
+can also save successfully while returning 2 for remaining work. Preserve underlying artifacts;
+validating arbitrary JSON does not authenticate its claims. Local results never establish production
+effectiveness. Paused operational audits remain paused, and unavailable costs remain null.
+
+Normal CI reuses its four Vitest reports for product replay and its existing budget tests/parser
+benchmark for cost samples. The measurement task cache fingerprints `GITHUB_SHA`; source-bound
+samples are never borrowed from a different SHA. Browser evidence uses the existing component job.
 
 Generate all references:
 
