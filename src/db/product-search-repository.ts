@@ -529,13 +529,25 @@ export async function searchProducts(
 
   let totalCount = null;
   if (query.includeTotal) {
+    const exactInStockTotal =
+      !query.q &&
+      search.join === "" &&
+      countWhere.length === 1 &&
+      countWhere[0] === "e.in_stock_offer_count > 0" &&
+      countBinds.length === 0;
     const countResult = await db
       .prepare(
-        `SELECT COUNT(*) AS total FROM product_search_entities e${search.join} ${countWhere.length ? `WHERE ${countWhere.join(" AND ")}` : ""}`,
+        exactInStockTotal
+          ? `SELECT in_stock_entity_count AS total
+             FROM product_search_totals WHERE singleton = 1`
+          : `SELECT COUNT(*) AS total FROM product_search_entities e${search.join} ${countWhere.length ? `WHERE ${countWhere.join(" AND ")}` : ""}`,
       )
       .bind(...countBinds)
       .all<{ total: number }>();
-    totalCount = Number(countResult.results?.[0]?.total || 0);
+    const total = countResult.results?.[0]?.total;
+    if (total === undefined || total === null)
+      throw new Error("Product search total is unavailable; apply D1 migrations");
+    totalCount = Number(total);
   }
 
   // One extra row decides `hasMore` without a second count query.
