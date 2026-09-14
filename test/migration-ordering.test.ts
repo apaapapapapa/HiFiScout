@@ -40,7 +40,6 @@ const KNOWN_DUPLICATES: readonly (readonly string[])[] = [
     "0063_drop_redundant_products_shop_active_index.sql",
     "0063_knowledge_catalog_price_index_deal_score.sql",
   ],
-  ["0127_data_quality_snapshot_coverage.sql", "0127_taket_ws_catalog.sql"],
 ];
 
 test("a new migration takes a number no other migration has", () => {
