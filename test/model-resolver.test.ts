@@ -6,6 +6,7 @@ import {
   MODEL_RESOLVER_VERSION,
   resolveModel,
 } from "../src/catalog/model-resolver.js";
+import { presentationColorLabel } from "../src/catalog/model-presentation-color.js";
 import { normalizeIdentityModel, resolveProductIdentity } from "../src/catalog/product-identity.js";
 import type { ManufacturerAliasEvidence, NormalizedCatalogProduct } from "../src/catalog/types.js";
 
@@ -41,6 +42,42 @@ test("raw model presentation is preserved when the display model is cleaned", ()
   assert.equal(result.rawModel, "D-1000 MK2 中古美品");
   assert.equal(result.model, "D-1000 MK2");
   assert.equal(result.normalizedModel, "D1000MK2");
+});
+
+test("JBL Studio commerce SKUs become the official model while preserving their finish", () => {
+  const catalog = [{ id: 4952, manufacturerId: "jbl", canonicalModel: "Studio 680", aliases: [] }];
+
+  for (const [rawModel, presentationColor] of [
+    ["Studio 680W (JBLS680W)", "ウッド"],
+    ["Studio 680DKW (JBLS680DKW)", "ダークウッド"],
+  ] as const) {
+    const result = resolveModel({ rawModel, title: `JBL ${rawModel}`, manufacturerId: "jbl" });
+    assert.equal(result.rawModel, rawModel);
+    assert.equal(result.model, "Studio 680");
+    assert.equal(result.normalizedModel, "STUDIO680");
+    assert.equal(result.status, "resolved");
+    assert.equal(presentationColorLabel(result.presentationColors), presentationColor);
+    assert.deepEqual(result.removedAnnotations, ["seller_sku", "presentation_color"]);
+
+    const identity = resolveProductIdentity(
+      {
+        manufacturerId: "jbl",
+        model: result.model,
+        modelResolutionStatus: result.status,
+      },
+      catalog,
+    );
+    assert.equal(identity.status, "matched");
+    assert.equal(identity.catalogProductId, 4952);
+  }
+
+  for (const input of [
+    { rawModel: "Studio 680W (JBLS690W)", manufacturerId: "jbl" },
+    { rawModel: "Studio 680W (JBLS680W)", manufacturerId: "not-jbl" },
+    { rawModel: "Studio 680W MK2 (JBLS680W)", manufacturerId: "jbl" },
+  ]) {
+    assert.equal(resolveModel(input).model, input.rawModel);
+  }
 });
 
 test("complete English disc-player labels leave the model and its revision intact", () => {

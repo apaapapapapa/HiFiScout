@@ -72,6 +72,10 @@ regional exclusion may be ignored for comparison. The complete remaining model m
 revision tokens must survive; arbitrary prose or accessory names following a shipping note cannot
 justify prefix recovery. Raw seller columns remain unchanged. Resolver version changes enter the
 existing bounded replay queue; they do not require a full scan or re-fetch during a public request.
+JBL Studio 6 listings that repeat the same product number and finish in the official commerce SKU
+(`Studio 680W (JBLS680W)`) resolve to the published model (`Studio 680`) while retaining the finish
+as presentation data. A mismatched number, another manufacturer or an intervening revision is not
+rewritten.
 
 `identitySafeModelLookupVariants` is the common listing/catalog vocabulary for presentation and approved manufacturer-market variants. `modelLookupAliases` identifies category-only hints such as a bundle's base model; those hints cannot authorize a product merge. Revision vetoes remain effective for aliases. Candidate retrieval uses indexed model keys through `catalog-lookup-candidates.ts`; the retrieval key is only a coarse candidate filter, not evidence of identity. Fuzzy discovery is capped and its candidates cannot authorize exact/alias attachment. Bootstrap dictionaries and prepared identity candidates are reused without caching changing operational alias snapshots indefinitely.
 
