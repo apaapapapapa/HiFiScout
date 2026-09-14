@@ -22,13 +22,10 @@ test("TAKET-WS is not truncated when the model itself starts with the TakeT bran
     rawManufacturer: "TAKET",
     model: "TAKET-WS ( リスト・サウンド)",
   });
-  assert.deepEqual(
-    splitManufacturerModel("TAKET-WS ( リスト・サウンド)", "audiounion", "Take T"),
-    {
-      manufacturer: "Take T",
-      model: "TAKET-WS ( リスト・サウンド)",
-    },
-  );
+  assert.deepEqual(splitManufacturerModel("TAKET-WS ( リスト・サウンド)", "audiounion", "Take T"), {
+    manufacturer: "Take T",
+    model: "TAKET-WS ( リスト・サウンド)",
+  });
 });
 
 test("TakeT migration registers one verified official product idempotently", () => {
