@@ -38,6 +38,48 @@ function reviewCollection(value: unknown, pullUrl: string): unknown[] {
   return reviews;
 }
 
+function validateThreadPages(value: unknown, repository: string, number: number) {
+  if (!Array.isArray(value) || !value.length || value.length > 100)
+    throw new Error("handoff_thread_pages_missing");
+  let cursor: string | null = null;
+  const ids = new Set<string>();
+  value.forEach((page, index) => {
+    if (
+      !isRecord(page) ||
+      page.after !== cursor ||
+      !isRecord(page.data) ||
+      !isRecord(page.data.repository) ||
+      page.data.repository.nameWithOwner !== repository ||
+      !isRecord(page.data.repository.pullRequest) ||
+      page.data.repository.pullRequest.number !== number ||
+      page.data.repository.pullRequest.url !== `https://github.com/${repository}/pull/${number}`
+    )
+      throw new Error("handoff_thread_page_identity_mismatch");
+    const threads = page.data.repository.pullRequest.reviewThreads;
+    if (
+      !isRecord(threads) ||
+      !Array.isArray(threads.nodes) ||
+      !isRecord(threads.pageInfo) ||
+      threads.pageInfo.hasNextPage !== index < value.length - 1
+    )
+      throw new Error("handoff_thread_pagination_incomplete");
+    if (threads.pageInfo.hasNextPage) {
+      if (
+        typeof threads.pageInfo.endCursor !== "string" ||
+        !threads.pageInfo.endCursor ||
+        !threads.nodes.length
+      )
+        throw new Error("handoff_thread_cursor_missing");
+      cursor = threads.pageInfo.endCursor;
+    }
+    for (const thread of threads.nodes) {
+      if (!isRecord(thread) || typeof thread.id !== "string" || !thread.id || ids.has(thread.id))
+        throw new Error("handoff_thread_pagination_changed");
+      ids.add(thread.id);
+    }
+  });
+}
+
 // The host supplies retained, actual connector responses. This imports evidence; it does not
 // authenticate to GitHub or perform a remote mutation. Fresh collection is required on every call.
 export async function importLoopHandoff(
@@ -77,6 +119,7 @@ export async function importLoopHandoff(
       )
         throw new Error("handoff_pull_identity_mismatch");
     }
+    validateThreadPages(snapshot.reviewPages, run.spec.repository, number);
     assessLoopDelivery(run.spec, view.lastVerifiedSha!, number, snapshot);
     const report = assessDelivery(snapshot as unknown as DeliverySnapshot, "pr");
     const gates = (ids: string[]) => {
@@ -158,13 +201,13 @@ export async function importLoopHandoff(
           ) ||
           review.commit_id !== view.lastVerifiedSha ||
           !["COMMENTED", "APPROVED"].includes(String(review.state)) ||
-          review.submitted_at !== receipt.completedAt ||
+          requireTimestamp(review.submitted_at) !== receipt.completedAt ||
           !reviews.some(
             (item) =>
               isRecord(item) &&
               item.id === review.id &&
               item.commit_id === review.commit_id &&
-              item.submitted_at === review.submitted_at &&
+              requireTimestamp(item.submitted_at) === requireTimestamp(review.submitted_at) &&
               item.state === review.state &&
               isRecord(item.user) &&
               item.user.login === user.login,

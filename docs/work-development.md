@@ -75,13 +75,21 @@ Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionPages": <retai
 | --- | --- |
 | `repository`, `collectedAt` | Requested repository and completion time of this collection |
 | `pull`, `pullAfter` | Full PR REST response before and after collecting other evidence |
-| `reviewPages` | Complete GraphQL pages with head SHA, review decision, threads and pageInfo |
+| `reviewPages` | Complete GraphQL pages with repository/PR identity, head SHA, review decision, thread IDs and cursor metadata |
 | `ciRuns` | All relevant `ci.yml` run pages for the PR head, or merge SHA with main/push event |
 | `statuses` | Complete commit-status pages for that same source SHA |
 | `deployment`, `downstream` | Owning run/artifact/receipt data, or null/empty when unavailable |
 
+Each thread page must contain `data.repository.nameWithOwner` and the pull request's `number`,
+`url` and `headRefOid`, as well as `reviewThreads.nodes` with IDs and resolution flags. Request these
+fields in GraphQL. Retain each request cursor as top-level `after` (null on the first page), and each
+response's `pageInfo.hasNextPage/endCursor`; the controller checks the cursor chain and duplicate IDs.
+GitHub second-precision review timestamps are normalized before comparison with the receipt.
+
 If the connector only returns complete review thread nodes, retain that raw response and the full
-PR before/after reads; wrap nodes as one page with `hasNextPage: false` only when the tool guarantees
+PR before/after reads and actual connector call parameters. Bind the wrapper's repository/number/URL
+to that recorded call, not values copied from the target contract. Use `after: null` and wrap nodes
+as one page with `hasNextPage: false` only when the tool guarantees
 the complete collection. Never claim completeness from a truncated/first-page result. If it does not
 return GitHub's review decision, use null. Normalize a connector's boolean `is_resolved` to the
 schema's `isResolved` explicitly, retaining the original response. Every action after publish requires

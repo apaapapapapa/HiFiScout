@@ -1,4 +1,4 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -75,6 +75,7 @@ test("connector commit adoption preserves tree and parent identity and requires 
       /after_evaluation/u,
     );
   } finally {
+    vi.useRealTimers();
     await rm(f.root, { recursive: true, force: true });
   }
 });
@@ -118,14 +119,18 @@ function snapshot(
     pullAfter: structuredClone(pull),
     reviewPages: [
       {
+        after: null as string | null,
         data: {
           repository: {
+            nameWithOwner: "apaapapapapa/HiFiScout",
             pullRequest: {
+              number: 7,
+              url: "https://github.com/apaapapapapa/HiFiScout/pull/7",
               headRefOid: head,
               reviewDecision: null,
               reviewThreads: {
-                nodes: options.unresolved ? [{ isResolved: false }] : [],
-                pageInfo: { hasNextPage: false },
+                nodes: options.unresolved ? [{ id: "thread-1", isResolved: false }] : [],
+                pageInfo: { hasNextPage: false, endCursor: null as string | null },
               },
             },
           },
@@ -165,7 +170,29 @@ test("native handoff gates current evidence and completes only after merge SHA C
     const moved = snapshot(f);
     moved.pullAfter.head.sha = "c".repeat(40);
     await assert.rejects(handoff("publish", { snapshot: moved }), /pull_identity_mismatch/u);
-    const published = await handoff("publish", { snapshot: snapshot(f) });
+    const foreignThreads = snapshot(f);
+    foreignThreads.reviewPages[0].data.repository.pullRequest.number = 8;
+    await assert.rejects(handoff("publish", { snapshot: foreignThreads }), /thread_page_identity/u);
+    foreignThreads.reviewPages[0].data.repository.pullRequest.number = 7;
+    foreignThreads.reviewPages[0].data.repository.nameWithOwner = "other/repo";
+    await assert.rejects(handoff("publish", { snapshot: foreignThreads }), /thread_page_identity/u);
+    const pages = snapshot(f);
+    pages.reviewPages[0].data.repository.pullRequest.reviewThreads = {
+      nodes: [{ id: "thread-1", isResolved: true }],
+      pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
+    };
+    const lastPage = snapshot(f).reviewPages[0];
+    lastPage.after = "wrong-cursor";
+    pages.reviewPages.push(lastPage);
+    await assert.rejects(handoff("publish", { snapshot: pages }), /thread_page_identity/u);
+    lastPage.after = "cursor-1";
+    lastPage.data.repository.pullRequest.reviewThreads.nodes.push({
+      id: "thread-1",
+      isResolved: true,
+    });
+    await assert.rejects(handoff("publish", { snapshot: pages }), /pagination_changed/u);
+    lastPage.data.repository.pullRequest.reviewThreads.nodes = [];
+    const published = await handoff("publish", { snapshot: pages });
     await handoff("publish", { snapshot: snapshot(f) });
     assert.equal(
       (await readLoopRun(f.state)).events.filter((e) => e.type === "review-requested").length,
@@ -341,6 +368,7 @@ test("native handoff gates current evidence and completes only after merge SHA C
       /active_attempt/u,
     );
   } finally {
+    vi.useRealTimers();
     await rm(f.root, { recursive: true, force: true });
   }
 });
@@ -374,6 +402,9 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       }),
       /codex_review_missing/u,
     );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Math.ceil(Date.now() / 1000) * 1000 + 1000);
+    receipt.completedAt = new Date().toISOString().replace(".000Z", "Z");
     const codexReview = {
       id: 3,
       pull_request_url: pullUrl,
@@ -423,6 +454,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       /checkout_changed/u,
     );
   } finally {
+    vi.useRealTimers();
     await rm(f.root, { recursive: true, force: true });
   }
 });
