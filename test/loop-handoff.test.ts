@@ -16,7 +16,13 @@ import { readLoopRun } from "../scripts/harness/loop/state.js";
 import { importLoopHandoff } from "../scripts/harness/loop/handoff.js";
 
 const pullUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout/pulls/7";
-const reviewSource = { reviewSubmissionsUrl: `${pullUrl}/reviews`, reviewSubmissions: [] };
+const reviewSource = {
+  reviewSubmissionPages: [{ url: `${pullUrl}/reviews?per_page=100&page=1`, items: [] }],
+};
+const reviewPage = (items: unknown[], page = 1) => ({
+  url: `${pullUrl}/reviews?per_page=100&page=${page}`,
+  items,
+});
 
 async function fixture(review: "self" | "optional" = "self") {
   const f = await loopGitFixture({ delivery: { target: "merge", review, reviewWaitMs: 900_000 } });
@@ -94,6 +100,7 @@ function snapshot(
   const head = f.owner.headSha;
   const pull = {
     number: 7,
+    url: pullUrl,
     state: options.merged ? "closed" : "open",
     merged: !!options.merged,
     merge_commit_sha: options.merged ? "b".repeat(40) : null,
@@ -102,7 +109,7 @@ function snapshot(
       ref: `automation/loop/${loopSpec().task.id}`,
       repo: { full_name: "apaapapapapa/HiFiScout" },
     },
-    base: { ref: "main", sha: f.sha },
+    base: { ref: "main", sha: f.sha, repo: { full_name: "apaapapapapa/HiFiScout" } },
   };
   return {
     repository: "apaapapapapa/HiFiScout",
@@ -157,7 +164,7 @@ test("native handoff gates current evidence and completes only after merge SHA C
     await assert.rejects(handoff("publish", { snapshot: stale }), /not_fresh/u);
     const moved = snapshot(f);
     moved.pullAfter.head.sha = "c".repeat(40);
-    await assert.rejects(handoff("publish", { snapshot: moved }), /gates_incomplete/u);
+    await assert.rejects(handoff("publish", { snapshot: moved }), /pull_identity_mismatch/u);
     const published = await handoff("publish", { snapshot: snapshot(f) });
     await handoff("publish", { snapshot: snapshot(f) });
     assert.equal(
@@ -198,21 +205,23 @@ test("native handoff gates current evidence and completes only after merge SHA C
       handoff("review", {
         snapshot: snapshot(f),
         receipt,
-        reviewSubmissionsUrl: `${pullUrl}0/reviews`,
+        reviewSubmissionPages: [{ url: `${pullUrl}0/reviews?per_page=100&page=1`, items: [] }],
       }),
-      /collection_missing/u,
+      /pagination_incomplete/u,
     );
     await assert.rejects(
       handoff("review", {
         snapshot: snapshot(f),
         receipt,
-        reviewSubmissions: [
-          {
-            id: 1,
-            user: { login: "reviewer" },
-            state: "APPROVED",
-            pull_request_url: `${pullUrl}0`,
-          },
+        reviewSubmissionPages: [
+          reviewPage([
+            {
+              id: 1,
+              user: { login: "reviewer" },
+              state: "APPROVED",
+              pull_request_url: `${pullUrl}0`,
+            },
+          ]),
         ],
       }),
       /invalid_handoff_review_submission/u,
@@ -229,19 +238,95 @@ test("native handoff gates current evidence and completes only after merge SHA C
     await assert.rejects(
       handoff("merge-ready", {
         snapshot: snapshot(f),
-        reviewSubmissions: [
-          {
-            id: 1,
-            user: { login: "reviewer" },
-            state: "CHANGES_REQUESTED",
-            pull_request_url: pullUrl,
-          },
-          { id: 2, user: { login: "reviewer" }, state: "COMMENTED", pull_request_url: pullUrl },
+        reviewSubmissionPages: [
+          reviewPage([
+            {
+              id: 1,
+              user: { login: "reviewer" },
+              state: "CHANGES_REQUESTED",
+              pull_request_url: pullUrl,
+            },
+            { id: 2, user: { login: "reviewer" }, state: "COMMENTED", pull_request_url: pullUrl },
+          ]),
         ],
       }),
       /changes_requested/u,
     );
-    const ready = await handoff("merge-ready", { snapshot: snapshot(f) });
+    for (const change of [
+      (pull: ReturnType<typeof snapshot>["pull"]) => {
+        pull.base.ref = "release";
+      },
+      (pull: ReturnType<typeof snapshot>["pull"]) => {
+        pull.base.repo.full_name = "other/repo";
+      },
+      (pull: ReturnType<typeof snapshot>["pull"]) => {
+        pull.base.sha = "d".repeat(40);
+      },
+      (pull: ReturnType<typeof snapshot>["pull"]) => {
+        pull.number = 8;
+      },
+      (pull: ReturnType<typeof snapshot>["pull"]) => {
+        pull.state = "closed";
+      },
+    ]) {
+      const changed = snapshot(f);
+      change(changed.pullAfter);
+      await assert.rejects(
+        handoff("merge-ready", { snapshot: changed }),
+        /pull_identity_mismatch/u,
+      );
+    }
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      user: { login: "reviewer" },
+      state: "COMMENTED",
+      pull_request_url: pullUrl,
+    }));
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: snapshot(f),
+        reviewSubmissionPages: [reviewPage(firstPage)],
+      }),
+      /pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: snapshot(f),
+        reviewSubmissionPages: [reviewPage(firstPage), reviewPage([], 3)],
+      }),
+      /pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: snapshot(f),
+        reviewSubmissionPages: [reviewPage(firstPage), reviewPage([firstPage[0]], 2)],
+      }),
+      /pagination_changed/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: snapshot(f),
+        reviewSubmissionPages: [
+          reviewPage(firstPage),
+          reviewPage(
+            [
+              {
+                id: 101,
+                user: { login: "reviewer" },
+                state: "CHANGES_REQUESTED",
+                pull_request_url: pullUrl,
+              },
+            ],
+            2,
+          ),
+        ],
+      }),
+      /changes_requested/u,
+    );
+    const ready = await handoff("merge-ready", {
+      snapshot: snapshot(f),
+      reviewSubmissionPages: [reviewPage(firstPage), reviewPage([], 2)],
+    });
     assert.ok("expectedHeadSha" in ready && ready.expectedHeadSha === f.owner.headSha);
     assert.equal(
       (await handoff("observe", { snapshot: snapshot(f, { merged: true, ci: false }) })).phase,
@@ -319,7 +404,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       (
         await importLoopHandoff(f.state, f.workspaces, "review", {
           ...reviewSource,
-          reviewSubmissions: [codexReview],
+          reviewSubmissionPages: [reviewPage([codexReview])],
           snapshot: snapshot(f),
           receipt: { ...receipt, method: "codex" },
           codexReview,

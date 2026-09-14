@@ -66,8 +66,8 @@ is added. Remote mutations still require the user's existing authority and GitHu
    Repeat with fresh evidence while pending and within budget. Deployment targets additionally
    require the owning artifact contents and downstream receipts described in the delivery guide.
 
-Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionsUrl": <REST collection URL>,
-"reviewSubmissions": <all REST reviews>, "receipt": <optional review>,
+Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionPages": <retained REST pages>,
+"receipt": <optional review>,
 "codexReview": <optional raw review> }`. `DeliverySnapshot` is defined in
 `scripts/harness/delivery.ts`; retain the original responses alongside the assembled input.
 
@@ -83,14 +83,19 @@ Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionsUrl": <REST c
 If the connector only returns complete review thread nodes, retain that raw response and the full
 PR before/after reads; wrap nodes as one page with `hasNextPage: false` only when the tool guarantees
 the complete collection. Never claim completeness from a truncated/first-page result. If it does not
-return GitHub's review decision, use null. Every action after publish requires `reviewSubmissions`:
-the complete REST review list, including dismissed states.
-The collection URL is `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/reviews`
-(without page parameters); it binds even an empty collection to the requested PR. Active changes-requested reviews block
+return GitHub's review decision, use null. Normalize a connector's boolean `is_resolved` to the
+schema's `isResolved` explicitly, retaining the original response. Every action after publish requires
+`reviewSubmissionPages`: ordered objects with `url` and `items` holding each full REST review response,
+including dismissed states. Fetch `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/reviews?per_page=100&page=1`
+and consecutive pages until one has fewer than 100 entries; an exact multiple needs the final empty
+page. The controller rejects a missing/foreign/skipped page, a full final page or duplicate IDs across
+pages. Do not flatten pages or declare completeness without retaining those responses. Active changes-requested reviews block
 the handoff even when the aggregate decision is null. Do not invent an
 APPROVED decision: an explicit approval requirement remains unknown until actually observed.
 Unknown collection coverage remains unknown. Snapshots older than five minutes or from the future,
-moved PR heads, dirty source and mismatched identities are rejected.
+moved PR heads, dirty source and mismatched identities are rejected. Both full PR reads must agree
+on number, repository, head branch/SHA, base branch/SHA and state; a retargeted PR requires a new
+collection and cannot authorize a merge through this handoff.
 
 ## Session continuity
 

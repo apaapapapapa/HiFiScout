@@ -13,6 +13,31 @@ import { withLoopWorkspace } from "./workspace.js";
 
 export type LoopHandoff = "publish" | "review" | "merge-ready" | "observe";
 
+function reviewCollection(value: unknown, pullUrl: string): unknown[] {
+  if (!Array.isArray(value) || !value.length || value.length > 100)
+    throw new Error("handoff_review_collection_missing");
+  const reviews: unknown[] = [],
+    ids = new Set<number>();
+  value.forEach((page, index) => {
+    if (
+      !isRecord(page) ||
+      page.url !== `${pullUrl}/reviews?per_page=100&page=${index + 1}` ||
+      !Array.isArray(page.items) ||
+      page.items.length > 100 ||
+      (index < value.length - 1 ? page.items.length !== 100 : page.items.length === 100)
+    )
+      throw new Error("handoff_review_pagination_incomplete");
+    for (const item of page.items) {
+      if (!isRecord(item)) throw new Error("invalid_handoff_review_submission");
+      const id = integer(item.id, "review_id", 1);
+      if (ids.has(id)) throw new Error("handoff_review_pagination_changed");
+      ids.add(id);
+      reviews.push(item);
+    }
+  });
+  return reviews;
+}
+
 // The host supplies retained, actual connector responses. This imports evidence; it does not
 // authenticate to GitHub or perform a remote mutation. Fresh collection is required on every call.
 export async function importLoopHandoff(
@@ -31,6 +56,27 @@ export async function importLoopHandoff(
     const age = Date.now() - Date.parse(collectedAt);
     if (age < 0 || age > 300_000) throw new Error("handoff_snapshot_not_fresh");
     if (view.review && view.review.prNumber !== number) throw new Error("handoff_pr_changed");
+    const pullUrl = `https://api.github.com/repos/${run.spec.repository}/pulls/${number}`;
+    for (const pull of [snapshot.pull, snapshot.pullAfter]) {
+      if (
+        !isRecord(pull) ||
+        pull.url !== pullUrl ||
+        pull.number !== number ||
+        pull.state !== snapshot.pull.state ||
+        !isRecord(pull.head) ||
+        pull.head.sha !== view.lastVerifiedSha ||
+        pull.head.ref !== `automation/loop/${run.spec.task.id}` ||
+        !isRecord(pull.head.repo) ||
+        pull.head.repo.full_name !== run.spec.repository ||
+        !isRecord(pull.base) ||
+        pull.base.ref !== "main" ||
+        !isRecord(pull.base.repo) ||
+        pull.base.repo.full_name !== run.spec.repository ||
+        !isRecord(snapshot.pull.base) ||
+        pull.base.sha !== snapshot.pull.base.sha
+      )
+        throw new Error("handoff_pull_identity_mismatch");
+    }
     assessLoopDelivery(run.spec, view.lastVerifiedSha!, number, snapshot);
     const report = assessDelivery(snapshot as unknown as DeliverySnapshot, "pr");
     const gates = (ids: string[]) => {
@@ -73,14 +119,9 @@ export async function importLoopHandoff(
       throw new Error("handoff_requires_open_unmerged_pull");
     // A connector may omit GitHub's aggregate reviewDecision. Retain all REST submissions
     // as well so a top-level changes-requested review cannot disappear with a null decision.
-    const pullUrl = `https://api.github.com/repos/${run.spec.repository}/pulls/${number}`;
-    if (
-      input.reviewSubmissionsUrl !== `${pullUrl}/reviews` ||
-      !Array.isArray(input.reviewSubmissions)
-    )
-      throw new Error("handoff_review_collection_missing");
+    const reviews = reviewCollection(input.reviewSubmissionPages, pullUrl);
     const decisions = new Map<string, { id: number; state: string }>();
-    for (const review of input.reviewSubmissions) {
+    for (const review of reviews) {
       if (
         !isRecord(review) ||
         review.pull_request_url !== pullUrl ||
@@ -118,7 +159,7 @@ export async function importLoopHandoff(
           review.commit_id !== view.lastVerifiedSha ||
           !["COMMENTED", "APPROVED"].includes(String(review.state)) ||
           review.submitted_at !== receipt.completedAt ||
-          !input.reviewSubmissions.some(
+          !reviews.some(
             (item) =>
               isRecord(item) &&
               item.id === review.id &&
