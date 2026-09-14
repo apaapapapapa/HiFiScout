@@ -193,6 +193,7 @@ export async function previewAdminExtraction(
             manufacturer: raw.rawManufacturer,
           },
           metadata,
+          config,
         )
       : source.categoryEvidence;
     const extract = (resolvers: typeof baseResolvers) => {

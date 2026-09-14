@@ -242,6 +242,49 @@ test("replay reinterprets old seller vocabulary without raising authority or los
   );
 });
 
+test("shop-aware replay replaces stored seller strength only for a current exact mapping", () => {
+  const raw = {
+    title: "Pioneer DV-S5",
+    rawCategory: "DVDプレーヤー",
+    hintedCategory: "未分類",
+  };
+  const stored = {
+    categoryClassification: {
+      version: 26,
+      evidence: [
+        {
+          source: "seller_category",
+          strength: "supporting",
+          categoryIds: ["SRC.DISC"],
+          value: raw.rawCategory,
+        },
+      ],
+    },
+  };
+  const replayed = retainedCategoryEvidence(raw, stored, {
+    categoryMapping: { DVDプレーヤー: "SRC.DISC" },
+    categoryPolicy: { sellerCategory: { default: "authoritative" } },
+  });
+  const seller = replayed.find((entry) => entry.source === "seller_category");
+  assert.equal(seller?.strength, "authoritative");
+  assert.equal(classifyCategoryEvidence(replayed).primaryCategoryId, "SRC.DISC");
+
+  const opaque = {
+    source: "seller_category",
+    strength: "supporting",
+    categoryIds: ["AMP.PRE"],
+    value: "shop-bucket-27",
+  };
+  assert.deepEqual(
+    retainedCategoryEvidence(
+      { ...raw, rawCategory: "shop-bucket-27" },
+      { categoryClassification: { evidence: [opaque] } },
+      { categoryMapping: { DVDプレーヤー: "SRC.DISC" } },
+    )[0],
+    opaque,
+  );
+});
+
 test("media and accessory facets describe only explicit properties", () => {
   assert.ok(
     inferFacetFacts("Crystal E", { manufacturer: "KOJO" }).some(

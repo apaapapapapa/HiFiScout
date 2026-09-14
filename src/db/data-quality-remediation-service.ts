@@ -19,7 +19,12 @@ import { inferFeatureFacts } from "../catalog/product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "../catalog/product-facets.js";
 import { verifiedModelFacetFacts } from "../catalog/verified-model-facets.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type { CategoryId, FeatureFact, ManufacturerAliasEvidence } from "../catalog/types.js";
+import type {
+  CategoryId,
+  CategoryNormalizationConfig,
+  FeatureFact,
+  ManufacturerAliasEvidence,
+} from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -101,6 +106,8 @@ export interface RunDataQualityRemediationSweepOptions {
   preferQueuedWork?: boolean;
   /** Exact backlog metrics are useful on demand, but scale with the outstanding queue. */
   measureQueue?: boolean;
+  /** Shop composition injects current seller-category mappings without coupling DB code to shops. */
+  categoryConfigForShop?: (shopKey: string) => CategoryNormalizationConfig;
 }
 
 interface RemediationSweepResult {
@@ -394,6 +401,7 @@ async function replayDerivedListing(
   row: RemediationListingRow,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
+  categoryConfig: CategoryNormalizationConfig = {},
 ): Promise<DerivedReplayResult> {
   const manufacturerResolver = createManufacturerResolver(aliases);
   const modelResolver = createModelResolver(aliases);
@@ -424,6 +432,7 @@ async function replayDerivedListing(
       manufacturer: row.raw_manufacturer || row.manufacturer,
     },
     metadata,
+    categoryConfig,
   );
   const classification = classifyCategoryEvidence(evidence);
   // The same derivation the crawl path runs, from the same stored seller evidence. A replay that
@@ -601,6 +610,7 @@ async function prepareJob(
   job: DataQualityRemediationJob,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
+  categoryConfigForShop?: (shopKey: string) => CategoryNormalizationConfig,
 ): Promise<PreparedRemediationJob | null> {
   if (!job.listingProductId) return null;
   const row = await loadListing(db, job.listingProductId);
@@ -609,7 +619,13 @@ async function prepareJob(
   let projectionToken = row.remediation_projection_token;
   let projectionRequired = true;
   if (requiresDerivedReplay(job.workType)) {
-    const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    const replay = await replayDerivedListing(
+      db,
+      row,
+      aliases,
+      evaluatedAt,
+      categoryConfigForShop?.(row.shop_key),
+    );
     projectionToken = replay.projectionToken;
     // A full rebuild is an explicit repair request for downstream read models, not only a
     // resolver-version replay. It must repair missing/stale projections even when every derived
@@ -663,6 +679,7 @@ export async function runDataQualityRemediationSweep(
     now = new Date(),
     preferQueuedWork = false,
     measureQueue = true,
+    categoryConfigForShop,
   }: RunDataQualityRemediationSweepOptions = {},
 ): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult> {
   const evaluatedAt = now.toISOString();
@@ -704,7 +721,7 @@ export async function runDataQualityRemediationSweep(
 
   for (const job of jobs) {
     try {
-      const prepared = await prepareJob(db, job, aliases, evaluatedAt);
+      const prepared = await prepareJob(db, job, aliases, evaluatedAt, categoryConfigForShop);
       if (!prepared) {
         await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
         resolved += 1;
