@@ -4,7 +4,89 @@ import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";
 import { replayAdminCsvListings } from "../src/db/data-quality-remediation-service.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import { productQuery } from "./helpers/product-query.js";
+
+test("targeted replay attaches a JBL Studio commerce SKU to its canonical search entity", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const at = "2026-09-14T02:00:00.000Z";
+  try {
+    sqlite
+      .prepare(`INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
+        VALUES ('jbl','JBL',?,?)`)
+      .run(at, at);
+    sqlite
+      .prepare(`INSERT INTO knowledge_catalog_products
+        (id,manufacturer_id,canonical_model,normalized_model,canonical_name,
+         verification_status,created_at,updated_at)
+        VALUES (4952,'jbl','Studio 680','STUDIO680','JBL Studio 680','verified',?,?)`)
+      .run(at, at);
+    sqlite
+      .prepare(`INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary)
+        VALUES (4952,'SPK.LOUDSPEAKER',1)`)
+      .run();
+
+    const listingId = insertListing(sqlite, {
+      at,
+      shop_key: "audiounion",
+      source_id: "224378",
+      manufacturer: "JBL",
+      raw_manufacturer: "JBL",
+      manufacturer_id: "jbl",
+      canonical_manufacturer_id: "jbl",
+      title: "JBL Studio 680W (JBLS680W)",
+      raw_model: "Studio 680W (JBLS680W)",
+      model: "Studio 680W (JBLS680W)",
+      normalized_model: "STUDIO680WJBLS680W",
+      model_resolution_status: "resolved",
+      model_resolution_method: "seller_model",
+      model_resolution_confidence: "high",
+      model_resolver_version: MODEL_RESOLVER_VERSION - 1,
+      category: "スピーカー",
+      raw_category: "スピーカーシステム",
+      primary_category_id: "SPK.LOUDSPEAKER",
+      category_ids: '["SPK.LOUDSPEAKER"]',
+      source_url: "https://www.audiounion.jp/ct/detail/used/224378/",
+    });
+
+    await replayAdminCsvListings(db, [listingId], at);
+
+    const listing = sqlite
+      .prepare(`SELECT raw_model,model,normalized_model,presentation_color,model_resolver_version
+        FROM products WHERE id=?`)
+      .get(listingId) as Record<string, unknown>;
+    assert.deepEqual(
+      { ...listing },
+      {
+        raw_model: "Studio 680W (JBLS680W)",
+        model: "Studio 680",
+        normalized_model: "STUDIO680",
+        presentation_color: "ウッド",
+        model_resolver_version: MODEL_RESOLVER_VERSION,
+      },
+    );
+    assert.deepEqual(
+      {
+        ...sqlite
+          .prepare(`SELECT status,catalog_product_id FROM product_identity_resolutions
+            WHERE listing_product_id=?`)
+          .get(listingId),
+      },
+      { status: "matched", catalog_product_id: 4952 },
+    );
+    assert.equal(
+      sqlite
+        .prepare(`SELECT e.entity_key FROM product_search_entity_offers o
+          JOIN product_search_entities e ON e.id=o.entity_id WHERE o.listing_product_id=?`)
+        .get(listingId)?.entity_key,
+      "c-4952",
+    );
+    const search = await searchProducts(db, productQuery("?q=JBL%20Studio%20680"));
+    assert.equal(search.items[0]?.model, "Studio 680");
+  } finally {
+    sqlite.close();
+  }
+});
 
 test("targeted replay corrects historical seller names and search without replacing raw evidence", async () => {
   const { sqlite, db } = migratedSqlite();

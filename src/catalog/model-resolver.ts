@@ -30,7 +30,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 15;
+export const MODEL_RESOLVER_VERSION = 16;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -311,6 +311,25 @@ function preferredBracketedModelAlias(value: string): StrippedModel {
   return { text: alias, removed: ["seller_model_alias"], colors: [] };
 }
 
+/**
+ * JBL's Studio 6 commerce item number appends the finish to both the displayed model and the SKU:
+ * `Studio 680W (JBLS680W)`. JBL still names the product `Studio 680`; `W`/`DKW` select the Wood or
+ * Dark Wood offer. Requiring the number and finish to repeat byte-for-byte in the official JBL SKU
+ * keeps unrelated parenthetical suffixes and genuine model revisions intact.
+ */
+function preferredJblStudioCommerceSku(value: string, manufacturerId: string): StrippedModel {
+  if (manufacturerId !== "jbl") return { text: value, removed: [], colors: [] };
+
+  const match = value.match(/^(Studio)\s*([0-9]{3}[A-Z]?)(DKW|W)\s*\(JBLS\2\3\)\s*$/iu);
+  if (!match) return { text: value, removed: [], colors: [] };
+
+  return {
+    text: `${match[1]} ${match[2]}`,
+    removed: ["seller_sku", PRESENTATION_COLOR_RULE],
+    colors: [match[3].toUpperCase() === "DKW" ? "Dark Wood" : "Wood"],
+  };
+}
+
 function stripSellerAnnotations(
   value: string,
   manufacturerId: string,
@@ -358,6 +377,12 @@ function stripSellerAnnotations(
     }
     if (text === before) break;
   }
+  const commerceSku = preferredJblStudioCommerceSku(text, manufacturerId);
+  text = commerceSku.text;
+  for (const annotation of commerceSku.removed) {
+    if (!removed.includes(annotation)) removed.push(annotation);
+  }
+  colors.push(...commerceSku.colors);
   return { text, removed, colors };
 }
 

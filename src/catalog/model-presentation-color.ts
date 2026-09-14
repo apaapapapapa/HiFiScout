@@ -72,6 +72,8 @@ const PRESENTATION_COLOR_SOURCE: readonly (readonly [
   ["green", "グリーン", ["green", "グリーン"], []],
   ["brown", "ブラウン", ["brown", "ブラウン"], []],
   ["beige", "ベージュ", ["beige", "ベージュ"], []],
+  ["wood", "ウッド", ["wood", "ウッド"], []],
+  ["dark-wood", "ダークウッド", ["dark wood", "ダーク ウッド"], []],
   ["natural", "ナチュラル", ["natural", "ナチュラル"], ["n"]],
   ["walnut", "ウォールナット", ["walnut", "ウォールナット", "ウォルナット"], []],
   ["rosewood", "ローズウッド", ["rosewood", "ローズウッド"], []],
