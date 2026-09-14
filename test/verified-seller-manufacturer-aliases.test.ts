@@ -75,7 +75,9 @@ test("reviewed exact seller spellings resolve only their verified manufacturer r
         `)
         .all(...CASES.map((item) => item[2]))
         .map((row) => [row.manufacturer_id, row.normalized_alias]),
-      [...CASES].map(([manufacturerId, , normalizedAlias]) => [manufacturerId, normalizedAlias]).sort(),
+      [...CASES]
+        .map(([manufacturerId, , normalizedAlias]) => [manufacturerId, normalizedAlias])
+        .sort(),
     );
     for (const { id } of listings) {
       assert.equal(
