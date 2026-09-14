@@ -11,6 +11,11 @@ Codex session supplies hypotheses and patches; this is not an unattended model s
 The controller bounds individual tasks. It does not grant production mutation, provider spend,
 additional agents, or merge authority beyond the user's current authorization.
 
+In ChatGPT Work, follow [Work development](../../../docs/work-development.md) to prepare the checkout
+and pinned tools before starting the clock. If the GitHub connector is authenticated but shell Git/gh
+is not, use `adopt` before evaluation and `handoff` for publication/review/delivery evidence. Do not
+claim this skill is installed in Work merely because repository files can be fetched.
+
 ## Select and freeze the task
 
 `loop intake-ci` consumes an existing failed CI run. The existing autofix workflow retains proposed

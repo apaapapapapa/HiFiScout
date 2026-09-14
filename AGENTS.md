@@ -31,6 +31,7 @@ delivery skill when preparing or following a PR. Load additional skills only for
 | --- | --- |
 | PR, review, merge and pipeline evidence | [hifiscout-delivery](.agents/skills/hifiscout-delivery/SKILL.md) |
 | Bounded improvement loops and resumption | [hifiscout-loop](.agents/skills/hifiscout-loop/SKILL.md) |
+| ChatGPT Work bootstrap and native GitHub handoff | [Work development](docs/work-development.md) |
 | D1/query cost or operational load | [hifiscout-load-analysis](.agents/skills/hifiscout-load-analysis/SKILL.md) |
 | Catalog research/CSV, identity, classification or replay | [hifiscout-catalog-maintenance](.agents/skills/hifiscout-catalog-maintenance/SKILL.md) |
 | Crawl freshness, parser defects or new shops | [hifiscout-crawl-diagnostics](.agents/skills/hifiscout-crawl-diagnostics/SKILL.md) |

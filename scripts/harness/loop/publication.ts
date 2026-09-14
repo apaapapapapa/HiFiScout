@@ -28,7 +28,7 @@ function bounded(run: LoopRun, invoke: typeof gh): typeof gh {
   };
 }
 
-async function sourceIsCurrent(run: LoopRun, workspace: string, manifest: string) {
+export async function sourceIsCurrent(run: LoopRun, workspace: string, manifest: string) {
   const view = assessLoopRun(run),
     { owner, checkout } = await inspectLoopWorkspace(run, workspace, manifest);
   if (!view.lastVerifiedSha || checkout.sourceSha !== view.lastVerifiedSha || owner.pending)

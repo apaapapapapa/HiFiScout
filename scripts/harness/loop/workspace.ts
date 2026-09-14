@@ -241,3 +241,57 @@ export async function applyLoopPatch(
     return { workspace, owner, checkout };
   });
 }
+
+// GitHub connectors may create a different commit object for the same tree and parents.
+// Bind that exact object BEFORE evaluation; never transfer a passing report to another SHA.
+export async function adoptLoopCommit(
+  statePath: string,
+  root: string,
+  localSha: string,
+  remoteSha: string,
+) {
+  requireSha(localSha);
+  requireSha(remoteSha);
+  return withLoopWorkspace(statePath, root, async (run, workspace, manifest) => {
+    const view = assessLoopRun(run);
+    if (view.phase !== "running" || !view.activeAttempt)
+      throw new Error("adoption_requires_active_attempt");
+    const iteration = view.activeAttempt.number;
+    let { owner, checkout } = await inspectLoopWorkspace(run, workspace, manifest);
+    if (owner.iteration !== iteration || !owner.patchDigest)
+      throw new Error("adoption_requires_applied_patch");
+    try {
+      await lstat(resolve(workspace, `.generated/loop/attempt-${iteration}`));
+      throw new Error("adoption_after_evaluation_started");
+    } catch (error) {
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+    }
+    const identity = (sha: string) => loopGit(workspace, ["show", "-s", "--format=%T %P", sha]);
+    if (identity(localSha) !== identity(remoteSha))
+      throw new Error("adoption_tree_or_parents_mismatch");
+    if (owner.pending) {
+      if (owner.pending.baseSha !== localSha || owner.pending.candidateSha !== remoteSha)
+        throw new Error("adoption_transaction_mismatch");
+    } else {
+      if (checkout.sourceSha === remoteSha) return { workspace, owner, checkout };
+      if (checkout.sourceSha !== localSha) throw new Error("adoption_local_head_mismatch");
+      owner = await updateJsonRevision(manifest, owner.revision, parseWorkspace, () => ({
+        ...owner,
+        revision: owner.revision + 1,
+        pending: { baseSha: localSha, candidateSha: remoteSha },
+      }));
+    }
+    const latest = await readLoopRun(statePath);
+    if (latest.revision !== run.revision || assessLoopRun(latest).phase !== "running")
+      throw new Error("run_changed_during_adoption");
+    loopGit(workspace, ["reset", "--hard", remoteSha]);
+    owner = await updateJsonRevision(manifest, owner.revision, parseWorkspace, () => ({
+      ...owner,
+      revision: owner.revision + 1,
+      headSha: remoteSha,
+      pending: null,
+    }));
+    checkout = readCheckout(workspace);
+    return { workspace, owner, checkout };
+  });
+}
