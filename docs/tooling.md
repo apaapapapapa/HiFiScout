@@ -97,6 +97,9 @@ checks, rather than a separate package script.
 
 ## Development harness
 
+[Work development](work-development.md) connects ChatGPT Work's personal skill, pinned local
+toolchain and authenticated GitHub tools to the repository harness and bounded loop controller.
+
 The development harness joins existing checks with source-bound evidence. It adds no production
 Worker or repair schedule. The executable entrypoint is `vp run harness`; the
 [harness guide](https://github.com/apaapapapapa/HiFiScout/blob/main/.github/harness/README.md)

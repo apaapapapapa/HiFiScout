@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { loopSpecDigest, parseLoopSpec } from "./contract.js";
 import { beginLoopAttempt, recordLoopEvent } from "./controller.js";
 import { isRecord } from "../../../src/types.js";
-import { applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
+import { adoptLoopCommit, applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
+import { importLoopHandoff } from "./handoff.js";
 import { evaluateLoopAttempt } from "./evaluation.js";
 import {
   publishLoopPull,
@@ -25,6 +26,8 @@ const usage = `usage: harness loop <command>
   intake-ci <owner/repo> <run-id> <directory> [automatic|manual]
   prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json>
   apply <state> <workspace-root> <iteration> <base-sha> <patch>
+  adopt <state> <workspace-root> <local-sha> <fetched-remote-sha>
+  handoff <publish|review|merge-ready|observe> <state> <workspace-root> <evidence.json>
   evaluate <state> <workspace-root> [AI-recording]
   publish <state> <workspace-root> | review <state> <workspace-root> [self-receipt]
   merge <state> <workspace-root> | observe <state> <workspace-root>
@@ -85,7 +88,19 @@ export async function runLoopCli(args: string[]): Promise<number> {
   else if (args[0] === "observe" && args.length === 3)
     result = await observeLoopDelivery(args[1], args[2]);
   else if (args[0] === "merge" && args.length === 3) result = await mergeLoopPull(args[1], args[2]);
-  else if (args[0] === "evaluate" && (args.length === 3 || args.length === 4))
+  else if (args[0] === "adopt" && args.length === 5)
+    result = await adoptLoopCommit(args[1], args[2], args[3], args[4]);
+  else if (args[0] === "handoff" && args.length === 5) {
+    const action = args[1];
+    if (
+      action !== "publish" &&
+      action !== "review" &&
+      action !== "merge-ready" &&
+      action !== "observe"
+    )
+      throw new Error("invalid_loop_handoff_action");
+    result = await importLoopHandoff(args[2], args[3], action, await json(args[4]));
+  } else if (args[0] === "evaluate" && (args.length === 3 || args.length === 4))
     result = await evaluateLoopAttempt(args[1], args[2], args[3]);
   else if (args[0] === "prepare" && args.length === 4)
     result = await prepareLoopWorkspace(args[1], args[2], args[3]);

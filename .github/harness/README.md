@@ -3,6 +3,11 @@
 The harness connects existing verification tools with explicit acceptance evidence. It runs in the
 development/CI environment and does not add a production Worker or D1 table.
 
+For ChatGPT Work setup and the native GitHub connector path, see
+[Work development](../../docs/work-development.md). `loop adopt` binds an equivalent connector-created
+commit before evaluation; `loop handoff` imports fresh PR/review/delivery evidence into the same
+controller when shell Git/gh authentication is unavailable.
+
 ## Isolated loop execution
 
 Run the loop CLI from the trusted controller checkout. `loop prepare <state> <source-repo>
