@@ -13,7 +13,7 @@ import {
 import { beginLoopAttempt, finishLoopAttempt } from "../scripts/harness/loop/controller.js";
 import { collectLoopScope } from "../scripts/harness/loop/scope.js";
 import { readLoopRun } from "../scripts/harness/loop/state.js";
-import { importLoopHandoff } from "../scripts/harness/loop/handoff.js";
+import { importLoopHandoff, type LoopHandoff } from "../scripts/harness/loop/handoff.js";
 
 const pullUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout/pulls/7";
 const reviewSource = {
@@ -23,6 +23,29 @@ const reviewPage = (items: unknown[], page = 1) => ({
   url: `${pullUrl}/reviews?per_page=100&page=${page}`,
   items,
 });
+
+function handoffInput(input: Record<string, unknown>) {
+  const value = input.snapshot as ReturnType<typeof snapshot>;
+  const repoUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout";
+  const source = value.pull.merged ? value.pull.merge_commit_sha : value.pull.head.sha;
+  const event = value.pull.merged ? "push" : "pull_request";
+  return {
+    ...reviewSource,
+    workflowRunPages: [
+      {
+        url: `${repoUrl}/actions/runs?head_sha=${source}&event=${event}&per_page=100&page=1`,
+        response: { total_count: value.ciRuns.length, workflow_runs: value.ciRuns },
+      },
+    ],
+    statusPages: [
+      {
+        url: `${repoUrl}/commits/${source}/statuses?per_page=100&page=1`,
+        items: value.statuses,
+      },
+    ],
+    ...input,
+  };
+}
 
 async function fixture(review: "self" | "optional" = "self") {
   const f = await loopGitFixture({ delivery: { target: "merge", review, reviewWaitMs: 900_000 } });
@@ -182,7 +205,7 @@ test("native handoff gates current evidence and completes only after merge SHA C
   const handoff = (
     action: "publish" | "review" | "merge-ready" | "observe",
     input: Record<string, unknown>,
-  ) => importLoopHandoff(f.state, f.workspaces, action, { ...reviewSource, ...input });
+  ) => importLoopHandoff(f.state, f.workspaces, action, handoffInput(input));
   try {
     const stale = snapshot(f);
     stale.collectedAt = "2000-01-01T00:00:00Z";
@@ -336,13 +359,17 @@ test("native handoff gates current evidence and completes only after merge SHA C
     await assert.rejects(handoff("merge-ready", { snapshot: otherPull }), /ci_pull_mismatch/u);
     const duplicateRun = snapshot(f);
     duplicateRun.ciRuns.push(duplicateRun.ciRuns[0]);
-    await assert.rejects(handoff("merge-ready", { snapshot: duplicateRun }), /duplicate_ci_run/u);
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: duplicateRun }),
+      /workflow_pagination_changed/u,
+    );
     await assert.rejects(
       handoff("merge-ready", {
         snapshot: {
           ...snapshot(f),
           statuses: [
             {
+              id: 1,
               url: `https://api.github.com/repos/other/repo/statuses/${f.owner.headSha}`,
               state: "success",
               context: "deployment/cloudflare",
@@ -439,10 +466,148 @@ test("native handoff gates current evidence and completes only after merge SHA C
   }
 });
 
+test("native handoff requires complete workflow and status pages matching the snapshot", async () => {
+  const f = await verified();
+  const handoff = (action: LoopHandoff, input: Record<string, unknown>) =>
+    importLoopHandoff(f.state, f.workspaces, action, handoffInput(input));
+  try {
+    await handoff("publish", { snapshot: snapshot(f) });
+    await handoff("review", {
+      snapshot: snapshot(f),
+      receipt: {
+        sourceSha: f.owner.headSha,
+        method: "self",
+        completedAt: new Date().toISOString(),
+        summary: "Reviewed value change and tests",
+        reviewedPaths: ["src/value.ts"],
+        unresolvedFindings: 0,
+        artifactUri: ".generated/self.json",
+      },
+    });
+    const value = snapshot(f);
+    const collected = handoffInput({ snapshot: value });
+    const page = collected.workflowRunPages[0];
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: value, workflowRunPages: undefined }),
+      /workflow_collection_missing/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: value, statusPages: undefined }),
+      /status_collection_missing/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: value,
+        workflowRunPages: [{ ...page, response: { ...page.response, total_count: 2 } }],
+      }),
+      /workflow_pagination_incomplete/u,
+    );
+    const runs = Array.from({ length: 101 }, (_, index) => ({
+      ...value.ciRuns[0],
+      id: index + 1,
+      url: `https://api.github.com/repos/apaapapapapa/HiFiScout/actions/runs/${index + 1}`,
+      path: index === 0 ? ".github/workflows/secret-scan.yml" : ".github/workflows/ci.yml",
+      conclusion: index === 100 ? "failure" : "success",
+    }));
+    const workflowRunPages = [
+      { ...page, response: { total_count: 101, workflow_runs: runs.slice(0, 100) } },
+      {
+        url: page.url.replace("&page=1", "&page=2"),
+        response: { total_count: 101, workflow_runs: runs.slice(100) },
+      },
+    ];
+    const complete = { ...value, ciRuns: runs.slice(1) };
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: complete,
+        workflowRunPages: workflowRunPages.slice(0, 1),
+      }),
+      /workflow_pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: complete,
+        workflowRunPages: [...workflowRunPages].reverse(),
+      }),
+      /workflow_pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: complete,
+        workflowRunPages: [
+          workflowRunPages[0],
+          {
+            ...workflowRunPages[1],
+            response: { total_count: 100, workflow_runs: runs.slice(100) },
+          },
+        ],
+      }),
+      /workflow_pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: { ...complete, ciRuns: runs.slice(1, 100) },
+        workflowRunPages,
+      }),
+      /collection_snapshot_mismatch/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: complete, workflowRunPages }),
+      /gates_incomplete/u,
+    );
+    runs[100].conclusion = "success";
+    assert.ok(
+      "expectedHeadSha" in (await handoff("merge-ready", { snapshot: complete, workflowRunPages })),
+    );
+
+    const statusUrl = collected.statusPages[0].url;
+    const statuses = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      url: `https://api.github.com/repos/apaapapapapa/HiFiScout/statuses/${f.owner.headSha}`,
+      state: "success",
+      context: "deployment/cloudflare",
+    }));
+    const statusPage = { url: statusUrl, items: statuses };
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: { ...value, statuses }, statusPages: [statusPage] }),
+      /status_pagination_incomplete/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: { ...value, statuses },
+        statusPages: [statusPage, { url: statusUrl.replace("&page=1", "&page=3"), items: [] }],
+      }),
+      /status_pagination_incomplete/u,
+    );
+    const latest = { ...statuses[99], id: 101, state: "pending" };
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: { ...value, statuses },
+        statusPages: [
+          statusPage,
+          { url: statusUrl.replace("&page=1", "&page=2"), items: [latest] },
+        ],
+      }),
+      /collection_snapshot_mismatch/u,
+    );
+    assert.ok(
+      "expectedHeadSha" in
+        (await handoff("merge-ready", {
+          snapshot: { ...value, statuses },
+          statusPages: [statusPage, { url: statusUrl.replace("&page=1", "&page=2"), items: [] }],
+        })),
+    );
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test("handoff cannot invent a Codex review or bypass optional review wait", async () => {
   const f = await verified("optional");
+  const handoff = (action: LoopHandoff, input: Record<string, unknown>) =>
+    importLoopHandoff(f.state, f.workspaces, action, handoffInput(input));
   try {
-    await importLoopHandoff(f.state, f.workspaces, "publish", { snapshot: snapshot(f) });
+    await handoff("publish", { snapshot: snapshot(f) });
     const receipt = {
       sourceSha: f.owner.headSha,
       method: "self",
@@ -453,7 +618,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       artifactUri: ".generated/review.json",
     };
     await assert.rejects(
-      importLoopHandoff(f.state, f.workspaces, "review", {
+      handoff("review", {
         ...reviewSource,
         snapshot: snapshot(f),
         receipt,
@@ -461,7 +626,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       /wait_not_expired/u,
     );
     await assert.rejects(
-      importLoopHandoff(f.state, f.workspaces, "review", {
+      handoff("review", {
         ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },
@@ -480,7 +645,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       submitted_at: receipt.completedAt,
     };
     await assert.rejects(
-      importLoopHandoff(f.state, f.workspaces, "review", {
+      handoff("review", {
         ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },
@@ -489,7 +654,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
       /codex_review_missing/u,
     );
     await assert.rejects(
-      importLoopHandoff(f.state, f.workspaces, "review", {
+      handoff("review", {
         ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },
@@ -499,7 +664,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
     );
     assert.equal(
       (
-        await importLoopHandoff(f.state, f.workspaces, "review", {
+        await handoff("review", {
           ...reviewSource,
           reviewSubmissionPages: [reviewPage([codexReview])],
           snapshot: snapshot(f),
@@ -511,7 +676,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
     );
     await writeFile(join(f.workspace, "src/value.ts"), "export const value = 3;\n");
     await assert.rejects(
-      importLoopHandoff(f.state, f.workspaces, "review", {
+      handoff("review", {
         ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },

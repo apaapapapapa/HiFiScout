@@ -67,24 +67,42 @@ is added. Remote mutations still require the user's existing authority and GitHu
    require the owning artifact contents and downstream receipts described in the delivery guide.
 
 Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionPages": <retained REST pages>,
+"workflowRunPages": <retained workflow responses>, "statusPages": <retained status pages>,
 "receipt": <optional review>,
 "codexReview": <optional raw review> }`. `DeliverySnapshot` is defined in
 `scripts/harness/delivery.ts`; retain the original responses alongside the assembled input.
 
-| Snapshot field | Actual evidence |
-| --- | --- |
-| `repository`, `collectedAt` | Requested repository and completion time of this collection |
-| `pull`, `pullAfter` | Full PR REST response before and after collecting other evidence |
-| `reviewPages` | Complete GraphQL pages with repository/PR identity, head SHA, review decision, thread IDs and cursor metadata |
-| `ciRuns` | Full `ci.yml` run objects for the PR head, or merge SHA/main push, including repository and PR associations |
-| `statuses` | Complete commit-status pages for that same source SHA |
-| `deployment`, `downstream` | Owning run/artifact/receipt data, or null/empty when unavailable |
+| Snapshot field              | Actual evidence                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `repository`, `collectedAt` | Requested repository and completion time of this collection                                                   |
+| `pull`, `pullAfter`         | Full PR REST response before and after collecting other evidence                                              |
+| `reviewPages`               | Complete GraphQL pages with repository/PR identity, head SHA, review decision, thread IDs and cursor metadata |
+| `ciRuns`                    | Full `ci.yml` run objects for the PR head, or merge SHA/main push, including repository and PR associations   |
+| `statuses`                  | All commit-status objects for that same source SHA, in response order                                         |
+| `deployment`, `downstream`  | Owning run/artifact/receipt data, or null/empty when unavailable                                              |
 
 Retain full CI run objects: `url`, `repository.full_name`, `head_repository.full_name` and, before
 merge, `pull_requests` identifying this PR and its head/base repositories and branches. A normalized
 summary without these fields is insufficient; fetch the full run. Commit statuses must retain their
 source-bound API `url`; deployment/downstream run and artifact URLs must belong to this repository.
 These checks prevent foreign green results from satisfying the delivery gates.
+
+Every action also requires `workflowRunPages` and `statusPages`, including empty results. Collect
+`https://api.github.com/repos/<owner>/<repo>/actions/runs?head_sha=<source>&event=<event>&per_page=100&page=1`,
+where `source` is the PR head before merge or merge SHA afterward, and `event` is `pull_request`
+or `push` respectively. Retain each numbered request URL and its full response as
+`{ "url": <request URL>, "response": { "total_count": ..., "workflow_runs": [...] } }`.
+Collect consecutive pages until `total_count` is covered; zero results still require page 1.
+Counts must agree across pages, IDs must be unique, and each page must have the expected length.
+More than 1,000 results cannot prove completeness under GitHub's filtered search limit and are rejected.
+Build `snapshot.ciRuns` by selecting only `.github/workflows/ci.yml` from these full, ordered responses;
+the importer checks exact equality, so a newer failed or pending run cannot be omitted.
+
+Collect `https://api.github.com/repos/<owner>/<repo>/commits/<source>/statuses?per_page=100&page=1`
+and consecutive pages until a page has fewer than 100 entries (including an empty final page for
+exact multiples). Retain ordered `{ "url": <request URL>, "items": <full response array> }` objects
+in `statusPages`. Concatenate their items unchanged into `snapshot.statuses`. Missing/skipped pages,
+duplicate IDs or a mismatch with the snapshot block every handoff; do not retain only success statuses.
 
 Each thread page must contain `data.repository.nameWithOwner` and the pull request's `number`,
 `url` and `headRefOid`, as well as `reviewThreads.nodes` with IDs and resolution flags. Request these

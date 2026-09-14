@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "../../../src/types.js";
 import { assessDelivery } from "../delivery.js";
 import { deliverySource } from "../delivery.js";
@@ -14,29 +15,64 @@ import { withLoopWorkspace } from "./workspace.js";
 
 export type LoopHandoff = "publish" | "review" | "merge-ready" | "observe";
 
-function reviewCollection(value: unknown, pullUrl: string): unknown[] {
+function arrayCollection(value: unknown, url: string, label: "review" | "status"): unknown[] {
   if (!Array.isArray(value) || !value.length || value.length > 100)
-    throw new Error("handoff_review_collection_missing");
-  const reviews: unknown[] = [],
+    throw new Error(`handoff_${label}_collection_missing`);
+  const items: unknown[] = [],
     ids = new Set<number>();
   value.forEach((page, index) => {
     if (
       !isRecord(page) ||
-      page.url !== `${pullUrl}/reviews?per_page=100&page=${index + 1}` ||
+      page.url !== `${url}?per_page=100&page=${index + 1}` ||
       !Array.isArray(page.items) ||
       page.items.length > 100 ||
       (index < value.length - 1 ? page.items.length !== 100 : page.items.length === 100)
     )
-      throw new Error("handoff_review_pagination_incomplete");
+      throw new Error(`handoff_${label}_pagination_incomplete`);
     for (const item of page.items) {
-      if (!isRecord(item)) throw new Error("invalid_handoff_review_submission");
-      const id = integer(item.id, "review_id", 1);
-      if (ids.has(id)) throw new Error("handoff_review_pagination_changed");
+      if (!isRecord(item)) throw new Error(`invalid_handoff_${label}_submission`);
+      const id = integer(item.id, `${label}_id`, 1);
+      if (ids.has(id)) throw new Error(`handoff_${label}_pagination_changed`);
       ids.add(id);
-      reviews.push(item);
+      items.push(item);
     }
   });
-  return reviews;
+  return items;
+}
+
+function workflowCollection(value: unknown, url: string): unknown[] {
+  if (!Array.isArray(value) || !value.length || value.length > 10)
+    throw new Error("handoff_workflow_collection_missing");
+  const runs: unknown[] = [],
+    ids = new Set<number>();
+  let total: number | undefined;
+  value.forEach((page, index) => {
+    if (
+      !isRecord(page) ||
+      page.url !== `${url}&per_page=100&page=${index + 1}` ||
+      !isRecord(page.response) ||
+      !Array.isArray(page.response.workflow_runs)
+    )
+      throw new Error("handoff_workflow_pagination_incomplete");
+    // GitHub caps filtered workflow searches at 1,000 results. Larger collections
+    // cannot establish completeness and must not authorize delivery.
+    const count = integer(page.response.total_count, "workflow_total_count", 0, 1000);
+    total ??= count;
+    if (
+      count !== total ||
+      value.length !== Math.max(1, Math.ceil(total / 100)) ||
+      page.response.workflow_runs.length !== Math.min(100, total - index * 100)
+    )
+      throw new Error("handoff_workflow_pagination_incomplete");
+    for (const run of page.response.workflow_runs) {
+      if (!isRecord(run)) throw new Error("invalid_handoff_workflow_run");
+      const id = integer(run.id, "run_id", 1);
+      if (ids.has(id)) throw new Error("handoff_workflow_pagination_changed");
+      ids.add(id);
+      runs.push(run);
+    }
+  });
+  return runs;
 }
 
 function validateThreadPages(value: unknown, repository: string, number: number) {
@@ -95,6 +131,7 @@ function validateRunOwnership(value: unknown, repository: string) {
 
 function validateRunEvidence(
   snapshot: Record<string, unknown>,
+  input: Record<string, unknown>,
   repository: string,
   number: number,
   branch: string,
@@ -109,7 +146,30 @@ function validateRunEvidence(
   )
     throw new Error("invalid_loop_handoff");
   const merged = snapshot.pull.merged,
+    event = merged ? "push" : "pull_request",
+    runs = workflowCollection(
+      input.workflowRunPages,
+      `${repoUrl}/actions/runs?head_sha=${source}&event=${event}`,
+    ),
+    statuses = arrayCollection(
+      input.statusPages,
+      `${repoUrl}/commits/${source}/statuses`,
+      "status",
+    ),
     ids = new Set<number>();
+  for (const value of runs) {
+    const run = validateRunOwnership(value, repository);
+    if (run.head_sha !== source || run.event !== event)
+      throw new Error("handoff_workflow_source_mismatch");
+  }
+  if (
+    !isDeepStrictEqual(
+      snapshot.ciRuns,
+      runs.filter((run) => isRecord(run) && run.path === ".github/workflows/ci.yml"),
+    ) ||
+    !isDeepStrictEqual(snapshot.statuses, statuses)
+  )
+    throw new Error("handoff_collection_snapshot_mismatch");
   for (const value of snapshot.ciRuns) {
     const run = validateRunOwnership(value, repository),
       id = integer(run.id, "run_id", 1);
@@ -205,6 +265,7 @@ export async function importLoopHandoff(
     validateThreadPages(snapshot.reviewPages, run.spec.repository, number);
     validateRunEvidence(
       snapshot,
+      input,
       run.spec.repository,
       number,
       `automation/loop/${run.spec.task.id}`,
@@ -251,7 +312,7 @@ export async function importLoopHandoff(
       throw new Error("handoff_requires_open_unmerged_pull");
     // A connector may omit GitHub's aggregate reviewDecision. Retain all REST submissions
     // as well so a top-level changes-requested review cannot disappear with a null decision.
-    const reviews = reviewCollection(input.reviewSubmissionPages, pullUrl);
+    const reviews = arrayCollection(input.reviewSubmissionPages, `${pullUrl}/reviews`, "review");
     const decisions = new Map<string, { id: number; state: string }>();
     for (const review of reviews) {
       if (
