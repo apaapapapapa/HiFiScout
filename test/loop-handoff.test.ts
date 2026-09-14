@@ -144,7 +144,27 @@ function snapshot(
             {
               id: 1,
               head_sha: options.merged ? pull.merge_commit_sha : head,
-              head_branch: "main",
+              url: "https://api.github.com/repos/apaapapapapa/HiFiScout/actions/runs/1",
+              repository: { full_name: "apaapapapapa/HiFiScout" },
+              head_repository: { full_name: "apaapapapapa/HiFiScout" },
+              pull_requests: options.merged
+                ? []
+                : [
+                    {
+                      number: 7,
+                      url: pullUrl,
+                      head: {
+                        ref: pull.head.ref,
+                        sha: head,
+                        repo: { url: "https://api.github.com/repos/apaapapapapa/HiFiScout" },
+                      },
+                      base: {
+                        ref: "main",
+                        repo: { url: "https://api.github.com/repos/apaapapapapa/HiFiScout" },
+                      },
+                    },
+                  ],
+              head_branch: options.merged ? "main" : pull.head.ref,
               event: options.merged ? "push" : "pull_request",
               path: ".github/workflows/ci.yml",
               status: "completed",
@@ -303,6 +323,52 @@ test("native handoff gates current evidence and completes only after merge SHA C
         /pull_identity_mismatch/u,
       );
     }
+    const foreignRun = snapshot(f);
+    foreignRun.ciRuns[0].repository.full_name = "other/repo";
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: foreignRun }),
+      /run_repository_mismatch/u,
+    );
+    const otherPull = snapshot(f);
+    otherPull.ciRuns[0].pull_requests[0].number = 8;
+    await assert.rejects(handoff("merge-ready", { snapshot: otherPull }), /ci_pull_mismatch/u);
+    otherPull.ciRuns[0].pull_requests = [];
+    await assert.rejects(handoff("merge-ready", { snapshot: otherPull }), /ci_pull_mismatch/u);
+    const duplicateRun = snapshot(f);
+    duplicateRun.ciRuns.push(duplicateRun.ciRuns[0]);
+    await assert.rejects(handoff("merge-ready", { snapshot: duplicateRun }), /duplicate_ci_run/u);
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: {
+          ...snapshot(f),
+          statuses: [
+            {
+              url: `https://api.github.com/repos/other/repo/statuses/${f.owner.headSha}`,
+              state: "success",
+              context: "deployment/cloudflare",
+            },
+          ],
+        },
+      }),
+      /status_source_mismatch/u,
+    );
+    await assert.rejects(
+      handoff("merge-ready", {
+        snapshot: {
+          ...snapshot(f),
+          deployment: {
+            run: {
+              id: 2,
+              repository: { full_name: "other/repo" },
+              url: "https://api.github.com/repos/other/repo/actions/runs/2",
+            },
+            artifact: {},
+            sourceSha: f.owner.headSha,
+          },
+        },
+      }),
+      /run_repository_mismatch/u,
+    );
     const firstPage = Array.from({ length: 100 }, (_, index) => ({
       id: index + 1,
       user: { login: "reviewer" },

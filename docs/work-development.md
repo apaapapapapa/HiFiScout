@@ -76,9 +76,15 @@ Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionPages": <retai
 | `repository`, `collectedAt` | Requested repository and completion time of this collection |
 | `pull`, `pullAfter` | Full PR REST response before and after collecting other evidence |
 | `reviewPages` | Complete GraphQL pages with repository/PR identity, head SHA, review decision, thread IDs and cursor metadata |
-| `ciRuns` | All relevant `ci.yml` run pages for the PR head, or merge SHA with main/push event |
+| `ciRuns` | Full `ci.yml` run objects for the PR head, or merge SHA/main push, including repository and PR associations |
 | `statuses` | Complete commit-status pages for that same source SHA |
 | `deployment`, `downstream` | Owning run/artifact/receipt data, or null/empty when unavailable |
+
+Retain full CI run objects: `url`, `repository.full_name`, `head_repository.full_name` and, before
+merge, `pull_requests` identifying this PR and its head/base repositories and branches. A normalized
+summary without these fields is insufficient; fetch the full run. Commit statuses must retain their
+source-bound API `url`; deployment/downstream run and artifact URLs must belong to this repository.
+These checks prevent foreign green results from satisfying the delivery gates.
 
 Each thread page must contain `data.repository.nameWithOwner` and the pull request's `number`,
 `url` and `headRefOid`, as well as `reviewThreads.nodes` with IDs and resolution flags. Request these

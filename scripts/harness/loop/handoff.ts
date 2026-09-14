@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isRecord } from "../../../src/types.js";
 import { assessDelivery } from "../delivery.js";
+import { deliverySource } from "../delivery.js";
 import type { DeliverySnapshot } from "../delivery.js";
 import { requireTimestamp } from "../report.js";
 import { integer } from "./contract.js";
@@ -80,6 +81,88 @@ function validateThreadPages(value: unknown, repository: string, number: number)
   });
 }
 
+function validateRunOwnership(value: unknown, repository: string) {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.repository) ||
+    value.repository.full_name !== repository ||
+    value.url !==
+      `https://api.github.com/repos/${repository}/actions/runs/${integer(value.id, "run_id", 1)}`
+  )
+    throw new Error("handoff_run_repository_mismatch");
+  return value;
+}
+
+function validateRunEvidence(
+  snapshot: Record<string, unknown>,
+  repository: string,
+  number: number,
+  branch: string,
+) {
+  const source = deliverySource(snapshot.pull),
+    repoUrl = `https://api.github.com/repos/${repository}`;
+  if (
+    !isRecord(snapshot.pull) ||
+    !Array.isArray(snapshot.ciRuns) ||
+    !Array.isArray(snapshot.statuses) ||
+    !Array.isArray(snapshot.downstream)
+  )
+    throw new Error("invalid_loop_handoff");
+  const merged = snapshot.pull.merged,
+    ids = new Set<number>();
+  for (const value of snapshot.ciRuns) {
+    const run = validateRunOwnership(value, repository),
+      id = integer(run.id, "run_id", 1);
+    if (ids.has(id)) throw new Error("handoff_duplicate_ci_run");
+    ids.add(id);
+    if (
+      run.head_sha !== source ||
+      run.path !== ".github/workflows/ci.yml" ||
+      run.event !== (merged ? "push" : "pull_request") ||
+      run.head_branch !== (merged ? "main" : branch) ||
+      !isRecord(run.head_repository) ||
+      run.head_repository.full_name !== repository
+    )
+      throw new Error("handoff_ci_source_mismatch");
+    if (
+      !merged &&
+      (!Array.isArray(run.pull_requests) ||
+        !run.pull_requests.some(
+          (pull) =>
+            isRecord(pull) &&
+            pull.number === number &&
+            pull.url === `${repoUrl}/pulls/${number}` &&
+            isRecord(pull.head) &&
+            pull.head.sha === source &&
+            pull.head.ref === branch &&
+            isRecord(pull.head.repo) &&
+            pull.head.repo.url === repoUrl &&
+            isRecord(pull.base) &&
+            pull.base.ref === "main" &&
+            isRecord(pull.base.repo) &&
+            pull.base.repo.url === repoUrl,
+        ))
+    )
+      throw new Error("handoff_ci_pull_mismatch");
+  }
+  for (const status of snapshot.statuses)
+    if (!isRecord(status) || status.url !== `${repoUrl}/statuses/${source}`)
+      throw new Error("handoff_status_source_mismatch");
+  for (const item of [
+    ...(snapshot.deployment === null ? [] : [snapshot.deployment]),
+    ...snapshot.downstream,
+  ]) {
+    if (!isRecord(item)) throw new Error("invalid_handoff_deployment");
+    validateRunOwnership(item.run, repository);
+    if (
+      !isRecord(item.artifact) ||
+      item.artifact.url !==
+        `${repoUrl}/actions/artifacts/${integer(item.artifact.id, "artifact_id", 1)}`
+    )
+      throw new Error("handoff_artifact_repository_mismatch");
+  }
+}
+
 // The host supplies retained, actual connector responses. This imports evidence; it does not
 // authenticate to GitHub or perform a remote mutation. Fresh collection is required on every call.
 export async function importLoopHandoff(
@@ -120,6 +203,12 @@ export async function importLoopHandoff(
         throw new Error("handoff_pull_identity_mismatch");
     }
     validateThreadPages(snapshot.reviewPages, run.spec.repository, number);
+    validateRunEvidence(
+      snapshot,
+      run.spec.repository,
+      number,
+      `automation/loop/${run.spec.task.id}`,
+    );
     assessLoopDelivery(run.spec, view.lastVerifiedSha!, number, snapshot);
     const report = assessDelivery(snapshot as unknown as DeliverySnapshot, "pr");
     const gates = (ids: string[]) => {
