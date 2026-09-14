@@ -87,6 +87,16 @@ summary without these fields is insufficient; fetch the full run. Commit statuse
 source-bound API `url`; deployment/downstream run and artifact URLs must belong to this repository.
 These checks prevent foreign green results from satisfying the delivery gates.
 
+Each non-null `deployment` and each `downstream` entry must additionally retain an `artifactFile`:
+`{ "artifactUrl": <owning artifact API URL>, "filename": <archive member name>, "content": <downloaded UTF-8 text> }`.
+Download that exact artifact through the connector, preserve its response and archive with the other
+evidence, and copy the actual member's bytes into `content`. For `deployment`, the member is
+`deployment-sha.txt`; derive `sourceSha` by trimming that file. For `downstream`, the member is
+`post-deploy-receipt.json`; derive `receipt` by parsing that file. The importer checks the artifact URL,
+member name and equality with those derived values. Missing content, a mislabeled artifact or values
+copied from the task contract cannot authorize delivery. If an artifact cannot be downloaded, leave
+that deployment/receipt unavailable and keep the deployment outcome unconfirmed.
+
 Every action also requires `workflowRunPages` and `statusPages`, including empty results. Collect
 `https://api.github.com/repos/<owner>/<repo>/actions/runs?head_sha=<source>&event=<event>&per_page=100&page=1`,
 where `source` is the PR head before merge or merge SHA afterward, and `event` is `pull_request`

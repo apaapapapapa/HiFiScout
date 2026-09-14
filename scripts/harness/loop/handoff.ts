@@ -6,7 +6,7 @@ import { isRecord } from "../../../src/types.js";
 import { assessDelivery } from "../delivery.js";
 import { deliverySource } from "../delivery.js";
 import type { DeliverySnapshot } from "../delivery.js";
-import { requireTimestamp } from "../report.js";
+import { requireSha, requireTimestamp } from "../report.js";
 import { integer } from "./contract.js";
 import { recordLoopEvent } from "./controller.js";
 import { sourceIsCurrent } from "./publication.js";
@@ -208,9 +208,9 @@ function validateRunEvidence(
   for (const status of snapshot.statuses)
     if (!isRecord(status) || status.url !== `${repoUrl}/statuses/${source}`)
       throw new Error("handoff_status_source_mismatch");
-  for (const item of [
-    ...(snapshot.deployment === null ? [] : [snapshot.deployment]),
-    ...snapshot.downstream,
+  for (const [item, filename] of [
+    ...(snapshot.deployment === null ? [] : [[snapshot.deployment, "deployment-sha.txt"] as const]),
+    ...snapshot.downstream.map((item) => [item, "post-deploy-receipt.json"] as const),
   ]) {
     if (!isRecord(item)) throw new Error("invalid_handoff_deployment");
     validateRunOwnership(item.run, repository);
@@ -220,6 +220,21 @@ function validateRunEvidence(
         `${repoUrl}/actions/artifacts/${integer(item.artifact.id, "artifact_id", 1)}`
     )
       throw new Error("handoff_artifact_repository_mismatch");
+    const file = item.artifactFile;
+    if (
+      !isRecord(file) ||
+      file.artifactUrl !== item.artifact.url ||
+      file.filename !== filename ||
+      typeof file.content !== "string" ||
+      file.content.length > 65_536
+    )
+      throw new Error("handoff_artifact_contents_missing");
+    if (
+      filename === "deployment-sha.txt"
+        ? requireSha(file.content.trim()) !== item.sourceSha
+        : !isDeepStrictEqual(JSON.parse(file.content), item.receipt)
+    )
+      throw new Error("handoff_artifact_contents_mismatch");
   }
 }
 

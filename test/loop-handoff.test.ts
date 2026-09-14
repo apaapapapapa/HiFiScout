@@ -47,8 +47,11 @@ function handoffInput(input: Record<string, unknown>) {
   };
 }
 
-async function fixture(review: "self" | "optional" = "self") {
-  const f = await loopGitFixture({ delivery: { target: "merge", review, reviewWaitMs: 900_000 } });
+async function fixture(
+  review: "self" | "optional" = "self",
+  target: "merge" | "deployment" = "merge",
+) {
+  const f = await loopGitFixture({ delivery: { target, review, reviewWaitMs: 900_000 } });
   await prepareLoopWorkspace(f.state, f.source, f.workspaces);
   await beginLoopAttempt(f.state, "Correct the value", { externalCalls: 1, reservedCostMicros: 0 });
   const applied = await applyLoopPatch(
@@ -103,8 +106,11 @@ test("connector commit adoption preserves tree and parent identity and requires 
   }
 });
 
-async function verified(review: "self" | "optional" = "self") {
-  const f = await fixture(review);
+async function verified(
+  review: "self" | "optional" = "self",
+  target: "merge" | "deployment" = "merge",
+) {
+  const f = await fixture(review, target);
   const at = new Date().toISOString();
   const scope = await collectLoopScope((await readLoopRun(f.state)).spec, f.workspace);
   const report = loopReport();
@@ -597,6 +603,138 @@ test("native handoff requires complete workflow and status pages matching the sn
           statusPages: [statusPage, { url: statusUrl.replace("&page=1", "&page=2"), items: [] }],
         })),
     );
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("deployment handoff binds version and receipts to retained artifact files", async () => {
+  const f = await verified("self", "deployment");
+  const handoff = (action: LoopHandoff, input: Record<string, unknown>) =>
+    importLoopHandoff(f.state, f.workspaces, action, handoffInput(input));
+  try {
+    await handoff("publish", { snapshot: snapshot(f) });
+    await handoff("review", {
+      snapshot: snapshot(f),
+      receipt: {
+        sourceSha: f.owner.headSha,
+        method: "self",
+        completedAt: new Date().toISOString(),
+        summary: "Reviewed value change and tests",
+        reviewedPaths: ["src/value.ts"],
+        unresolvedFindings: 0,
+        artifactUri: ".generated/self.json",
+      },
+    });
+    const repoUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout";
+    const sourceSha = "b".repeat(40);
+    const run = (id: number, path: string) => ({
+      id,
+      path,
+      url: `${repoUrl}/actions/runs/${id}`,
+      repository: { full_name: "apaapapapapa/HiFiScout" },
+      event: "workflow_run",
+      run_attempt: 1,
+      status: "completed",
+      conclusion: "success",
+    });
+    const artifact = (id: number, name: string) => ({
+      id,
+      name,
+      url: `${repoUrl}/actions/artifacts/${id}`,
+      expired: false,
+      workflow_run: { id },
+    });
+    const deployed = {
+      ...snapshot(f, { merged: true }),
+      statuses: ["deployment/cloudflare", "deployment/catalog-admin", "verification/e2e"].map(
+        (context, index) => ({
+          id: index + 1,
+          context,
+          state: "success",
+          description: "Verified",
+          url: `${repoUrl}/statuses/${sourceSha}`,
+          target_url: `https://github.com/apaapapapapa/HiFiScout/actions/runs/${10 + index}`,
+        }),
+      ),
+      deployment: {
+        run: run(10, ".github/workflows/deploy.yml"),
+        artifact: artifact(10, "deployment-identity"),
+        sourceSha,
+        artifactFile: {
+          artifactUrl: `${repoUrl}/actions/artifacts/10`,
+          filename: "deployment-sha.txt",
+          content: `${sourceSha}\n`,
+        },
+      },
+      downstream: ["deployment/catalog-admin", "verification/e2e"].map((context, index) => {
+        const receipt = {
+          schemaVersion: 1,
+          event: "workflow_run",
+          context,
+          sourceSha,
+          deploymentRunId: 10,
+          runId: 11 + index,
+          runAttempt: 1,
+          targetUrl: "https://production.example.test",
+          expectedUrl: "https://production.example.test",
+          recordedAt: new Date().toISOString(),
+        };
+        return {
+          run: run(
+            11 + index,
+            index === 0
+              ? ".github/workflows/deploy-catalog-admin.yml"
+              : ".github/workflows/e2e.yml",
+          ),
+          artifact: artifact(11 + index, "post-deploy-receipt"),
+          receipt,
+          artifactFile: {
+            artifactUrl: `${repoUrl}/actions/artifacts/${11 + index}`,
+            filename: "post-deploy-receipt.json",
+            content: JSON.stringify(receipt),
+          },
+        };
+      }),
+    };
+    for (const change of [
+      (value: typeof deployed) => {
+        value.deployment.artifactFile.content = "c".repeat(40);
+      },
+      (value: typeof deployed) => {
+        value.downstream[0].receipt.sourceSha = "c".repeat(40);
+      },
+    ]) {
+      const changed = structuredClone(deployed);
+      change(changed);
+      await assert.rejects(
+        handoff("observe", { snapshot: changed }),
+        /artifact_contents_mismatch/u,
+      );
+    }
+    for (const change of [
+      (value: typeof deployed) => {
+        value.deployment.artifactFile.artifactUrl = `${repoUrl}/actions/artifacts/999`;
+      },
+      (value: typeof deployed) => {
+        value.downstream[0].artifactFile.filename = "wrong.json";
+      },
+    ]) {
+      const changed = structuredClone(deployed);
+      change(changed);
+      await assert.rejects(handoff("observe", { snapshot: changed }), /artifact_contents_missing/u);
+    }
+    await assert.rejects(
+      handoff("observe", {
+        snapshot: { ...deployed, deployment: { ...deployed.deployment, artifactFile: undefined } },
+      }),
+      /artifact_contents_missing/u,
+    );
+    const old = structuredClone(deployed);
+    old.deployment.sourceSha = "c".repeat(40);
+    old.deployment.artifactFile.content = `${old.deployment.sourceSha}\n`;
+    assert.equal((await handoff("observe", { snapshot: old })).phase, "delivery");
+    assert.equal((await handoff("observe", { snapshot: deployed })).phase, "completed");
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
