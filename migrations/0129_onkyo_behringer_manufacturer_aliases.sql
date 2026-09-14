@@ -58,3 +58,22 @@ WHERE is_active=1
     SELECT 1 FROM product_admin_overrides o
     WHERE o.listing_product_id=products.id AND o.manufacturer_id IS NOT NULL
   );
+
+-- The category rule also changes only three exact AVAC seller buckets. Invalidate that bounded
+-- shop slice through its existing index instead of bumping the global classifier version. The
+-- normal stale-category selector will replay these rows and future crawler observations use the
+-- same classifier immediately.
+UPDATE products INDEXED BY idx_products_admin_shop_cursor
+SET metadata_json=json_set(
+  CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
+  '$.categoryClassification.version',
+  1
+)
+WHERE shop_key='avac'
+  AND is_active=1
+  AND raw_category IN ('ブックシェルフスピーカー(ペア)', 'センタースピーカー', 'AVアンプ')
+  AND COALESCE(CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER), 0)<>1
+  AND NOT EXISTS (
+    SELECT 1 FROM product_admin_overrides o
+    WHERE o.listing_product_id=products.id AND o.primary_category_id IS NOT NULL
+  );

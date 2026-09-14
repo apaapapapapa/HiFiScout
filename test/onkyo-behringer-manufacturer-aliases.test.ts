@@ -21,6 +21,7 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
         ('behringer','BEHRINGER','verified','https://www.behringer.com/','${AT}','${AT}');
     `);
     const onkyo = insertListing(sqlite, {
+      shop_key: "avac",
       source_id: "onkyo",
       manufacturer: "ONKYO",
       manufacturer_id: "onkyo",
@@ -28,8 +29,18 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
       normalized_raw_manufacturer: "onkyo",
       canonical_manufacturer_id: "",
       manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+      raw_category: "AVアンプ",
+      category: "未分類",
+      primary_category_id: "UNCLASSIFIED",
+      category_ids: '["UNCLASSIFIED"]',
+      direct_category_ids: '["UNCLASSIFIED"]',
+      classification_status: "unclassified",
+      metadata_json: JSON.stringify({
+        categoryClassification: { version: RESOLUTION_VERSIONS.category, evidence: [] },
+      }),
     });
     const behringer = insertListing(sqlite, {
+      shop_key: "hifido",
       source_id: "behringer",
       manufacturer: "BEHRINGER",
       manufacturer_id: "behringer",
@@ -37,12 +48,21 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
       normalized_raw_manufacturer: "behringerベリンガー",
       canonical_manufacturer_id: "",
       manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+      metadata_json: JSON.stringify({
+        categoryClassification: { version: RESOLUTION_VERSIONS.category, evidence: [] },
+      }),
     });
     const unrelated = insertListing(sqlite, {
+      shop_key: "avac",
       source_id: "unrelated",
       manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+      raw_category: "フロア型スピーカー(ペア)",
+      metadata_json: JSON.stringify({
+        categoryClassification: { version: RESOLUTION_VERSIONS.category, evidence: [] },
+      }),
     });
     const manual = insertListing(sqlite, {
+      shop_key: "avac",
       source_id: "manual",
       manufacturer: "ONKYO",
       manufacturer_id: "onkyo",
@@ -50,6 +70,10 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
       normalized_raw_manufacturer: "onkyo",
       canonical_manufacturer_id: "",
       manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+      raw_category: "AVアンプ",
+      metadata_json: JSON.stringify({
+        categoryClassification: { version: RESOLUTION_VERSIONS.category, evidence: [] },
+      }),
     });
     sqlite.exec(`
       INSERT INTO product_admin_overrides
@@ -79,6 +103,22 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
           ?.v,
         RESOLUTION_VERSIONS.manufacturer,
       );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER) AS v FROM products WHERE id=?",
+        )
+        .get(onkyo)?.v,
+      1,
+    );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER) AS v FROM products WHERE id=?",
+        )
+        .get(unrelated)?.v,
+      RESOLUTION_VERSIONS.category,
+    );
 
     const sweep = await runDataQualityRemediationSweep(db, {
       seedLimit: 10,
@@ -99,6 +139,14 @@ test("ONKYO and bilingual BEHRINGER aliases replay only affected listings", asyn
       assert.equal(row?.canonical_manufacturer_id, expected);
       assert.equal(row?.manufacturer_resolver_version, RESOLUTION_VERSIONS.manufacturer);
     }
+    const category = sqlite
+      .prepare(
+        "SELECT primary_category_id,classification_status,CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER) AS version FROM products WHERE id=?",
+      )
+      .get(onkyo);
+    assert.equal(category?.primary_category_id, "AMP.RECEIVER");
+    assert.equal(category?.classification_status, "classified");
+    assert.equal(category?.version, RESOLUTION_VERSIONS.category);
   } finally {
     sqlite.close();
   }
