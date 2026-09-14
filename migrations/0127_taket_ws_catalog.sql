@@ -1,7 +1,7 @@
 -- TakeT official product evidence: https://taket.jp/japanese/ws/ws.html
 -- AudioUnion writes this verified manufacturer as `Take T` and appends the seller category
--- `(リスト・サウンド)` to the model. Register the identity and catalog product, then make only
--- affected legacy manufacturer rows eligible for the normal remediation path.
+-- `(リスト・サウンド)` to the model. Register the identity and catalog product; production
+-- remediation is intentionally scheduled only after the new Worker deployment is verified.
 INSERT INTO knowledge_catalog_manufacturers (
   id, canonical_name, name_ja, name_en, verification_status, source, provenance_json,
   created_at, updated_at
@@ -61,19 +61,3 @@ SELECT id, 'manufacturer_official', 'https://taket.jp/japanese/ws/ws.html',
   strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')
 FROM knowledge_catalog_products
 WHERE manufacturer_id='taket' AND normalized_model='TAKETWS';
-
-UPDATE products INDEXED BY idx_products_manufacturer_id
-SET manufacturer_resolver_version=15,
-  model_resolver_version=15,
-  metadata_json=json_set(
-    COALESCE(NULLIF(metadata_json, ''), '{}'),
-    '$.categoryClassification.version',
-    26
-  )
-WHERE is_active=1 AND manufacturer_id='taket' AND normalized_raw_manufacturer='taket'
-  AND normalized_model='TAKETWS'
-  AND canonical_manufacturer_id<>'taket' AND manufacturer_resolver_version=16
-  AND NOT EXISTS (
-    SELECT 1 FROM product_admin_overrides o
-    WHERE o.listing_product_id=products.id AND o.manufacturer_id IS NOT NULL
-  );
