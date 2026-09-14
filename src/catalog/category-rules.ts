@@ -250,6 +250,14 @@ export function inferExplicitCategoryIds(
   )
     return ["ACC.PART"];
   if (/super[\s-]?tweeter|スーパーツ[イィ]ーター/i.test(value)) return ["SPK.LOUDSPEAKER"];
+  // TakeT's official name for TAKET-WS is a cordless wearable super tweeter. The seller's
+  // category is exact and distinctive; do not generalize ordinary wrist-worn products.
+  if (
+    /^(?:リスト[・\s-]*サウンド|(?:Take\s*T\s+)?TAKET-WS\s*\(\s*リスト[・\s-]*サウンド\s*\))$/iu.test(
+      value,
+    )
+  )
+    return ["SPK.LOUDSPEAKER"];
   if (
     !/\b(?:loud)?speakers?\b|スピーカー|ホーン型|搭載|内蔵|with\b/i.test(value) &&
     /\b(?:tweeter|horn|enclosure)\b|ツ[イィ]ーター|エンクロージャー|ホーン/i.test(value)

@@ -248,7 +248,9 @@ open-reel, DAT and DCC. Formats are `supported_media` facets, not separate categ
 drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `target_equipment` facts;
 the exact Hifido seller bucket `ドライバー` is treated as a bare speaker driver, while the same word
 outside that seller-category boundary remains non-classifying;
-a finished add-on super tweeter remains `SPK.LOUDSPEAKER`. Channel dividers, equalizers and AV
+a finished add-on super tweeter remains `SPK.LOUDSPEAKER`. This includes TakeT's exact
+`リスト・サウンド` seller category for the cordless wearable super tweeter `TAKET-WS`; generic
+wrist-worn products remain non-classifying. Channel dividers, equalizers and AV
 processors use `PRC.PROCESSOR` plus `processor_type`.
 
 Recording tape and empty reels use `REC.MEDIA` under `REC`, independently of the `ANA.TAPE`

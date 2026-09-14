@@ -104,6 +104,8 @@ export const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["electron-tube", "Electron tube", ["electron tube"]],
   ["kef", "KEF", ["kef"]],
   ["jbl", "JBL", ["jbl"]],
+  // TakeT's official site writes the brand and model as TakeT / TAKET-WS.
+  ["taket", "TakeT", ["taket", "take t", "テイクティ"]],
   [
     "western-electric",
     "Western Electric",
