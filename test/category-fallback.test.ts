@@ -131,7 +131,7 @@ test("Hifido recognizes supported seller categories that previously became blank
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Version 27 adds only the externally verified, exact Hifido DVD-player
-  // bucket while retaining the existing bounded active-inventory selectors.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 27);
+  // backfill it starts. Version 28 adds only the reviewed, exact AVAC speaker/receiver buckets
+  // while retaining the existing bounded active-inventory selectors.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 28);
 });

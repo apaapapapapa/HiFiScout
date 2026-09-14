@@ -310,6 +310,11 @@ amplifier, power amplifier, and loudspeaker. Similar or broader amplifier/speake
 unclassified until independent evidence exists. The corresponding explicit `管球式` and `アンプ内蔵`
 wording independently supplies tube-technology and active-amplification facets.
 
+AVAC's reviewed exact buckets `ブックシェルフスピーカー(ペア)`, `センタースピーカー`, and
+`AVアンプ` likewise map only to the broad loudspeaker or AV-receiver product leaf. Bookshelf and
+center remain facets derived independently from their explicit seller wording. Similar or generic
+speaker and amplifier labels are not promoted by these exact fallbacks.
+
 The AVAC adapter removes a leading standalone `特価` or `特価品` token after the seller's
 authoritative condition marker and before manufacturer/model splitting. The rule is shop-local and
 requires a token boundary, so a product or manufacturer name merely beginning with those characters

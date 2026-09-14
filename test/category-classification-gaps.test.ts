@@ -114,6 +114,24 @@ test("reviewed Audio Union product-type buckets classify without broadening sell
   }
 });
 
+test("reviewed AVAC product-type buckets classify with independent speaker facets", () => {
+  for (const [title, rawCategory, expected, expectedFacet] of [
+    ["B&W 805D4(B)", "ブックシェルフスピーカー(ペア)", "SPK.LOUDSPEAKER", "bookshelf"],
+    ["Polk Audio ES35(BRN)", "センタースピーカー", "SPK.LOUDSPEAKER", "center"],
+    ["ONKYO TX-NR727", "AVアンプ", "AMP.RECEIVER", ""],
+  ] as const) {
+    const product = classify(title, rawCategory);
+    assert.equal(product.classificationStatus, "classified", rawCategory);
+    assert.equal(product.primaryCategoryId, expected, rawCategory);
+    if (expectedFacet) {
+      assert.ok(
+        product.facetFacts.some((fact) => fact.value === expectedFacet),
+        `${rawCategory} should retain its facet`,
+      );
+    }
+  }
+});
+
 // --- G-2: brand-anchored DAP model families ------------------------------------------------------
 
 /** The listings the audit named as unambiguous misclassifications. */
@@ -209,7 +227,6 @@ test("アナログプレーヤー names the turntable leaf as a seller bucket an
  */
 test("a specific seller bucket is still inferred, and still held at the corroborative tier", () => {
   for (const [rawCategory, expected] of [
-    ["ブックシェルフスピーカー(ペア)", "SPK.LOUDSPEAKER"],
     ["フロア型スピーカー(ペア)", "SPK.LOUDSPEAKER"],
     ["管球式フォノイコライザー", "AMP.PHONO"],
     ["ステレオパワーアンプ", "AMP.POWER"],
