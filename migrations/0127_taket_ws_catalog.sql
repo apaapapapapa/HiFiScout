@@ -63,8 +63,15 @@ FROM knowledge_catalog_products
 WHERE manufacturer_id='taket' AND normalized_model='TAKETWS';
 
 UPDATE products INDEXED BY idx_products_manufacturer_id
-SET manufacturer_resolver_version=15
+SET manufacturer_resolver_version=15,
+  model_resolver_version=15,
+  metadata_json=json_set(
+    COALESCE(NULLIF(metadata_json, ''), '{}'),
+    '$.categoryClassification.version',
+    26
+  )
 WHERE is_active=1 AND manufacturer_id='taket' AND normalized_raw_manufacturer='taket'
+  AND normalized_model='TAKETWS'
   AND canonical_manufacturer_id<>'taket' AND manufacturer_resolver_version=16
   AND NOT EXISTS (
     SELECT 1 FROM product_admin_overrides o

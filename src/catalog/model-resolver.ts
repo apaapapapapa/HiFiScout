@@ -30,7 +30,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 17;
+export const MODEL_RESOLVER_VERSION = 16;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
