@@ -173,6 +173,21 @@ export async function saveDataQualityRun(
     thresholdOverrides = {},
   }: SaveDataQualityRunOptions,
 ): Promise<QualityEvaluation & { evaluatedAt: string; crawlRunId: number | null }> {
+  // Arm the next quality-input mutation before reading the aggregate. Triggers coalesce writes
+  // while dirty, then advance the revision once after each capture begins. Saving this captured
+  // revision on the snapshot (never clearing a marker after the read) fences concurrent writers,
+  // failed INSERTs, hard kills and overlapping snapshot readers alike.
+  const coverage = await firstMeasured<{ revision: number }>(
+    db
+      .prepare(`
+        INSERT INTO data_quality_snapshot_state(shop_key, revision, dirty)
+        VALUES (?, 0, 0)
+        ON CONFLICT(shop_key) DO UPDATE SET dirty = 0
+        RETURNING revision
+      `)
+      .bind(shopKey),
+  );
+  const sourceRevision = coverage?.revision ?? null;
   const snapshot = await readDataQualitySnapshot(db, shopKey);
   // A caller outside a crawl (the remediation sweep) has no crawl-time item count to pass; default
   // it to the snapshot's own active-listing total instead of falling through to zero, which would
@@ -197,9 +212,11 @@ export async function saveDataQualityRun(
         evidence_expected_event_count, evidence_archived_event_count, evidence_archive_failure_count,
         previous_item_count, current_item_count, item_count_absolute_difference, item_count_change_rate,
         manufacturer_status, category_status, identity_status, inventory_status, model_status,
-        parser_status, item_count_status, evidence_status, snapshot_status, run_status, quality_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parser_status, item_count_status, evidence_status, snapshot_status, run_status, quality_status,
+        source_revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(crawl_run_id) WHERE crawl_run_id IS NOT NULL DO UPDATE SET
+        source_revision = excluded.source_revision,
         evaluated_at = excluded.evaluated_at,
         total_items = excluded.total_items,
         manufacturer_missing_count = excluded.manufacturer_missing_count,
@@ -266,6 +283,7 @@ export async function saveDataQualityRun(
       c.itemCountAbsoluteDifference,
       c.itemCountChangeRate,
       ...statuses,
+      sourceRevision,
     )
     .run();
   return { ...evaluation, evaluatedAt, crawlRunId };
