@@ -236,7 +236,8 @@ always use the registry's `parentId`/closure, not an ID prefix, to determine anc
 Migration 0095 repairs only affected ancestor memberships and preserves mixed-product sets.
 The previous runtime still recognizes all stored leaf IDs during migration-before-deploy rollout.
 
-Disc equipment includes CD, SACD, DVD, Blu-ray, MD and LD; tape equipment includes cassette,
+Disc equipment includes CD, SACD, DVD, Blu-ray, MD and LD; the exact Hifido seller bucket
+`DVDプレーヤー` is authoritative `SRC.DISC` evidence. Tape equipment includes cassette,
 open-reel, DAT and DCC. Formats are `supported_media` facets, not separate categories. Bare speaker
 drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `target_equipment` facts;
 the exact Hifido seller bucket `ドライバー` is treated as a bare speaker driver, while the same word

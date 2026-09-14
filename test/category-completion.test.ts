@@ -158,6 +158,7 @@ test("new structured Hifido genres classify model-only listings and retain selle
     "MDデッキ",
     "DATデッキ",
     "LDプレーヤー",
+    "DVDプレーヤー",
     "フルレンジユニット",
     "ホーン",
     "チャンネルデバイダー",
@@ -168,6 +169,19 @@ test("new structured Hifido genres classify model-only listings and retain selle
     const product = normalizeCatalogProduct(parsed, { categoryMapping: HIFIDO_CATEGORY_MAPPING });
     assert.equal(product.primaryCategoryId, HIFIDO_CATEGORY_MAPPING[genre]);
   }
+
+  const dvdHtml = `<div class="list-item"><h3><a href="/26-50922-20408-00.html">DV-S5</a></h3><div id="maker-26-50922-20408-00"><div>メーカー:Pioneer</div></div><div id="price-26-50922-20408-00"><div>売価:29,800円</div></div><div id="genre-26-50922-20408-00"><div>DVDプレーヤー</div></div></div>`;
+  const [dvdListing] = parseHifidoListing(dvdHtml);
+  const dvdProduct = normalizeCatalogProduct(dvdListing, {
+    categoryMapping: HIFIDO_CATEGORY_MAPPING,
+  });
+  assert.equal(dvdProduct.primaryCategoryId, "SRC.DISC");
+  assert.equal(dvdProduct.categoryEvidence[0]?.strength, "authoritative");
+  assert.ok(
+    dvdProduct.facetFacts.some(
+      (fact) => fact.facetId === "supported_media" && fact.value === "dvd",
+    ),
+  );
 });
 
 test("feature states round-trip through public URLs, chips and API validation", () => {
