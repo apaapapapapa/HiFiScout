@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";
 import { CATEGORY_CLASSIFICATION_METADATA_VERSION } from "../src/catalog/product-normalizer.js";
+import { splitKnownManufacturerModel } from "../src/catalog/manufacturers.js";
+import { splitManufacturerModel } from "../src/crawler/normalize.js";
 import { replayAdminCsvListings } from "../src/db/data-quality-remediation-service.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { insertListing } from "./helpers/listing-fixture.js";
@@ -12,6 +14,22 @@ import { productQuery } from "./helpers/product-query.js";
 const MIGRATION = "0127_taket_ws_catalog.sql";
 const migration = readFileSync(new URL(`../migrations/${MIGRATION}`, import.meta.url), "utf8");
 const AT = "2026-09-14T03:00:00.000Z";
+
+test("TAKET-WS is not truncated when the model itself starts with the TakeT brand spelling", () => {
+  assert.deepEqual(splitKnownManufacturerModel("TAKET-WS ( リスト・サウンド)"), {
+    id: "taket",
+    displayName: "TakeT",
+    rawManufacturer: "TAKET",
+    model: "TAKET-WS ( リスト・サウンド)",
+  });
+  assert.deepEqual(
+    splitManufacturerModel("TAKET-WS ( リスト・サウンド)", "audiounion", "Take T"),
+    {
+      manufacturer: "Take T",
+      model: "TAKET-WS ( リスト・サウンド)",
+    },
+  );
+});
 
 test("TakeT migration registers one verified official product idempotently", () => {
   const { sqlite } = migratedSqlite({ before: MIGRATION });

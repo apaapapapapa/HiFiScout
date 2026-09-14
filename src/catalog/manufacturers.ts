@@ -198,6 +198,17 @@ export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerMo
   for (const candidate of candidates) {
     const match = raw.match(candidate.pattern);
     if (!match) continue;
+    // TakeT's official TAKET-WS model starts with the complete brand spelling. Treating the
+    // hyphen as an ordinary manufacturer boundary would truncate the model to `WS` before the
+    // model resolver can preserve it.
+    if (candidate.manufacturer.id === "taket" && /^TAKET-WS(?:$|[\s([（［])/iu.test(raw)) {
+      return {
+        id: candidate.manufacturer.id,
+        displayName: candidate.manufacturer.name,
+        rawManufacturer: match[0].trim(),
+        model: raw,
+      };
+    }
     const model = stripBracketedManufacturerAlias(raw.slice(match[0].length), [
       candidate.manufacturer.name,
       ...candidate.manufacturer.aliases,
