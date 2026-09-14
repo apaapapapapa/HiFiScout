@@ -25,6 +25,16 @@ const CASES = [
 test("reviewed exact seller spellings resolve only their verified manufacturer rows", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    for (const [manufacturerId, rawManufacturer] of CASES) {
+      sqlite
+        .prepare(`
+          INSERT OR IGNORE INTO knowledge_catalog_manufacturers
+            (id,canonical_name,verification_status,source,created_at,updated_at)
+          VALUES (?,?,?,'test_verified','${AT}','${AT}')
+        `)
+        .run(manufacturerId, rawManufacturer.split(" ")[0], "verified");
+    }
+
     const listings = CASES.map(([manufacturerId, rawManufacturer, normalizedRaw], index) => ({
       manufacturerId,
       id: insertListing(sqlite, {
