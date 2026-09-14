@@ -11,7 +11,7 @@ import { insertListing } from "./helpers/listing-fixture.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { productQuery } from "./helpers/product-query.js";
 
-const MIGRATION = "0127_taket_ws_catalog.sql";
+const MIGRATION = "0128_taket_ws_catalog.sql";
 const migration = readFileSync(new URL(`../migrations/${MIGRATION}`, import.meta.url), "utf8");
 const AT = "2026-09-14T03:00:00.000Z";
 

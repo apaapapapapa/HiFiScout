@@ -171,15 +171,17 @@ jobs:
           fi
 
           git fetch --no-tags --depth=1 origin "$last_deployed_sha"
-          changed_migrations="$(git diff --diff-filter=AM --name-only \
+          # Include deleted paths and expand renames so a filename-only change still runs the
+          # remote history preflight. It must reject a checkout that omits an applied filename.
+          changed_migrations="$(git diff --no-renames --diff-filter=AMD --name-only \
             "$last_deployed_sha" "$DEPLOY_SHA" -- 'migrations/*.sql')"
 
           if [[ -n "$changed_migrations" ]]; then
-            echo "D1 migrations added or modified since the last confirmed production deployment:"
+            echo "D1 migrations changed since the last confirmed production deployment:"
             printf '%s\n' "$changed_migrations"
             echo "required=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No D1 migration additions/modifications since deployed SHA $last_deployed_sha; skipping remote migration API."
+            echo "No D1 migration changes since deployed SHA $last_deployed_sha; skipping remote migration API."
             echo "required=false" >> "$GITHUB_OUTPUT"
           fi
 

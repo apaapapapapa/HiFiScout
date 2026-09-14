@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vite-plus/test";
@@ -49,6 +49,34 @@ test("migration history allows forward additions and fails closed without a base
     assert.equal(checkMigrationHistory(root, "HEAD").additions.length, 1);
     assert.throws(() => checkMigrationHistory(root, "000000"), /baseline/u);
     assert.throws(() => checkMigrationHistory(root, "absent-branch"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the recorded unapplied collision permits only its exact forward rename and frozen bytes", () => {
+  const root = fixture();
+  try {
+    const sql = readFileSync(
+      new URL("../migrations/0128_taket_ws_catalog.sql", import.meta.url),
+      "utf8",
+    );
+    const old = join(root, "migrations/0127_taket_ws_catalog.sql");
+    const next = join(root, "migrations/0128_taket_ws_catalog.sql");
+    writeFileSync(join(root, "migrations/0127_data_quality_snapshot_coverage.sql"), "SELECT 1;\n");
+    writeFileSync(old, sql);
+    gitText(root, ["add", "."]);
+    gitText(root, ["commit", "--quiet", "-m", "concurrent unapplied migrations"]);
+    renameSync(old, next);
+    assert.deepEqual(
+      checkMigrationHistory(root, "HEAD").additions.map((m) => m.name),
+      ["0128_taket_ws_catalog.sql"],
+    );
+    writeFileSync(next, sql + "-- SQL edits remain forbidden\n");
+    assert.throws(() => checkMigrationHistory(root, "HEAD"), /Frozen migration/);
+    writeFileSync(next, sql);
+    renameSync(next, join(root, "migrations/0129_taket_ws_catalog.sql"));
+    assert.throws(() => checkMigrationHistory(root, "HEAD"), /Frozen migration/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

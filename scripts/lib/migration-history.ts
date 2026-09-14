@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -49,11 +50,31 @@ export function workingMigrations(root: string): MigrationSource[] {
     });
 }
 
-/** Freeze the baseline bytes and filenames; even deleting the last migration must fail. */
+// #680 and #681 merged the same next number concurrently. D1 history was checked before
+// renumbering: neither 0127 migration was applied. Keep this exception bound to exact filenames
+// AND bytes; it cannot permit another rename or SQL edit. applyRemoteMigrations independently
+// rejects a checkout missing any applied filename, so an unexpectedly applied old name still
+// stops deployment before importing SQL. Do not add a general rename exemption.
+const UNDEPLOYED_RENUMBERING = {
+  from: "0127_taket_ws_catalog.sql",
+  to: "0128_taket_ws_catalog.sql",
+  sha256: "12e10121ff558127806b7406b97ff99a9696671ee6bb043a054526aac7336fca",
+};
+
+/** Freeze baseline bytes and filenames, except the recorded byte-identical, unapplied repair. */
 export function checkMigrationHistory(root: string, ref: string) {
   const baseSha = resolveMigrationBase(root, ref);
   const baseline = migrationsAt(root, baseSha);
   if (!baseline.length) throw new Error(`No migrations found at baseline ${baseSha}`);
+  const current = workingMigrations(root);
+  const currentByName = new Map(current.map((migration) => [migration.name, migration.sql]));
+  const old = baseline.find(({ name }) => name === UNDEPLOYED_RENUMBERING.from);
+  const replacement = currentByName.get(UNDEPLOYED_RENUMBERING.to);
+  const renumbered =
+    old &&
+    !currentByName.has(old.name) &&
+    replacement === old.sql &&
+    createHash("sha256").update(old.sql).digest("hex") === UNDEPLOYED_RENUMBERING.sha256;
   const changed = gitText(root, [
     "diff",
     "--no-ext-diff",
@@ -63,14 +84,17 @@ export function checkMigrationHistory(root: string, ref: string) {
     baseSha,
     "--",
     "migrations/*.sql",
-  ]).trim();
+  ])
+    .trim()
+    .split("\n")
+    .filter((path) => path && !(renumbered && path === `migrations/${old.name}`))
+    .join("\n");
   if (changed)
     throw new Error(
       `Frozen migration changed, deleted or renamed: ${changed}. Add a forward migration instead.`,
     );
-  const current = workingMigrations(root);
-  const currentByName = new Map(current.map((migration) => [migration.name, migration.sql]));
   for (const migration of baseline) {
+    if (renumbered && migration.name === old.name) continue;
     if (currentByName.get(migration.name) !== migration.sql) {
       throw new Error(
         `Frozen migration changed, deleted or renamed: ${migration.name}. Add a forward migration instead.`,
