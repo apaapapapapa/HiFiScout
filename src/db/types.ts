@@ -983,6 +983,7 @@ export interface DataQualityRunRow {
   id: number;
   shop_key: string;
   crawl_run_id: number | null;
+  source_revision: number | null;
   evaluated_at: string;
   total_items: number;
   manufacturer_missing_count: number;

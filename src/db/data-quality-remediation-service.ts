@@ -133,17 +133,17 @@ export interface UnmeasuredDataQualityRemediationSweepResult extends Remediation
 interface LatestSnapshotChangeRow {
   evaluated_at: string;
   has_quality_change: number;
+  has_snapshot_coverage: number;
 }
 
 /**
  * Decide whether remediation must recompute the shop-wide quality aggregate.
  *
- * Crawl success/failure already persists a snapshot after its listing writes. Remediation and
- * admin paths record every actual manufacturer/model/category/identity transition in the durable
- * event table. Therefore a latest snapshot with no newer event still describes every input read by
- * `readDataQualitySnapshot`; resolver-version, metadata, facet and search-projection maintenance
- * cannot change its counts. Keep the comparison in one indexed read so an older snapshot cannot be
- * selected independently of the event check.
+ * A crawl can commit listings and fail to save its snapshot without recording remediation events.
+ * Require the revision captured before the aggregate to match the trigger-maintained shop revision;
+ * an absent/legacy snapshot or an intervening write is not proof of coverage. Metadata, resolver
+ * versions, facets and search projection maintenance do not invalidate the quality inputs.
+ * Read coverage and event evidence together with the latest snapshot through indexed probes.
  */
 export async function remediationNeedsDataQualitySnapshot(
   db: QueryableDatabase,
@@ -153,6 +153,10 @@ export async function remediationNeedsDataQualitySnapshot(
     db
       .prepare(`
       SELECT q.evaluated_at,
+             EXISTS(
+               SELECT 1 FROM data_quality_snapshot_state s
+               WHERE s.shop_key = q.shop_key AND s.revision = q.source_revision
+             ) AS has_snapshot_coverage,
              EXISTS(
                SELECT 1
                FROM data_quality_remediation_events e
@@ -168,7 +172,7 @@ export async function remediationNeedsDataQualitySnapshot(
     `)
       .bind(shopKey),
   );
-  return !row || Number(row.has_quality_change) === 1;
+  return !row || Number(row.has_snapshot_coverage) !== 1 || Number(row.has_quality_change) === 1;
 }
 
 function metadataObject(value: string): Record<string, unknown> {

@@ -119,7 +119,13 @@ test("a no-impact replay resolves without repeating an authoritative shop-wide s
       ];
     }
     if (/FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest/.test(sql)) {
-      return [{ evaluated_at: "2026-08-14T23:50:00.000Z", has_quality_change: 0 }];
+      return [
+        {
+          evaluated_at: "2026-08-14T23:50:00.000Z",
+          has_quality_change: 0,
+          has_snapshot_coverage: 1,
+        },
+      ];
     }
     return [];
   });

@@ -39,6 +39,7 @@ function captureDb({
         },
         async all() {
           calls.push({ kind: "all", sql, binds: statement.binds });
+          if (/RETURNING revision/.test(sql)) return { results: [{ revision: 1 }] };
           return { results: allRows[allIndex++] || [] };
         },
         async run() {
@@ -139,7 +140,8 @@ test("quality result is linked to crawl run and persists snapshot and run status
   assert.equal(result.run.status, "healthy");
   assert.equal(insert.binds[0], "audio-union");
   assert.equal(insert.binds[1], 42);
-  assert.equal(insert.binds.length, 38);
+  assert.equal(insert.binds.length, 39);
+  assert.equal(insert.binds[38], 1);
   assert.match(insert.sql, /ON CONFLICT\(crawl_run_id\)/);
   assert.match(insert.sql, /snapshot_status/);
   assert.match(insert.sql, /run_status/);
@@ -155,6 +157,7 @@ test("history query is bounded to 200 rows", async () => {
 
 test("stored row exposes identity coverage gaps against all active listings", () => {
   const row = dataQualityRow({
+    source_revision: null,
     id: 1,
     shop_key: "audio-union",
     crawl_run_id: 42,
