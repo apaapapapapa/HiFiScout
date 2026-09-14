@@ -84,6 +84,13 @@ read-only, `fix` applies formatting/lint fixes, and `verify` runs both in order.
 Documentation generation, validation, build and preview commands have different outputs and remain
 separate. `docs:openapi:check` generates then validates the contract; `docs:openapi` adds the HTML view.
 Database migration and explicit repair commands such as `price-index:backfill` also remain available.
+
+Migration history freezes committed SQL bytes and filenames. The concurrent #680/#681 merge was
+repaired before either colliding migration reached D1: TakeT moved from `0127` to `0128`, with
+unchanged SQL. The history checker records only that exact filename pair and SHA-256; it is not a
+general rename allowance. Remote migration preflight still refuses any checkout that omits an
+already-applied filename, including the old TakeT name. If that check fails, preserve the database
+history and investigate; do not rename applied history rows or bypass the preflight.
 Production deployment is owned by the `Deploy Cloudflare` workflow, including its quota and smoke
 checks, rather than a separate package script.
 

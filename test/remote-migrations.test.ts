@@ -121,6 +121,22 @@ test("malformed, failed, or newer remote history cannot be treated as an empty d
   }
 });
 
+test("the recorded renumbering fails closed if the old filename was actually applied", async () => {
+  let calls = 0;
+  await assert.rejects(
+    applyRemoteMigrations(
+      [{ name: "0128_taket_ws_catalog.sql", sql: "SELECT 1;" }],
+      async () => {
+        calls++;
+        return [{ success: true, results: [{ name: "0127_taket_ws_catalog.sql" }] }];
+      },
+      () => {},
+    ),
+    /Remote migration is absent from this checkout: 0127_taket_ws_catalog.sql/,
+  );
+  assert.equal(calls, 1, "no migration SQL may run after incompatible remote history");
+});
+
 test("Wrangler import progress before JSON does not turn a committed migration into a failure", () => {
   const expected = [{ success: true, results: [{ "Total queries executed": 11 }] }];
   for (const prefix of ["", "├ Checking if file needs uploading\n├ Uploading complete.\n"]) {
