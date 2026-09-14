@@ -150,6 +150,13 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
       /\s*\((?:(?:真空管)?(?:プリメインアンプ|プリアンプ|パワーアンプ)|インテグレーテッドアンプ|(?:USB-DAC内蔵)?ヘッドホンアンプ|(?:パワード)?スピーカー|スピーカースタンド|フォノイコライザー|サブウーファー|バイワイヤーアダプター)\)\s*/gu,
   },
   {
+    name: "seller_product_type",
+    shopKey: "audiounion",
+    // AudioUnion appends its category label to TakeT's model. Keep arbitrary Japanese
+    // parentheticals as candidates; only this exact official product type is presentation.
+    pattern: /\s*\(\s*リスト[・\s-]*サウンド\s*\)\s*$/gu,
+  },
+  {
     name: "seller_sku",
     pattern:
       /[【《[［(（]?\s*(?:管理番号|管理No\.?|商品番号|在庫番号|品番)\s*[:：]?\s*[A-Z0-9][A-Z0-9._/-]*\s*[】》\]］)）]?/giu,
@@ -582,9 +589,16 @@ function resolvePreparedModel(
     fromSeller && presentation
       ? recoverLegacyTruncatedManufacturerModel(source, clean(input.title), presentation)
       : source;
-  const withoutManufacturer = presentation?.patterns.length
-    ? stripManufacturerPresentation(recoveredSource, presentation)
-    : recoveredSource;
+  // TakeT's official `TAKET-WS` model intentionally starts with the brand spelling. Removing the
+  // verified manufacturer prefix would turn it into the unrelated `WS`; constrain the exception
+  // to this exact model boundary before ordinary presentation stripping.
+  const manufacturerPrefixedModel =
+    manufacturerId === "taket" && /^TAKET-WS(?:$|[\s([（［])/iu.test(recoveredSource);
+  const withoutManufacturer = manufacturerPrefixedModel
+    ? recoveredSource
+    : presentation?.patterns.length
+      ? stripManufacturerPresentation(recoveredSource, presentation)
+      : recoveredSource;
   const groupedTitle = splitModelBundle(clean(input.title));
   const groupedModels = groupedTitle?.components.map((component) => component.model).join(" + ");
   const groupedLegacy = groupedTitle
