@@ -271,6 +271,56 @@ test("feature-state SQL matches missing, explicit absent and conflicting evidenc
   }
 });
 
+test("version replay applies the current shop policy to retained seller evidence", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    await seed(db, ["Pioneer DV-S5"]);
+    sqlite.exec(`
+      UPDATE products
+      SET raw_category='DVDプレーヤー',
+          category='未分類',
+          primary_category_id='unclassified',
+          category_ids='["unclassified"]',
+          direct_category_ids='[]',
+          classification_status='unclassified',
+          metadata_json=json_set(
+            metadata_json,
+            '$.categoryClassification.version',
+            26,
+            '$.categoryClassification.evidence',
+            json('[{"source":"seller_category","strength":"supporting","categoryIds":["SRC.DISC"],"value":"DVDプレーヤー"}]')
+          )
+      WHERE source_id='completion-0';
+    `);
+    const result = await runDataQualityRemediationSweep(db, {
+      seedLimit: 1,
+      claimLimit: 1,
+      now: new Date("2026-09-14T01:30:00Z"),
+      categoryConfigForShop: () => ({
+        categoryMapping: { DVDプレーヤー: "SRC.DISC" },
+        categoryPolicy: { sellerCategory: { default: "authoritative" } },
+      }),
+    });
+    assert.equal(result.resolved, 1);
+    const row = sqlite
+      .prepare(`
+        SELECT primary_category_id,
+               json_extract(metadata_json, '$.categoryClassification.evidence[0].strength') AS strength
+        FROM products WHERE source_id='completion-0'
+      `)
+      .get();
+    assert.equal(row?.primary_category_id, "SRC.DISC");
+    assert.equal(row?.strength, "authoritative");
+    const found = await searchProducts(db, productQuery("?category=SRC.DISC"));
+    assert.deepEqual(
+      found.items.map((item) => item.representative_offer?.source_url),
+      ["https://example.test/completion-0"],
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("bounded version replay replaces stale title decisions and facts while preserving external evidence", async () => {
   const { sqlite, db } = migratedSqlite();
   try {

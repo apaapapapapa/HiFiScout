@@ -16,6 +16,7 @@ import {
 } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
+import { getShopPlugin } from "./crawler/shops/index.js";
 import {
   deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun,
   knowledgeCatalogReviewRunLiveness,
@@ -687,6 +688,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
         // Backlog size is operational output, not an input to the sweep. Keep its exact, queue-sized
         // aggregate on the admin/drain path instead of paying for it every ten minutes.
         measureQueue: false,
+        categoryConfigForShop: (shopKey) => getShopPlugin(shopKey)?.capabilities.catalog ?? {},
       }),
   },
   {
