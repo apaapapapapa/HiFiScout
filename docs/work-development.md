@@ -56,6 +56,9 @@ is added. Remote mutations still require the user's existing authority and GitHu
    review object as `codexReview` (matching bot, commit, state and submitted timestamp). Reactions
    and abbreviated-SHA comments alone do not satisfy this adapter. A real `self` review can be
    imported only when the frozen review policy/deadline allows it; it must cover every changed path.
+   Review and merge-readiness handoffs require an open, unmerged PR; review cannot be backfilled
+   after delivery. Every review submission must name this PR in its REST `pull_request_url`, and
+   `codexReview` must also be present in the complete submitted review collection.
 4. Run `loop handoff merge-ready ...` with newly collected evidence. Only a reviewed merge/deployment
    contract with passing PR gates returns `expectedHeadSha`. Pass that SHA to the GitHub merge tool;
    if the head changes, stop and reevaluate. This command does not merge or mark completion.
@@ -63,7 +66,8 @@ is added. Remote mutations still require the user's existing authority and GitHu
    Repeat with fresh evidence while pending and within budget. Deployment targets additionally
    require the owning artifact contents and downstream receipts described in the delivery guide.
 
-Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissions": <all REST reviews>, "receipt": <optional review>,
+Each input is `{ "snapshot": <DeliverySnapshot>, "reviewSubmissionsUrl": <REST collection URL>,
+"reviewSubmissions": <all REST reviews>, "receipt": <optional review>,
 "codexReview": <optional raw review> }`. `DeliverySnapshot` is defined in
 `scripts/harness/delivery.ts`; retain the original responses alongside the assembled input.
 
@@ -80,7 +84,9 @@ If the connector only returns complete review thread nodes, retain that raw resp
 PR before/after reads; wrap nodes as one page with `hasNextPage: false` only when the tool guarantees
 the complete collection. Never claim completeness from a truncated/first-page result. If it does not
 return GitHub's review decision, use null. Every action after publish requires `reviewSubmissions`:
-the complete REST review list, including dismissed states. Active changes-requested reviews block
+the complete REST review list, including dismissed states.
+The collection URL is `https://api.github.com/repos/<owner>/<repo>/pulls/<number>/reviews`
+(without page parameters); it binds even an empty collection to the requested PR. Active changes-requested reviews block
 the handoff even when the aggregate decision is null. Do not invent an
 APPROVED decision: an explicit approval requirement remains unknown until actually observed.
 Unknown collection coverage remains unknown. Snapshots older than five minutes or from the future,

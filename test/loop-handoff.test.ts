@@ -15,6 +15,9 @@ import { collectLoopScope } from "../scripts/harness/loop/scope.js";
 import { readLoopRun } from "../scripts/harness/loop/state.js";
 import { importLoopHandoff } from "../scripts/harness/loop/handoff.js";
 
+const pullUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout/pulls/7";
+const reviewSource = { reviewSubmissionsUrl: `${pullUrl}/reviews`, reviewSubmissions: [] };
+
 async function fixture(review: "self" | "optional" = "self") {
   const f = await loopGitFixture({ delivery: { target: "merge", review, reviewWaitMs: 900_000 } });
   await prepareLoopWorkspace(f.state, f.source, f.workspaces);
@@ -147,7 +150,7 @@ test("native handoff gates current evidence and completes only after merge SHA C
   const handoff = (
     action: "publish" | "review" | "merge-ready" | "observe",
     input: Record<string, unknown>,
-  ) => importLoopHandoff(f.state, f.workspaces, action, { reviewSubmissions: [], ...input });
+  ) => importLoopHandoff(f.state, f.workspaces, action, { ...reviewSource, ...input });
   try {
     const stale = snapshot(f);
     stale.collectedAt = "2000-01-01T00:00:00Z";
@@ -177,13 +180,48 @@ test("native handoff gates current evidence and completes only after merge SHA C
     );
     await assert.rejects(
       handoff("review", {
-        reviewSubmissions: [],
+        ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, reviewedPaths: [] },
       }),
       /cover_changed_paths/u,
     );
-    await handoff("review", { reviewSubmissions: [], snapshot: snapshot(f), receipt });
+    await assert.rejects(
+      handoff("review", { snapshot: snapshot(f, { merged: true }), receipt }),
+      /open_unmerged/u,
+    );
+    const closed = snapshot(f);
+    closed.pull.state = "closed";
+    closed.pullAfter.state = "closed";
+    await assert.rejects(handoff("review", { snapshot: closed, receipt }), /open_unmerged/u);
+    await assert.rejects(
+      handoff("review", {
+        snapshot: snapshot(f),
+        receipt,
+        reviewSubmissionsUrl: `${pullUrl}0/reviews`,
+      }),
+      /collection_missing/u,
+    );
+    await assert.rejects(
+      handoff("review", {
+        snapshot: snapshot(f),
+        receipt,
+        reviewSubmissions: [
+          {
+            id: 1,
+            user: { login: "reviewer" },
+            state: "APPROVED",
+            pull_request_url: `${pullUrl}0`,
+          },
+        ],
+      }),
+      /invalid_handoff_review_submission/u,
+    );
+    await handoff("review", { snapshot: snapshot(f), receipt });
+    await assert.rejects(
+      handoff("merge-ready", { snapshot: snapshot(f, { merged: true }) }),
+      /open_unmerged/u,
+    );
     await assert.rejects(
       handoff("merge-ready", { snapshot: snapshot(f, { ci: false }) }),
       /gates_incomplete/u,
@@ -192,8 +230,13 @@ test("native handoff gates current evidence and completes only after merge SHA C
       handoff("merge-ready", {
         snapshot: snapshot(f),
         reviewSubmissions: [
-          { id: 1, user: { login: "reviewer" }, state: "CHANGES_REQUESTED" },
-          { id: 2, user: { login: "reviewer" }, state: "COMMENTED" },
+          {
+            id: 1,
+            user: { login: "reviewer" },
+            state: "CHANGES_REQUESTED",
+            pull_request_url: pullUrl,
+          },
+          { id: 2, user: { login: "reviewer" }, state: "COMMENTED", pull_request_url: pullUrl },
         ],
       }),
       /changes_requested/u,
@@ -232,7 +275,7 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
     };
     await assert.rejects(
       importLoopHandoff(f.state, f.workspaces, "review", {
-        reviewSubmissions: [],
+        ...reviewSource,
         snapshot: snapshot(f),
         receipt,
       }),
@@ -240,22 +283,54 @@ test("handoff cannot invent a Codex review or bypass optional review wait", asyn
     );
     await assert.rejects(
       importLoopHandoff(f.state, f.workspaces, "review", {
-        reviewSubmissions: [],
+        ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },
       }),
       /codex_review_missing/u,
     );
     const codexReview = {
+      id: 3,
+      pull_request_url: pullUrl,
       user: { login: "chatgpt-codex-connector[bot]" },
       commit_id: f.owner.headSha,
       state: "COMMENTED",
       submitted_at: receipt.completedAt,
     };
+    await assert.rejects(
+      importLoopHandoff(f.state, f.workspaces, "review", {
+        ...reviewSource,
+        snapshot: snapshot(f),
+        receipt: { ...receipt, method: "codex" },
+        codexReview: { ...codexReview, pull_request_url: `${pullUrl}0` },
+      }),
+      /codex_review_missing/u,
+    );
+    await assert.rejects(
+      importLoopHandoff(f.state, f.workspaces, "review", {
+        ...reviewSource,
+        snapshot: snapshot(f),
+        receipt: { ...receipt, method: "codex" },
+        codexReview,
+      }),
+      /codex_review_missing/u,
+    );
+    assert.equal(
+      (
+        await importLoopHandoff(f.state, f.workspaces, "review", {
+          ...reviewSource,
+          reviewSubmissions: [codexReview],
+          snapshot: snapshot(f),
+          receipt: { ...receipt, method: "codex" },
+          codexReview,
+        })
+      ).phase,
+      "delivery",
+    );
     await writeFile(join(f.workspace, "src/value.ts"), "export const value = 3;\n");
     await assert.rejects(
       importLoopHandoff(f.state, f.workspaces, "review", {
-        reviewSubmissions: [],
+        ...reviewSource,
         snapshot: snapshot(f),
         receipt: { ...receipt, method: "codex" },
         codexReview,

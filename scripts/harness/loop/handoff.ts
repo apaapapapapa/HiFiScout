@@ -66,14 +66,24 @@ export async function importLoopHandoff(
       });
     }
     if (!view.review) throw new Error("loop_pull_not_recorded");
+    if (
+      (action === "review" || action === "merge-ready") &&
+      (snapshot.pull.state !== "open" || snapshot.pull.merged !== false)
+    )
+      throw new Error("handoff_requires_open_unmerged_pull");
     // A connector may omit GitHub's aggregate reviewDecision. Retain all REST submissions
     // as well so a top-level changes-requested review cannot disappear with a null decision.
-    if (!Array.isArray(input.reviewSubmissions))
+    const pullUrl = `https://api.github.com/repos/${run.spec.repository}/pulls/${number}`;
+    if (
+      input.reviewSubmissionsUrl !== `${pullUrl}/reviews` ||
+      !Array.isArray(input.reviewSubmissions)
+    )
       throw new Error("handoff_review_collection_missing");
     const decisions = new Map<string, { id: number; state: string }>();
     for (const review of input.reviewSubmissions) {
       if (
         !isRecord(review) ||
+        review.pull_request_url !== pullUrl ||
         !isRecord(review.user) ||
         typeof review.user.login !== "string" ||
         !["APPROVED", "CHANGES_REQUESTED", "DISMISSED", "COMMENTED", "PENDING"].includes(
@@ -97,15 +107,27 @@ export async function importLoopHandoff(
         // Only full-SHA structured reviews are accepted here. A reaction/short-SHA comment
         // is not a completion receipt; the host must resolve it through the gh path instead.
         const review = input.codexReview;
+        const user = isRecord(review) && isRecord(review.user) ? review.user : null;
         if (
           !isRecord(review) ||
-          !isRecord(review.user) ||
+          review.pull_request_url !== pullUrl ||
+          !user ||
           !["chatgpt-codex-connector", "chatgpt-codex-connector[bot]"].includes(
-            String(review.user.login),
+            String(user.login),
           ) ||
           review.commit_id !== view.lastVerifiedSha ||
           !["COMMENTED", "APPROVED"].includes(String(review.state)) ||
-          review.submitted_at !== receipt.completedAt
+          review.submitted_at !== receipt.completedAt ||
+          !input.reviewSubmissions.some(
+            (item) =>
+              isRecord(item) &&
+              item.id === review.id &&
+              item.commit_id === review.commit_id &&
+              item.submitted_at === review.submitted_at &&
+              item.state === review.state &&
+              isRecord(item.user) &&
+              item.user.login === user.login,
+          )
         )
           throw new Error("handoff_codex_review_missing");
       }
