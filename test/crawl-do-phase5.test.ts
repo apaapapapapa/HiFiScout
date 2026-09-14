@@ -224,7 +224,7 @@ test("production deploy skips D1 only when no migrations changed since the confi
   assert.match(workflow, /actions\/artifacts\?name=deployment-identity&per_page=100/);
   assert.match(workflow, /unzip -p "\$zip_file" deployment-sha\.txt/);
   assert.doesNotMatch(workflow, /last_deployed_sha="\$run_sha"/);
-  assert.match(workflow, /--diff-filter=AM/);
+  assert.match(workflow, /--no-renames --diff-filter=AMD/);
   assert.match(workflow, /needs\.changes\.outputs\.migrations-required == 'true'/);
 });
 

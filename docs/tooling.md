@@ -88,8 +88,9 @@ Database migration and explicit repair commands such as `price-index:backfill` a
 Migration history freezes committed SQL bytes and filenames. The concurrent #680/#681 merge was
 repaired before either colliding migration reached D1: TakeT moved from `0127` to `0128`, with
 unchanged SQL. The history checker records only that exact filename pair and SHA-256; it is not a
-general rename allowance. Remote migration preflight still refuses any checkout that omits an
-already-applied filename, including the old TakeT name. If that check fails, preserve the database
+general rename allowance. Deployment compares migrations without rename detection and includes
+deleted files, so filename-only changes also invoke remote preflight. That preflight refuses any
+checkout that omits an already-applied filename, including the old TakeT name. If it fails, preserve the database
 history and investigate; do not rename applied history rows or bypass the preflight.
 Production deployment is owned by the `Deploy Cloudflare` workflow, including its quota and smoke
 checks, rather than a separate package script.

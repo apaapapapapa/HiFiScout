@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdtempSync,
+  mkdirSync,
+  renameSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vite-plus/test";
@@ -13,6 +21,67 @@ const resolverReplayWorkflowUrl = new URL(
 const legacyDeployStatusUrl = new URL("../.github/workflows/deploy-status.yml", import.meta.url);
 const deployWorkflow = readFileSync(deployWorkflowUrl, "utf8");
 const resolverReplayWorkflow = readFileSync(resolverReplayWorkflowUrl, "utf8");
+
+// Exercise the deployed-baseline comparison with real Git rename detection. R100 used to be
+// excluded by --diff-filter=AM, bypassing the remote check for missing applied filenames.
+for (const change of ["rename", "delete", "add", "modify", "unrelated"] as const) {
+  test(`deployment migration preflight selection: ${change}`, () => {
+    const body = deployWorkflow.match(
+      /          changed_migrations=([\s\S]*?)\n      - uses:/u,
+    )?.[1];
+    assert.ok(body);
+    const script = `changed_migrations=${body.replace(/^ {10}/gmu, "")}`;
+    const directory = mkdtempSync(join(tmpdir(), "deploy-migration-diff-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: directory,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+    try {
+      git("init", "--quiet");
+      git("config", "user.name", "Deployment test");
+      git("config", "user.email", "deployment@example.test");
+      git("config", "diff.renames", "true");
+      mkdirSync(join(directory, "migrations"));
+      const oldPath = join(directory, "migrations/0127_taket_ws_catalog.sql");
+      writeFileSync(oldPath, "SELECT 1;\n");
+      git("add", ".");
+      git("commit", "--quiet", "-m", "deployed baseline");
+      const baseline = git("rev-parse", "HEAD");
+      if (change === "rename") {
+        renameSync(oldPath, join(directory, "migrations/0128_taket_ws_catalog.sql"));
+      } else if (change === "delete") {
+        rmSync(oldPath);
+      } else if (change === "add") {
+        writeFileSync(join(directory, "migrations/0128_next.sql"), "SELECT 2;\n");
+      } else if (change === "modify") {
+        writeFileSync(oldPath, "SELECT 2;\n");
+      } else {
+        writeFileSync(join(directory, "README.md"), "No migration change\n");
+      }
+      git("add", "-A");
+      git("commit", "--quiet", "-m", "deployment target");
+      if (change === "rename") {
+        assert.match(git("diff", "--name-status", baseline, "HEAD"), /^R100\s/u);
+      }
+      const output = join(directory, "output");
+      execFileSync("bash", ["-c", `set -euo pipefail\n${script}`], {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          last_deployed_sha: baseline,
+          DEPLOY_SHA: git("rev-parse", "HEAD"),
+          GITHUB_OUTPUT: output,
+        },
+      });
+      assert.equal(readFileSync(output, "utf8"), `required=${change !== "unrelated"}\n`);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 // Execute the actual workflow shell with a local GitHub API stub. This reproduces the rollout
 // race where new workflow YAML tried to run test:migrations in an older approved checkout.
