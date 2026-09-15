@@ -156,7 +156,10 @@ displayed as unavailable, not as an idle or healthy shop.
   `last_seen_at` heartbeats may be throttled by `PRODUCT_TOUCH_INTERVAL_MINUTES`; they are not a
   replacement for either shop watermark.
 
-General Cron serializes watchdogs and maintenance under the budget in `src/db/invocation-budget.ts`.
+General Cron serializes maintenance, watchdogs and the cross-shop health snapshot under the budget in
+`src/db/invocation-budget.ts`. Maintenance runs first so neither watchdog nor health reads can make
+the non-checkpointed remediation admission floor permanently unreachable. If remediation consumes
+the work budget, watchdog and health observation resume on the next five-minute tick.
 `scheduled_maintenance_pending` retains due tasks across yields, with finalization calls reserved
 and still metered. Before claiming a task, the scheduler requires its admission floor to remain:
 eight D1 binding calls by default, and thirty-seven (one bounded targeted scan page, request seed,

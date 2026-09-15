@@ -13,28 +13,28 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-test("GENERAL_CRON maintenance starts only after scheduled work settles", async () => {
-  const scheduled = deferred<string>();
+test("GENERAL_CRON watchdogs start only after maintenance settles", async () => {
+  const maintenance = deferred<void>();
   const events: string[] = [];
 
   const tick = runGeneralCronTick(
     async () => {
-      events.push("scheduled:start");
-      const value = await scheduled.promise;
-      events.push("scheduled:end");
-      return value;
+      events.push("maintenance:start");
+      await maintenance.promise;
+      events.push("maintenance:end");
     },
     async () => {
-      events.push("maintenance:start");
+      events.push("watchdog");
+      return "done";
     },
   );
 
   await Promise.resolve();
-  assert.deepEqual(events, ["scheduled:start"]);
+  assert.deepEqual(events, ["maintenance:start"]);
 
-  scheduled.resolve("done");
+  maintenance.resolve();
   assert.equal(await tick, "done");
-  assert.deepEqual(events, ["scheduled:start", "scheduled:end", "maintenance:start"]);
+  assert.deepEqual(events, ["maintenance:start", "maintenance:end", "watchdog"]);
 });
 
 test("GENERAL_CRON still runs maintenance before rethrowing a scheduled failure", async () => {
@@ -44,21 +44,58 @@ test("GENERAL_CRON still runs maintenance before rethrowing a scheduled failure"
 
   const tick = runGeneralCronTick(
     async () => {
-      events.push("scheduled");
-      throw scheduledError;
-    },
-    async () => {
       events.push("maintenance:start");
       await maintenance.promise;
       events.push("maintenance:end");
+    },
+    async () => {
+      events.push("scheduled");
+      throw scheduledError;
     },
   );
 
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(events, ["scheduled", "maintenance:start"]);
+  assert.deepEqual(events, ["maintenance:start"]);
 
   maintenance.resolve();
   await assert.rejects(tick, (error: unknown) => error === scheduledError);
-  assert.deepEqual(events, ["scheduled", "maintenance:start", "maintenance:end"]);
+  assert.deepEqual(events, ["maintenance:start", "maintenance:end", "scheduled"]);
+});
+
+test("GENERAL_CRON admits maintenance before the cross-shop health snapshot", async () => {
+  const events: string[] = [];
+  const result = await runGeneralCronTick(
+    async () => {
+      events.push("maintenance");
+    },
+    async () => {
+      events.push("watchdog");
+      return "dispatch";
+    },
+    async (dispatch) => {
+      assert.equal(dispatch, "dispatch");
+      events.push("health");
+    },
+  );
+
+  assert.equal(result, "dispatch");
+  assert.deepEqual(events, ["maintenance", "watchdog", "health"]);
+});
+
+test("GENERAL_CRON leaves health for the next tick when maintenance yields", async () => {
+  let healthRuns = 0;
+  await assert.rejects(
+    runGeneralCronTick(
+      async () => {
+        throw new Error("budget yield");
+      },
+      async () => "dispatch",
+      async () => {
+        healthRuns += 1;
+      },
+    ),
+    /budget yield/,
+  );
+  assert.equal(healthRuns, 0);
 });
