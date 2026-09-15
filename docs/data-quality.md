@@ -412,8 +412,8 @@ Migration-owned targeted replay is probed before the scheduled sweep claims ordi
 queued at a higher priority. This keeps a reviewed production correction from waiting behind an
 unrelated resolver-version backlog while retaining the same one-listing scheduled claim budget.
 The probe and deployment-window scan are indexed, bounded, and become empty once their durable
-requests have been resolved. General Cron admits this sweep only when its remaining-call floor can
-cover the probe's eight-call worst case as well as the complete listing replay.
+requests have been resolved. Each sweep advances at most one deployment-window selector page, so
+the attainable remaining-call floor still covers discovery and one complete listing replay.
 
 ## Verified model relationships
 

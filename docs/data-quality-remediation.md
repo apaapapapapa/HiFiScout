@@ -138,9 +138,9 @@ projectionの古い判定を1回の上限付きbatchで処理して停止しま�
 
 マイグレーションが特定listingへ発行したtargeted replayは、通常のversion backlogより高い優先度で
 scheduled sweepへ投入します。大量の通常backlogが残っていても、レビュー済みの本番補正を待たせず、
-1回あたりのclaim件数とdeployment-window scanの上限は維持します。scheduled taskの実行前判定では
-targeted discoveryの最大8 D1 callとlisting replay完了分を合わせて予約し、処理中leaseを予算切れで
-残しません。
+1回あたりのclaim件数とdeployment-window scanの上限は維持します。1回のsweepで進めるscanを1 selector
+pageに制限し、到達可能なscheduled taskの予算内で探索とlisting replayを完了して、処理中leaseを
+予算切れで残しません。
 
 実行に使ったcommitの`data-quality/resolver-replay` statusは次の意味です。
 

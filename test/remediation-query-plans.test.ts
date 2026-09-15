@@ -246,6 +246,7 @@ test("targeted replay priority seeding bounds visited requests before excluding 
     limit: 1,
   });
   assert.equal(first.selectedCount, 0, "the selector must not scan past its visited-ID budget");
+  assert.equal(first.scannedCount, 1, "an already-queued request still counts as visited work");
   assert.equal(
     sqlite
       .prepare(

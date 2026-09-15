@@ -213,6 +213,37 @@ test("a task-specific budget floor yields before claiming or partially running e
   }
 });
 
+test("the remediation budget floor remains reachable after mandatory cron work", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    const at = new Date("2030-01-01T00:00:00Z");
+    await enqueueMaintenance(db, ["data_quality_remediation_sweep"], at);
+    let runs = 0;
+    const tasks = [
+      {
+        name: "data_quality_remediation_sweep",
+        minimumRemainingCalls: 37,
+        async run() {
+          runs += 1;
+        },
+      },
+    ];
+    const budget = invocationBudget(db, { maxCalls: 45, finalizationReserve: 5 });
+
+    // General Cron performs two calls before runPendingMaintenance; its pending-work query is the
+    // third mandatory pre-admission call. The production remediation floor must still be admitted.
+    await budget.db.prepare("SELECT 1").first();
+    await budget.db.prepare("SELECT 1").first();
+    await runPendingMaintenance({ DB: budget.db } as unknown as Env, at, budget, tasks);
+
+    assert.equal(runs, 1);
+    assert.equal(budget.metrics().yieldReason, null);
+    assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 5 * 60_000)), []);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("stale maintenance completion cannot delete a newer claim", async () => {
   const { db } = migratedSqlite();
   const at = new Date("2030-01-01T00:00:00Z");

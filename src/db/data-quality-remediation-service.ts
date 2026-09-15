@@ -28,6 +28,7 @@ import type {
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
+  advanceTargetedReplayScans,
   claimDataQualityRemediationBatch,
   dataQualityRemediationActiveQueueMetrics,
   resolveDataQualityRemediationJob,
@@ -695,13 +696,19 @@ export async function runDataQualityRemediationSweep(
   // stages. When the queue is empty, discover and claim new work in this same sweep as before.
   let seeded: SeedRemediationResult = { selectedCount: 0, workKeys: [], scannedCount: 0 };
   let jobs: DataQualityRemediationJob[];
+  let targetedScanWasActive = false;
   if (preferQueuedWork) {
     // Migration-owned reviewed corrections must not wait behind a large ordinary version backlog.
     // Seed them first at elevated priority, then keep the normal claim-one scheduled budget.
+    // A single selector page fixes this scheduled preflight at at most three D1 calls. The generic
+    // admin/drain path may still advance every selector within its shared visited-row limit.
+    const targetedScan = await advanceTargetedReplayScans(db, seedLimit, evaluatedAt, 1);
+    targetedScanWasActive = targetedScan.hadScan;
     seeded = await seedTargetedDataQualityRemediationQueue(db, {
       limit: seedLimit,
       now: evaluatedAt,
     });
+    seeded.scannedCount = (seeded.scannedCount || 0) + targetedScan.scannedCount;
     jobs = await claimDataQualityRemediationBatch(db, {
       limit: claimLimit,
       claimedAt: evaluatedAt,
@@ -711,7 +718,7 @@ export async function runDataQualityRemediationSweep(
     seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
     jobs = [];
   }
-  if (!jobs.length) {
+  if (!jobs.length && !targetedScanWasActive) {
     if (preferQueuedWork) {
       const discovered = await seedDataQualityRemediationQueue(db, {
         limit: seedLimit,

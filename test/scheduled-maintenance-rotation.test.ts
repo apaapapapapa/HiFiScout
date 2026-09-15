@@ -190,7 +190,7 @@ test("the scheduled remediation sweep does not recount the durable backlog", asy
   assert.ok(task);
   assert.equal(
     task.minimumRemainingCalls,
-    39,
+    37,
     "a scheduled replay must reserve targeted discovery and listing completion before it starts",
   );
   const db = captureDatabase(() => []);

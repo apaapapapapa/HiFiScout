@@ -678,11 +678,12 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     offset: 1,
     // One call claims the task, then one listing replay can use roughly thirty calls across
     // derivation, the three projection stages, snapshot persistence and durable completion.
-    // Migration-owned replay discovery can spend up to eight calls first: one scan-state read,
-    // four bounded selector pages, one checkpoint batch, one request read and one queue batch.
+    // Migration-owned discovery adds at most five calls before a replay: one bounded scan page
+    // costs three and request seeding costs two. The floor includes the maintenance and queue
+    // claims, and is reachable after General Cron's three mandatory pre-admission calls.
     // Starting with only the generic eight-call floor allowed search projection writes before
     // identity resolution hit the hard cap, so the next tick repeated work that could not finish.
-    minimumRemainingCalls: 39,
+    minimumRemainingCalls: 37,
     run: (env) =>
       runDataQualityRemediationSweep(env.DB, {
         claimLimit: 1,
