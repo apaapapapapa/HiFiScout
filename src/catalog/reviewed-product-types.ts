@@ -13,13 +13,13 @@ interface ReviewedProductType {
   id: string;
   brand: RegExp;
   model: RegExp;
-  categoryId: "CAB.ANALOG" | "PER.EARPHONE";
+  categoryId: "CAB.ANALOG" | "PER.EARPHONE" | "PER.HEADPHONE";
   sourceUrl: string;
   excludeAccessorySubjects?: boolean;
 }
 
 const REVIEWED_PRODUCT_ACCESSORY =
-  /ケーブル|コード|ケース|カバー|交換|変換|アダプター?|イヤー(?:ピース|チップ|フック)|ポーチ|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\badapt(?:e|o)rs?\b|\bear\s*tips?\b|\beartips?\b|\bear\s*hooks?\b|\bearhooks?\b|\bpouches?\b|\bfor\b|専用|対応/i;
+  /ケーブル|コード|ケース|カバー|交換|変換|アダプター?|イヤー(?:ピース|チップ|フック|パッド)|ヘッドホンスタンド|ポーチ|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\badapt(?:e|o)rs?\b|\bear[\s-]*(?:tips?|hooks?|pads?)\b|\bheadphone[\s-]*stands?\b|\bpouches?\b|\bfor\b|専用|対応/i;
 
 function isReviewedProductAccessory(subject: string): boolean {
   return REVIEWED_PRODUCT_ACCESSORY.test(subject);
@@ -27,6 +27,14 @@ function isReviewedProductAccessory(subject: string): boolean {
 
 /** Narrow product-type facts confirmed from manufacturer or specialist-retailer evidence. */
 const PRODUCT_TYPES: readonly ReviewedProductType[] = [
+  {
+    id: "grado_gs3000_classic",
+    brand: /\bgrado\b|グラド/i,
+    model: /\bgs3000(?:\s*[-/／]\s*classic\s+series)?\b/i,
+    categoryId: "PER.HEADPHONE",
+    sourceUrl: "https://gradolabs.com/collections/classic-headphones",
+    excludeAccessorySubjects: true,
+  },
   {
     id: "essence_audio_44_mini_mini_cable",
     brand: /\bessence\s+audio\b/i,

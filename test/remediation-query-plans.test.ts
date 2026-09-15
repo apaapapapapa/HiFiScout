@@ -66,6 +66,7 @@ const REQUIRED_SEED_INDEXES: readonly { readonly table: string; readonly index: 
   { table: "p", index: "idx_products_active_category_version" },
   { table: "r", index: "idx_product_identity_resolver_version" },
   { table: "p", index: "idx_products_remediation_projection_required" },
+  { table: "t", index: "idx_dq_targeted_replay_listing" },
 ];
 
 function seedListings(sqlite: DatabaseSync): void {
@@ -151,6 +152,12 @@ test("replay seeding reaches every stage through that stage's own index", async 
         when: /WITH candidates AS MATERIALIZED/,
         reason:
           "c contains only the candidate LIMIT; real D1 growth is checked in maintenance-read-budget",
+      },
+      {
+        tables: ["v"],
+        when: /WITH visited AS MATERIALIZED/,
+        reason:
+          "v contains only the visited-ID LIMIT; sparse exact matches are covered by the targeted replay regression",
       },
     ],
   });

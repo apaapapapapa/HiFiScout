@@ -61,6 +61,7 @@ interface CandidateRow {
   model_resolver_version: number;
   category_classifier_version: number;
   identity_resolver_version: number;
+  targeted_request_key: string;
 }
 
 /** A candidate plus the selector that found it, which is what it is owed. */
@@ -76,6 +77,23 @@ interface FullRebuildRow {
 interface StatusCountRow {
   count: number | null;
   oldest_created_at: string | null;
+}
+
+interface TargetedReplayScanRow {
+  scan_key: string;
+  grado_exact_after_id: number;
+  grado_exact_done: number;
+  grado_suffix_after_id: number;
+  grado_suffix_done: number;
+  hifido_line_rca_after_id: number;
+  hifido_line_rca_done: number;
+  ear_wear_after_id: number;
+  ear_wear_done: number;
+}
+
+interface TargetedReplayListingRow {
+  id: number;
+  matched: number;
 }
 
 /**
@@ -148,6 +166,13 @@ function addSeconds(iso: string, seconds: number): string {
   return new Date(new Date(iso).getTime() + Math.max(1, seconds) * 1000).toISOString();
 }
 
+function isTargetedReplayTableMissing(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /no such table:\s*data_quality_targeted_replay_(?:requests|scans)/i.test(error.message)
+  );
+}
+
 function rowToJob(row: QueueRow): DataQualityRemediationJob {
   return {
     id: number(row.id),
@@ -203,6 +228,7 @@ export async function enqueueDataQualityRemediation(
 
 /** Must stay identical to the `work_key` the selector's SQL builds, which is what dedupes work. */
 function automaticWorkKey({ row, workType }: Candidate): string {
+  if (row.targeted_request_key) return `targeted:${row.targeted_request_key}:listing:${row.id}`;
   return [
     "auto",
     workType,
@@ -253,6 +279,8 @@ interface StaleSelector {
   readonly identityVersion: string;
   /** Indexed version used with the driving id as the continuation key. */
   readonly cursorVersion: string;
+  /** A durable, rule-specific request that only a Worker containing this selector can consume. */
+  readonly targetedRequestKey?: string;
 }
 
 /** Reached through `products`, so the identity row may be absent and its version defaults. */
@@ -351,7 +379,216 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     cursorVersion: "0",
     workType: "rebuild_search_entity",
   },
+  {
+    key: "targeted_replay",
+    id: "t.listing_product_id",
+    identityVersion: "COALESCE(r.identity_resolver_version, 0)",
+    source: `data_quality_targeted_replay_requests t INDEXED BY idx_dq_targeted_replay_listing
+        CROSS JOIN products p ON p.id = t.listing_product_id
+        LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id`,
+    where: "1 = 1",
+    binds: [],
+    orderBy: "k.id",
+    cursorVersion: "0",
+    workType: "reprocess_listing",
+    targetedRequestKey: "t.request_key",
+  },
 ];
+
+interface TargetedReplayScanDefinition {
+  readonly requestKey: string;
+  readonly reason: string;
+  readonly source: string;
+  readonly visitWhere: string;
+  readonly matchWhere: string;
+}
+
+const TARGETED_REPLAY_SCANS: readonly TargetedReplayScanDefinition[] = [
+  {
+    requestKey: "0131-grado-gs3000",
+    reason: "catalog_identity_and_reviewed_product_type",
+    source: "products p INDEXED BY idx_products_manufacturer_id",
+    visitWhere: "p.manufacturer_id='grado' AND p.is_active=1",
+    matchWhere: `p.normalized_model='GS3000'
+      AND NOT EXISTS (
+        SELECT 1 FROM product_admin_overrides o
+        WHERE o.listing_product_id=p.id
+          AND (o.model IS NOT NULL OR o.primary_category_id IS NOT NULL)
+      )`,
+  },
+  {
+    requestKey: "0131-grado-gs3000",
+    reason: "seller_suffix_and_reviewed_product_type",
+    source: "products p INDEXED BY idx_products_admin_shop_cursor",
+    visitWhere: "p.shop_key='fujiya-avic' AND p.is_active=1",
+    matchWhere: `p.manufacturer_id='grado'
+      AND p.normalized_raw_manufacturer='grado'
+      AND p.raw_model='GS3000-Classic Series'
+      AND NOT EXISTS (
+        SELECT 1 FROM product_admin_overrides o
+        WHERE o.listing_product_id=p.id
+          AND (o.model IS NOT NULL OR o.primary_category_id IS NOT NULL)
+      )`,
+  },
+  {
+    requestKey: "0131-hifido-line-rca",
+    reason: "reviewed_exact_seller_category",
+    source: "products p INDEXED BY idx_products_admin_shop_cursor",
+    visitWhere: "p.shop_key='hifido' AND p.is_active=1",
+    matchWhere: `p.raw_category='ケーブル ラインRCAケーブル'
+      AND NOT EXISTS (
+        SELECT 1 FROM product_admin_overrides o
+        WHERE o.listing_product_id=p.id AND o.primary_category_id IS NOT NULL
+      )`,
+  },
+  {
+    requestKey: "0131-ear-wear-accessory",
+    reason: "bare_ear_wear_sale_subject",
+    source: "products p INDEXED BY idx_products_product_audit_active",
+    visitWhere: "p.is_active=1",
+    matchWhere: `(lower(p.title) GLOB '*ear-pad*' OR lower(p.title) GLOB '*ear pad*'
+        OR lower(p.title) GLOB '*earpad*' OR lower(p.title) GLOB '*ear-tip*'
+        OR lower(p.title) GLOB '*ear tip*' OR lower(p.title) GLOB '*eartip*'
+        OR instr(p.title,'イヤーパッド')>0 OR instr(p.title,'イヤーピース')>0)
+      AND NOT EXISTS (
+        SELECT 1 FROM product_admin_overrides o
+        WHERE o.listing_product_id=p.id
+          AND (o.model IS NOT NULL OR o.primary_category_id IS NOT NULL)
+      )`,
+  },
+] as const;
+
+/**
+ * Turn migration-owned scan signals into per-listing replay requests.
+ *
+ * Migration 0131 runs before the replacement Worker is deployed. A scan signal is deliberately
+ * invisible to the old Worker, so the first new-runtime sweep sees both migration-time rows and
+ * writes made in that deployment interval. Each scan is paged by listing id and deleted only after
+ * reaching its tail; normal writes made by the new runtime already contain the reviewed rules.
+ */
+async function materializeTargetedReplayScans(
+  db: QueryableDatabase,
+  limit: number,
+  now: string,
+): Promise<void> {
+  let scan;
+  try {
+    scan = await db
+      .prepare(`SELECT scan_key,grado_exact_after_id,grado_exact_done,
+        grado_suffix_after_id,grado_suffix_done,hifido_line_rca_after_id,hifido_line_rca_done,
+        ear_wear_after_id,ear_wear_done
+        FROM data_quality_targeted_replay_scans
+        WHERE scan_key='0131-grado-gs3000-mit-avt3'`)
+      .first<TargetedReplayScanRow>();
+  } catch (error) {
+    // Historical-schema tests intentionally run current code before migration 0131.
+    if (isTargetedReplayTableMissing(error)) return;
+    throw error;
+  }
+  if (!scan) return;
+
+  const afterIds = [
+    number(scan.grado_exact_after_id),
+    number(scan.grado_suffix_after_id),
+    number(scan.hifido_line_rca_after_id),
+    number(scan.ear_wear_after_id),
+  ];
+  const done = [
+    number(scan.grado_exact_done) === 1,
+    number(scan.grado_suffix_done) === 1,
+    number(scan.hifido_line_rca_done) === 1,
+    number(scan.ear_wear_done) === 1,
+  ];
+  let remaining = limit;
+  const statements = [];
+  for (const [index, definition] of TARGETED_REPLAY_SCANS.entries()) {
+    if (done[index] || remaining === 0) continue;
+    const rows = await db
+      .prepare(`WITH visited AS MATERIALIZED (
+          SELECT p.id FROM ${definition.source}
+          WHERE ${definition.visitWhere} AND p.id>?
+          ORDER BY p.id
+          LIMIT ?
+        )
+        SELECT p.id,CASE WHEN ${definition.matchWhere} THEN 1 ELSE 0 END AS matched
+        FROM visited v CROSS JOIN products p ON p.id=v.id
+        ORDER BY p.id`)
+      .bind(afterIds[index], remaining)
+      .all<TargetedReplayListingRow>();
+    const visited = rows.results || [];
+    const listings = visited.filter((listing) => number(listing.matched) === 1);
+    statements.push(
+      ...listings.map((listing) =>
+        db
+          .prepare(`INSERT INTO data_quality_targeted_replay_requests(
+          listing_product_id,request_key,reason,created_at
+        ) SELECT ?,?,?,? WHERE NOT EXISTS (
+          SELECT 1 FROM data_quality_remediation_queue q WHERE q.work_key=?
+        ) ON CONFLICT(listing_product_id) DO NOTHING`)
+          .bind(
+            number(listing.id),
+            definition.requestKey,
+            definition.reason,
+            now,
+            `targeted:${definition.requestKey}:listing:${number(listing.id)}`,
+          ),
+      ),
+    );
+    if (visited.length < remaining) {
+      done[index] = true;
+    }
+    if (visited.length > 0) afterIds[index] = number(visited[visited.length - 1]?.id);
+    remaining -= visited.length;
+  }
+  const oldState = [
+    number(scan.grado_exact_after_id),
+    number(scan.grado_exact_done),
+    number(scan.grado_suffix_after_id),
+    number(scan.grado_suffix_done),
+    number(scan.hifido_line_rca_after_id),
+    number(scan.hifido_line_rca_done),
+    number(scan.ear_wear_after_id),
+    number(scan.ear_wear_done),
+  ];
+  if (done.every(Boolean)) {
+    statements.push(
+      db
+        .prepare(`DELETE FROM data_quality_targeted_replay_scans
+          WHERE scan_key=? AND grado_exact_after_id=? AND grado_exact_done=?
+            AND grado_suffix_after_id=? AND grado_suffix_done=?
+            AND hifido_line_rca_after_id=? AND hifido_line_rca_done=?
+            AND ear_wear_after_id=? AND ear_wear_done=?`)
+        .bind(scan.scan_key, ...oldState),
+    );
+  } else {
+    statements.push(
+      db
+        .prepare(`UPDATE data_quality_targeted_replay_scans
+          SET grado_exact_after_id=?,grado_exact_done=?,
+            grado_suffix_after_id=?,grado_suffix_done=?,
+            hifido_line_rca_after_id=?,hifido_line_rca_done=?,
+            ear_wear_after_id=?,ear_wear_done=?,updated_at=?
+          WHERE scan_key=? AND grado_exact_after_id=? AND grado_exact_done=?
+            AND grado_suffix_after_id=? AND grado_suffix_done=?
+            AND hifido_line_rca_after_id=? AND hifido_line_rca_done=?
+            AND ear_wear_after_id=? AND ear_wear_done=?`)
+        .bind(
+          afterIds[0],
+          Number(done[0]),
+          afterIds[1],
+          Number(done[1]),
+          afterIds[2],
+          Number(done[2]),
+          afterIds[3],
+          Number(done[3]),
+          now,
+          scan.scan_key,
+          ...oldState,
+        ),
+    );
+  }
+  await db.batch(statements);
+}
 
 /**
  * The candidate projection, reached through one selector.
@@ -370,6 +607,7 @@ function staleCandidateSql(selector: StaleSelector): string {
           p.model_resolver_version,
           ${CATEGORY_VERSION_EXPRESSION} AS category_classifier_version,
           ${selector.identityVersion} AS identity_resolver_version,
+          ${selector.targetedRequestKey || "''"} AS targeted_request_key,
           ${selector.cursorVersion} AS cursor_version
         FROM ${selector.source}
         WHERE ${selector.where}
@@ -379,12 +617,16 @@ function staleCandidateSql(selector: StaleSelector): string {
       ), keyed AS (
         SELECT
           c.*,
-          'auto:${selector.workType}' ||
-          ':listing:' || c.id ||
-          ':manufacturer:' || c.manufacturer_resolver_version ||
-          ':model:' || c.model_resolver_version ||
-          ':category:' || c.category_classifier_version ||
-          ':identity:' || c.identity_resolver_version AS work_key
+          CASE WHEN c.targeted_request_key <> '' THEN
+            'targeted:' || c.targeted_request_key || ':listing:' || c.id
+          ELSE
+            'auto:${selector.workType}' ||
+            ':listing:' || c.id ||
+            ':manufacturer:' || c.manufacturer_resolver_version ||
+            ':model:' || c.model_resolver_version ||
+            ':category:' || c.category_classifier_version ||
+            ':identity:' || c.identity_resolver_version
+          END AS work_key
         FROM candidates c
       )
       SELECT
@@ -394,6 +636,7 @@ function staleCandidateSql(selector: StaleSelector): string {
         k.model_resolver_version,
         k.category_classifier_version,
         k.identity_resolver_version,
+        k.targeted_request_key,
         k.cursor_version,
         EXISTS (
         SELECT 1
@@ -432,6 +675,7 @@ export async function seedDataQualityRemediationQueue(
   }: { limit?: number; now?: string } = {},
 ): Promise<SeedRemediationResult> {
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
+  await materializeTargetedReplayScans(db, selectedLimit, now);
   const versionKey = JSON.stringify(RESOLUTION_VERSIONS);
   const keys = [...STALE_SELECTORS.map((selector) => selector.key), "rotation"];
   const saved = await db
@@ -487,21 +731,30 @@ export async function seedDataQualityRemediationQueue(
     const valid = old?.version_key === versionKey;
     let afterVersion = valid ? old.after_version : -1;
     let afterId = valid ? old.after_id : 0;
-    const rows = await db
-      .prepare(staleCandidateSql(selector))
-      .bind(
-        ...selector.binds,
-        ...(selector.cursorVersion === "0" ? [afterId] : [afterVersion, afterId]),
-        selectedLimit,
-      )
-      .all<SeedWindowRow>();
+    let rows;
+    try {
+      rows = await db
+        .prepare(staleCandidateSql(selector))
+        .bind(
+          ...selector.binds,
+          ...(selector.cursorVersion === "0" ? [afterId] : [afterVersion, afterId]),
+          selectedLimit,
+        )
+        .all<SeedWindowRow>();
+    } catch (error) {
+      // Historical-migration tests intentionally run current code against a schema from before
+      // 0131. Production creates the table before deploying this selector, while skipping only
+      // this exact missing-table case preserves that useful compatibility harness.
+      if (selector.key === "targeted_replay" && isTargetedReplayTableMissing(error)) continue;
+      throw error;
+    }
     const window = rows.results || [];
     scannedCount += window.length;
     let visited = 0;
     for (const row of window) {
       if (selectedCount >= selectedLimit) break;
       const id = number(row.id);
-      if (row.is_active && !row.queued && !seen.has(id)) {
+      if ((row.is_active || selector.key === "targeted_replay") && !row.queued && !seen.has(id)) {
         const workKey = automaticWorkKey({ row, workType: selector.workType });
         const inserted = await enqueueDataQualityRemediation(db, {
           workKey,
@@ -662,16 +915,30 @@ export async function resolveDataQualityRemediationJob(
   db: QueryableDatabase,
   jobId: number,
   resolvedAt = new Date().toISOString(),
+  targetedJob?: Pick<DataQualityRemediationJob, "listingProductId" | "workKey">,
 ): Promise<void> {
-  await db
+  const resolve = db
     .prepare(`
       UPDATE data_quality_remediation_queue
       SET status = 'resolved', resolved_at = ?, claimed_at = NULL, lease_expires_at = NULL,
           last_error = '', updated_at = ?
       WHERE id = ? AND status = 'processing'
     `)
-    .bind(resolvedAt, resolvedAt, jobId)
-    .run();
+    .bind(resolvedAt, resolvedAt, jobId);
+  if (!targetedJob?.workKey.startsWith("targeted:") || !targetedJob.listingProductId) {
+    await resolve.run();
+    return;
+  }
+  await db.batch([
+    db
+      .prepare(`
+      DELETE FROM data_quality_targeted_replay_requests
+      WHERE listing_product_id = ?
+        AND 'targeted:' || request_key || ':listing:' || listing_product_id = ?
+    `)
+      .bind(targetedJob.listingProductId, targetedJob.workKey),
+    resolve,
+  ]);
 }
 
 export async function retryOrFailDataQualityRemediationJob(

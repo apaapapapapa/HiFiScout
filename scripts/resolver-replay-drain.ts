@@ -26,6 +26,11 @@ interface QueueStatusRow {
   failed: number;
 }
 
+interface TargetedReplayStatusRow {
+  requests: number;
+  scans: number;
+}
+
 interface ReplayStatus {
   versions: typeof RESOLUTION_VERSIONS;
   activeListings: number;
@@ -35,6 +40,8 @@ interface ReplayStatus {
     category: number;
     identity: number;
     projection: number;
+    targetedRequests: number;
+    targetedScans: number;
     total: number;
   };
   queue: {
@@ -79,7 +86,7 @@ function positiveInteger(value: string, name: string): number {
 
 async function replayStatus(db: QueryableDatabase): Promise<ReplayStatus> {
   const versions = RESOLUTION_VERSIONS;
-  const [stale, queue] = await Promise.all([
+  const [stale, queue, targeted] = await Promise.all([
     db
       .prepare(`
         SELECT
@@ -107,6 +114,13 @@ async function replayStatus(db: QueryableDatabase): Promise<ReplayStatus> {
         FROM data_quality_remediation_queue
       `)
       .first<QueueStatusRow>(),
+    db
+      .prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM data_quality_targeted_replay_requests) AS requests,
+          (SELECT COUNT(*) FROM data_quality_targeted_replay_scans) AS scans
+      `)
+      .first<TargetedReplayStatusRow>(),
   ]);
 
   const safeStale = stale || {
@@ -118,12 +132,15 @@ async function replayStatus(db: QueryableDatabase): Promise<ReplayStatus> {
     projection_dirty: 0,
   };
   const safeQueue = queue || { pending: 0, processing: 0, resolved: 0, failed: 0 };
+  const safeTargeted = targeted || { requests: 0, scans: 0 };
   const staleTotal =
     Number(safeStale.stale_manufacturer || 0) +
     Number(safeStale.stale_model || 0) +
     Number(safeStale.stale_category || 0) +
     Number(safeStale.stale_identity || 0) +
-    Number(safeStale.projection_dirty || 0);
+    Number(safeStale.projection_dirty || 0) +
+    Number(safeTargeted.requests || 0) +
+    Number(safeTargeted.scans || 0);
 
   return {
     versions,
@@ -134,6 +151,8 @@ async function replayStatus(db: QueryableDatabase): Promise<ReplayStatus> {
       category: Number(safeStale.stale_category || 0),
       identity: Number(safeStale.stale_identity || 0),
       projection: Number(safeStale.projection_dirty || 0),
+      targetedRequests: Number(safeTargeted.requests || 0),
+      targetedScans: Number(safeTargeted.scans || 0),
       total: staleTotal,
     },
     queue: {
@@ -331,7 +350,7 @@ async function main(): Promise<void> {
         `A remediation job moved to failed while draining: initial=${initialFailed} current=${current.queue.failed}`,
       );
     }
-    if (sweep.claimed === 0 && current.stale.total > 0) {
+    if (sweep.claimed === 0 && current.stale.total > 0 && current.stale.targetedScans === 0) {
       throw new Error(
         `No remediation job is claimable while ${current.stale.total} stale signals remain after queue top-up`,
       );
