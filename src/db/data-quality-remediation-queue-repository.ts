@@ -96,6 +96,11 @@ interface TargetedReplayListingRow {
   matched: number;
 }
 
+interface TargetedReplayRequestRow {
+  listing_product_id: number;
+  request_key: string;
+}
+
 /**
  * The outstanding work, and nothing about work that has finished.
  *
@@ -588,6 +593,75 @@ async function materializeTargetedReplayScans(
     );
   }
   await db.batch(statements);
+}
+
+/**
+ * Put migration-owned replay requests ahead of the ordinary stale-version backlog.
+ *
+ * A replacement Worker must consume these requests promptly: they describe reviewed corrections
+ * whose migration has already reached production. The normal scheduled path intentionally drains
+ * its existing queue before rotating stale selectors, so relying on that rotation would starve a
+ * targeted request whenever a large version backlog already exists. Keep this probe indexed and
+ * bounded, and give the resulting jobs higher priority than ordinary automatic replay work.
+ */
+export async function seedTargetedDataQualityRemediationQueue(
+  db: QueryableDatabase,
+  {
+    limit = DEFAULT_SEED_LIMIT,
+    now = new Date().toISOString(),
+  }: { limit?: number; now?: string } = {},
+): Promise<SeedRemediationResult> {
+  const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
+  try {
+    await materializeTargetedReplayScans(db, selectedLimit, now);
+    const rows = await db
+      .prepare(`SELECT t.listing_product_id,t.request_key
+        FROM data_quality_targeted_replay_requests t INDEXED BY idx_dq_targeted_replay_listing
+        WHERE NOT EXISTS (
+          SELECT 1 FROM data_quality_remediation_queue q
+          WHERE q.work_key='targeted:' || t.request_key || ':listing:' || t.listing_product_id
+        )
+        ORDER BY t.listing_product_id
+        LIMIT ?`)
+      .bind(selectedLimit)
+      .all<TargetedReplayRequestRow>();
+    const candidates = (rows.results || []).map((row) => {
+      const listingProductId = number(row.listing_product_id);
+      const workKey = `targeted:${row.request_key}:listing:${listingProductId}`;
+      return { listingProductId, workKey };
+    });
+    if (candidates.length) {
+      await db.batch(
+        candidates.map(({ listingProductId, workKey }) =>
+          db
+            .prepare(`INSERT INTO data_quality_remediation_queue(
+              work_key,work_type,listing_product_id,entity_id,reason,source,status,
+              priority,max_attempts,available_at,created_at,updated_at
+            ) VALUES (?,'reprocess_listing',?,?,?,'scheduled_sweep','pending',1000,3,?,?,?)
+            ON CONFLICT(work_key) DO NOTHING`)
+            .bind(
+              workKey,
+              listingProductId,
+              String(listingProductId),
+              "migration_targeted_data_quality_remediation",
+              now,
+              now,
+              now,
+            ),
+        ),
+      );
+    }
+    return {
+      selectedCount: candidates.length,
+      workKeys: candidates.map(({ workKey }) => workKey),
+      scannedCount: candidates.length,
+    };
+  } catch (error) {
+    if (isTargetedReplayTableMissing(error)) {
+      return { selectedCount: 0, workKeys: [], scannedCount: 0 };
+    }
+    throw error;
+  }
 }
 
 /**

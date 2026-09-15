@@ -33,6 +33,7 @@ import {
   resolveDataQualityRemediationJob,
   retryOrFailDataQualityRemediationJob,
   seedDataQualityRemediationQueue,
+  seedTargetedDataQualityRemediationQueue,
   type DataQualityRemediationJob,
   type DataQualityRemediationWorkType,
   type SeedRemediationResult,
@@ -695,6 +696,12 @@ export async function runDataQualityRemediationSweep(
   let seeded: SeedRemediationResult = { selectedCount: 0, workKeys: [], scannedCount: 0 };
   let jobs: DataQualityRemediationJob[];
   if (preferQueuedWork) {
+    // Migration-owned reviewed corrections must not wait behind a large ordinary version backlog.
+    // Seed them first at elevated priority, then keep the normal claim-one scheduled budget.
+    seeded = await seedTargetedDataQualityRemediationQueue(db, {
+      limit: seedLimit,
+      now: evaluatedAt,
+    });
     jobs = await claimDataQualityRemediationBatch(db, {
       limit: claimLimit,
       claimedAt: evaluatedAt,
@@ -706,7 +713,15 @@ export async function runDataQualityRemediationSweep(
   }
   if (!jobs.length) {
     if (preferQueuedWork) {
-      seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
+      const discovered = await seedDataQualityRemediationQueue(db, {
+        limit: seedLimit,
+        now: evaluatedAt,
+      });
+      seeded = {
+        selectedCount: seeded.selectedCount + discovered.selectedCount,
+        workKeys: [...seeded.workKeys, ...discovered.workKeys],
+        scannedCount: (seeded.scannedCount || 0) + (discovered.scannedCount || 0),
+      };
     }
     jobs = await claimDataQualityRemediationBatch(db, {
       limit: claimLimit,

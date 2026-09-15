@@ -5,6 +5,7 @@ import { test } from "vite-plus/test";
 import {
   claimDataQualityRemediationBatch,
   seedDataQualityRemediationQueue,
+  seedTargetedDataQualityRemediationQueue,
 } from "../src/db/data-quality-remediation-queue-repository.js";
 import { listUnresolvedIdentityGroups } from "../src/db/knowledge-catalog-remediation-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
@@ -190,6 +191,33 @@ test("replay seeding reaches every stage through that stage's own index", async 
         .join("\n")}`,
     );
   }
+});
+
+test("targeted replay priority seeding stays on the migration request index", async () => {
+  const { sqlite, db: inner } = migratedSqlite();
+  seedListings(sqlite);
+  sqlite.exec(`INSERT INTO data_quality_targeted_replay_requests(
+    listing_product_id,request_key,reason,created_at
+  ) VALUES (1,'test-request','query-plan','2026-08-15T00:00:00.000Z')`);
+  const { db, executed } = recordingDatabase(inner);
+
+  await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:00:00.000Z",
+    limit: 1,
+  });
+
+  const requestRead = selects(executed).find((query) =>
+    query.sql.includes("FROM data_quality_targeted_replay_requests t INDEXED BY"),
+  );
+  assert.ok(requestRead, "targeted request selection should be recorded");
+  const plan = queryPlan(sqlite, requestRead);
+  assert.ok(
+    readsThroughIndex(plan, "t", "idx_dq_targeted_replay_listing"),
+    `targeted requests must use idx_dq_targeted_replay_listing, got:\n${plan
+      .map((step) => step.detail)
+      .join("\n")}`,
+  );
+  assertNoSortBeforeLimit(sqlite, [requestRead], "targeted request priority seed");
 });
 
 test("manufacturer alias evidence loads through the normalized alias index", async () => {

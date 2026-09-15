@@ -136,6 +136,10 @@ Knowledge Catalog候補と検証 → Product Identity → search entity／offers
 `scripts/resolver-replay-drain.ts`からD1 REST APIを直接使い、メーカー・型番・カテゴリ・Identity・
 projectionの古い判定を1回の上限付きbatchで処理して停止します。旧ローカルWorkerは使用しません。
 
+マイグレーションが特定listingへ発行したtargeted replayは、通常のversion backlogより高い優先度で
+scheduled sweepへ投入します。大量の通常backlogが残っていても、レビュー済みの本番補正を待たせず、
+1回あたりのclaim件数とdeployment-window scanの上限は維持します。
+
 実行に使ったcommitの`data-quality/resolver-replay` statusは次の意味です。
 
 | Status    | 意味と次の操作                                                                               |
