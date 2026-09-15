@@ -615,14 +615,19 @@ export async function seedTargetedDataQualityRemediationQueue(
   try {
     await materializeTargetedReplayScans(db, selectedLimit, now);
     const rows = await db
-      .prepare(`SELECT t.listing_product_id,t.request_key
-        FROM data_quality_targeted_replay_requests t INDEXED BY idx_dq_targeted_replay_listing
+      .prepare(`WITH visited AS MATERIALIZED (
+          SELECT listing_product_id,request_key
+          FROM data_quality_targeted_replay_requests INDEXED BY idx_dq_targeted_replay_listing
+          ORDER BY listing_product_id
+          LIMIT ?
+        )
+        SELECT t.listing_product_id,t.request_key
+        FROM visited t
         WHERE NOT EXISTS (
           SELECT 1 FROM data_quality_remediation_queue q
           WHERE q.work_key='targeted:' || t.request_key || ':listing:' || t.listing_product_id
         )
-        ORDER BY t.listing_product_id
-        LIMIT ?`)
+        ORDER BY t.listing_product_id`)
       .bind(selectedLimit)
       .all<TargetedReplayRequestRow>();
     const candidates = (rows.results || []).map((row) => {

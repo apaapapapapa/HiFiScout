@@ -207,17 +207,68 @@ test("targeted replay priority seeding stays on the migration request index", as
   });
 
   const requestRead = selects(executed).find((query) =>
-    query.sql.includes("FROM data_quality_targeted_replay_requests t INDEXED BY"),
+    query.sql.includes("FROM data_quality_targeted_replay_requests INDEXED BY"),
   );
   assert.ok(requestRead, "targeted request selection should be recorded");
   const plan = queryPlan(sqlite, requestRead);
   assert.ok(
-    readsThroughIndex(plan, "t", "idx_dq_targeted_replay_listing"),
+    readsThroughIndex(
+      plan,
+      "data_quality_targeted_replay_requests",
+      "idx_dq_targeted_replay_listing",
+    ),
     `targeted requests must use idx_dq_targeted_replay_listing, got:\n${plan
       .map((step) => step.detail)
       .join("\n")}`,
   );
   assertNoSortBeforeLimit(sqlite, [requestRead], "targeted request priority seed");
+});
+
+test("targeted replay priority seeding bounds visited requests before excluding queued work", async () => {
+  const { sqlite, db } = migratedSqlite();
+  seedListings(sqlite);
+  sqlite.exec(`INSERT INTO data_quality_targeted_replay_requests(
+    listing_product_id,request_key,reason,created_at
+  ) VALUES
+    (1,'queued-request','query-plan','2026-08-15T00:00:00.000Z'),
+    (2,'next-request','query-plan','2026-08-15T00:00:00.000Z');
+    INSERT INTO data_quality_remediation_queue(
+      work_key,work_type,listing_product_id,entity_id,reason,source,status,priority,
+      max_attempts,available_at,created_at,updated_at
+    ) VALUES (
+      'targeted:queued-request:listing:1','reprocess_listing',1,'1','test','test',
+      'pending',1000,3,'2026-08-15T00:00:00.000Z','2026-08-15T00:00:00.000Z',
+      '2026-08-15T00:00:00.000Z'
+    )`);
+
+  const first = await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:00:00.000Z",
+    limit: 1,
+  });
+  assert.equal(first.selectedCount, 0, "the selector must not scan past its visited-ID budget");
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM data_quality_remediation_queue WHERE listing_product_id=2",
+      )
+      .get()?.n,
+    0,
+  );
+
+  sqlite
+    .prepare("DELETE FROM data_quality_targeted_replay_requests WHERE listing_product_id=1")
+    .run();
+  const second = await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:01:00.000Z",
+    limit: 1,
+  });
+  assert.equal(second.selectedCount, 1);
+  assert.equal(
+    sqlite
+      .prepare("SELECT priority FROM data_quality_remediation_queue WHERE listing_product_id=2")
+      .get()?.priority,
+    1000,
+  );
 });
 
 test("manufacturer alias evidence loads through the normalized alias index", async () => {
