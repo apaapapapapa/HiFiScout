@@ -10,6 +10,11 @@ import {
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
+export const AVAC_CATEGORY_MAPPING = Object.freeze({
+  // Network/streaming are capabilities of the amplifier sold in this exact AVAC bucket.
+  "ストリーミング/ネットワーク対応ステレオアンプ": "AMP.INTEGRATED",
+});
+
 const BASE_URL = "https://www.avac.co.jp";
 const LIST_PATH = "/buy/used/products/list";
 const SALE_TYPE_USED = "2";

@@ -132,10 +132,11 @@ function resolveAliasRows(
 }
 
 /**
- * Recover a legacy parser artifact where an unknown multi-word brand was truncated to its first
- * token (for example `Silent` from `Silent Angel`). The full verified alias must be present at the
- * start of the title, and the explicit seller value must itself be a complete token-prefix of that
- * alias. Arbitrary unknown manufacturer text therefore still cannot be overridden by the title.
+ * Recover legacy parser artifacts where a verified brand was either truncated to its first token
+ * (`Silent` from `Silent Angel`) or fused to an adjacent digit-bearing model
+ * (`ゼンハイザーHD800S`). The full verified alias must be present at the start of the title and
+ * the seller value must have a verified prefix relationship in one direction. Arbitrary unknown
+ * manufacturer text therefore still cannot be overridden by the title.
  */
 function resolveTruncatedManufacturerPrefix(
   raw: string,
@@ -154,7 +155,7 @@ function resolveTruncatedManufacturerPrefix(
       const valueKey = normalizeManufacturerKey(value);
       if (valueKey.length < 2 || valueKey === entry.row.normalizedAlias) return false;
       const prefixPattern = manufacturerPrefixPattern(value);
-      return Boolean(prefixPattern?.test(clean(entry.row.alias)));
+      return Boolean(prefixPattern?.test(clean(entry.row.alias)) || entry.pattern.test(value));
     });
   });
   const longest = Math.max(0, ...compatible.map((entry) => entry.row.normalizedAlias.length));

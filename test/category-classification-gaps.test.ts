@@ -5,6 +5,9 @@ import { categoryIdForClassification, getCategory } from "../src/catalog/categor
 import { inferExplicitCategoryIds } from "../src/catalog/category-rules.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { FUJIYA_CATEGORY_POLICY } from "../src/crawler/shops/fujiya-avic.js";
+import { AUDIOUNION_CATEGORY_MAPPING } from "../src/crawler/shops/audiounion.js";
+import { AVAC_CATEGORY_MAPPING } from "../src/crawler/shops/avac.js";
+import { HIFIDO_CATEGORY_MAPPING, HIFIDO_CATEGORY_POLICY } from "../src/crawler/shops/hifido.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
 function classify(title: string, rawCategory = "") {
@@ -129,6 +132,61 @@ test("reviewed AVAC product-type buckets classify with independent speaker facet
         `${rawCategory} should retain its facet`,
       );
     }
+  }
+});
+
+test("reviewed audit identities override only the conflicting HiFiDo integrated bucket", () => {
+  const receiver = normalizeCatalogProduct(
+    parsedProduct({
+      title: "TX-NR656",
+      manufacturer: "ONKYO",
+      rawManufacturer: "ONKYO オンキョー",
+      model: "TX-NR656",
+      rawCategory: "プリメインアンプ",
+    }),
+    { categoryMapping: HIFIDO_CATEGORY_MAPPING, categoryPolicy: HIFIDO_CATEGORY_POLICY },
+  );
+  const ordinaryIntegrated = normalizeCatalogProduct(
+    parsedProduct({
+      title: "PMA-2000SE",
+      manufacturer: "DENON",
+      rawManufacturer: "DENON デノン",
+      model: "PMA-2000SE",
+      rawCategory: "プリメインアンプ",
+    }),
+    { categoryMapping: HIFIDO_CATEGORY_MAPPING, categoryPolicy: HIFIDO_CATEGORY_POLICY },
+  );
+
+  assert.equal(receiver.primaryCategoryId, "AMP.RECEIVER");
+  assert.equal(ordinaryIntegrated.primaryCategoryId, "AMP.INTEGRATED");
+});
+
+test("exact composite seller categories select the product type and retain independent facts", () => {
+  for (const [title, rawCategory, categoryMapping] of [
+    ["DENON PMA-50", "USB-DAC/プリメインアンプ", AUDIOUNION_CATEGORY_MAPPING],
+    ["Bluesound POWERNODE", "ストリーミング/ネットワーク対応ステレオアンプ", AVAC_CATEGORY_MAPPING],
+  ] as const) {
+    const product = normalizeCatalogProduct(
+      parsedProduct({ title, rawCategory, manufacturer: "", rawManufacturer: "" }),
+      { categoryMapping },
+    );
+    assert.equal(product.primaryCategoryId, "AMP.INTEGRATED", rawCategory);
+  }
+});
+
+test("HiFiDo cartridge technology suffixes remain cartridge product types", () => {
+  for (const rawCategory of ["カートリッジ MM型", "カートリッジ MC型", "カートリッジ VM型"]) {
+    const product = normalizeCatalogProduct(
+      parsedProduct({
+        title: "VM-27G",
+        manufacturer: "SONY",
+        rawManufacturer: "SONY ソニー",
+        model: "VM-27G",
+        rawCategory,
+      }),
+      { categoryMapping: HIFIDO_CATEGORY_MAPPING, categoryPolicy: HIFIDO_CATEGORY_POLICY },
+    );
+    assert.equal(product.primaryCategoryId, "ANA.CARTRIDGE", rawCategory);
   }
 });
 

@@ -592,9 +592,25 @@ function resolvePreparedModel(
     titleConfirmsMisplacedModel(title, restored)
   )
     source = restored;
+  const presentation = prepared.get(manufacturerId);
+  if (manufacturerId && fromSeller && presentation) {
+    // A historical parser could store `ゼンハイザーHD800S` as the manufacturer and only the
+    // trailing shipping note as the raw model. Once the verified manufacturer is recovered, use
+    // the digit-bearing tail only when the complete title independently proves the same model.
+    const misplacedModel = stripManufacturerPresentation(misplaced, presentation);
+    const titleModel = stripManufacturerPresentation(title, presentation);
+    const restoredAttached = `${misplacedModel} ${rawModel}`.trim();
+    if (
+      misplacedModel &&
+      misplacedModel !== misplaced &&
+      titleModel !== title &&
+      titleConfirmsMisplacedModel(titleModel, restoredAttached)
+    ) {
+      source = restoredAttached;
+    }
+  }
   if (!source) return unresolvedResult(rawModel, rawModel);
 
-  const presentation = prepared.get(manufacturerId);
   const recoveredSource =
     fromSeller && presentation
       ? recoverLegacyTruncatedManufacturerModel(source, clean(input.title), presentation)
