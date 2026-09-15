@@ -6,6 +6,78 @@ import { AT, database } from "./helpers/d1-write-budget.js";
 import { productQuery } from "./helpers/product-query.js";
 import { type PlanStep, recordingDatabase } from "./helpers/query-plan.js";
 
+test("new in-stock totals use the projected date index as stale inventory grows", async () => {
+  const { db, dispose } = await database();
+  try {
+    const recent = 12;
+    const size = 10_000;
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (
+        SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?
+      ) INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,
+        first_seen_at,last_seen_at,last_changed_at,last_activity_at,price_yen)
+        SELECT i,'hifido',CAST(i AS TEXT),'amplifier','https://example.test/'||i,'in_stock',
+          CASE WHEN i<=? THEN strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')
+               ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days') END,
+          '${AT}','${AT}','${AT}',100000 FROM n`)
+      .bind(size, recent)
+      .run();
+    await db
+      .prepare(`INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,
+        offer_count,in_stock_offer_count,shop_count,newest_in_stock_listed_at)
+        SELECT id,'l-'||id,'unresolved_listing',id,1,1,1,
+          CASE WHEN id<=? THEN strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')
+               ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days') END
+        FROM products`)
+      .bind(recent)
+      .run();
+    await db
+      .prepare(`INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        SELECT id,id,shop_key FROM products`)
+      .run();
+
+    const legacy = accountReads(db);
+    const oldCount = await legacy.db
+      .prepare(`SELECT COUNT(*) AS total FROM product_search_entities e
+        WHERE EXISTS (SELECT 1 FROM product_search_entity_offers m
+          JOIN products p ON p.id=m.listing_product_id
+          WHERE m.entity_id=e.id AND p.is_active=1 AND p.stock_status='in_stock'
+            AND COALESCE(p.source_published_at,p.first_seen_at) >=
+              strftime('%Y-%m-%dT%H:%M:%fZ','now','-48 hours'))`)
+      .all<{ total: number }>();
+    assert.equal(oldCount.results?.[0].total, recent);
+
+    const recorded = recordingDatabase(db);
+    const measured = accountReads(recorded.db);
+    const result = await searchProducts(
+      measured.db,
+      productQuery("?inStock=true&newOnly=true&includeTotal=true&limit=5"),
+    );
+    assert.equal(result.totalCount, recent);
+    assert.equal(result.items.length, 5);
+    assert.equal(measured.rowsWritten(), 0);
+    assert.ok(measured.rowsRead() < 500, String(measured.rowsRead()));
+    assert.ok(measured.rowsRead() < legacy.rowsRead() / 20);
+    console.log(
+      JSON.stringify({
+        event: "new_in_stock_total_read_budget",
+        inventorySize: size,
+        recent,
+        legacyRowsRead: legacy.rowsRead(),
+        rowsRead: measured.rowsRead(),
+      }),
+    );
+    const count = recorded.executed.find((statement) =>
+      statement.sql.includes("COUNT(*) AS total"),
+    );
+    assert.ok(count);
+    assert.match(count.sql, /newest_in_stock_listed_at/);
+    assert.doesNotMatch(count.sql, /EXISTS/);
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
 test("shop totals and pages stay scoped when other shops grow", async () => {
   const { db, dispose } = await database();
   try {
