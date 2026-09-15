@@ -36,6 +36,9 @@ test("administrative resolver drain uses bulk resolver replay and batched generi
   assert.match(replayDrain, /reprocessStaleModelListings/u);
   assert.match(replayDrain, /MODEL_RESOLVER_SCOPED_SHOPS/u);
   assert.match(replayDrain, /current\.stale\.model === current\.stale\.total/u);
+  assert.match(replayDrain, /data_quality_targeted_replay_requests/u);
+  assert.match(replayDrain, /data_quality_targeted_replay_scans/u);
+  assert.match(replayDrain, /current\.stale\.targetedScans === 0/u);
   assert.match(replayDrain, /limit:\s*250/u);
   assert.equal(
     [...replayDrain.matchAll(/claimLimit:\s*10/gu)].length,

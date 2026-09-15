@@ -242,8 +242,9 @@ The previous runtime still recognizes all stored leaf IDs during migration-befor
 
 Disc equipment includes CD, SACD, DVD, Blu-ray, MD and LD; the exact Hifido seller bucket
 `DVDプレーヤー` is authoritative `SRC.DISC` evidence. Version replay rebuilds stored seller
-evidence from the current shop policy when that exact raw bucket is still recognized. Tape
-equipment includes cassette,
+evidence from the current shop policy when that exact raw bucket is still recognized. The retained
+exact path `ケーブル ラインRCAケーブル` is likewise authoritative `CAB.ANALOG`; the broad
+`ケーブル` bucket remains unclassified. Tape equipment includes cassette,
 open-reel, DAT and DCC. Formats are `supported_media` facets, not separate categories. Bare speaker
 drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `target_equipment` facts;
 the exact Hifido seller bucket `ドライバー` is treated as a bare speaker driver, while the same word
@@ -263,6 +264,14 @@ cables and replacement parts retain their existing product types. Generic "noise
 wording alone establishes no category. Narrow manufacturer/model rules in
 `src/catalog/reviewed-product-types.ts` carry their official product-type sources and review IDs;
 they supply category evidence, never verified catalog identity or an assertion of audible benefit.
+Grado's exact Fujiya `GS3000-Classic Series` presentation is normalized to official model `GS3000`;
+`Classic Series` remains collection metadata, and the official catalog row supplies the headphone
+category. Other manufacturers and shops retain that suffix as potential identity evidence. Narrow
+deployment replays use a migration-owned per-listing request plus a bounded rule-specific scan
+request. Only the replacement Worker can consume the scan, so listings written by the previous
+runtime after migration application are included before the signal is removed.
+The same visited-ID window replays existing pad/tip titles across all shops when the shared sale
+subject vocabulary changes; explicit admin model/category overrides remain excluded.
 
 Fujiya detail extractor v3 reads only product-bound `block-topic-path--list` trails whose current
 item identifies the requested product and, when available, matches its listing URL. The terminal

@@ -45,6 +45,7 @@ interface AnnotationRule {
   readonly name: string;
   readonly pattern: RegExp;
   readonly requiresBarePresentationEvidence?: boolean;
+  readonly manufacturerId?: string;
   readonly shopKey?: string;
   readonly requiresCompleteDiscPlayerTitle?: boolean;
 }
@@ -155,6 +156,14 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     // AudioUnion appends its category label to TakeT's model. Keep arbitrary Japanese
     // parentheticals as candidates; only this exact official product type is presentation.
     pattern: /\s*\(\s*リスト[・\s-]*サウンド\s*\)\s*$/gu,
+  },
+  {
+    name: "seller_series",
+    manufacturerId: "grado",
+    shopKey: "fujiya-avic",
+    // Fujiya appends Grado's collection name to the official model (`GS3000-Classic Series`).
+    // Keep this exact brand/shop pair so another maker's `Classic Series` remains identity data.
+    pattern: /(?<=^GS3000)\s*[-/／]\s*Classic\s+Series\s*$/iu,
   },
   {
     name: "seller_sku",
@@ -354,6 +363,7 @@ function stripSellerAnnotations(
     const before = text;
     for (const rule of ANNOTATION_RULES) {
       if (rule.shopKey && rule.shopKey !== shopKey) continue;
+      if (rule.manufacturerId && rule.manufacturerId !== manufacturerId) continue;
       if (rule.requiresCompleteDiscPlayerTitle) {
         if (!rule.pattern.test(text)) continue;
         const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -11,7 +11,7 @@ export interface SaleSubjectEvidence {
 const ACCESSORIES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["PWR.SUPPLY", /(?:ac|dc)\s*(?:アダプタ(?:ー)?|adapt(?:er|or))|外部電源/i],
   ["ACC.PART", /リモコン|\bremote(?:\s+control(?:ler)?)?\b|交換部品|replacement\s+parts?/i],
-  ["ACC.WEAR", /イヤー(?:パッド|ピース)|ear\s*(?:pads?|tips?)/i],
+  ["ACC.WEAR", /イヤー(?:パッド|ピース)|ear[\s-]*(?:pads?|tips?)/i],
   ["ACC.STAND", /スタンド|stands?/i],
   ["ACC.CASE", /ダストカバー|ケース|カバー|cases?|covers?/i],
 ];
@@ -39,13 +39,14 @@ export function saleSubjectText(value: string): string {
         " ",
       )
       .replace(
-        /(?:リモコン|ケーブル|ケース|カバー|イヤーフック|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り)/gi,
+        /(?:リモコン|ケーブル|ケース|カバー|イヤー(?:フック|パッド|ピース)|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:[はをが]\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り)/gi,
         " ",
       )
       .replace(
-        /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ear[ -]+hooks?|ac\s+adapt(?:er|or))\b/gi,
+        /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ear[ -]+(?:hooks?|pads?|tips?)|ac\s+adapt(?:er|or))\b/gi,
         " ",
       )
+      .replace(/\bear[ -]*(?:pads?|tips?)\s+(?:included|missing|not[ -]+included)\b/gi, " ")
       // Installed drivers describe a complete product; only standalone units are sale objects.
       .replace(
         /(?:フルレンジ|スピーカー|ツ[イィ]ーター|ウーファー|ドライバー)\s*ユニット\s*(?:を\s*)?(?:搭載|内蔵|採用)/gi,
@@ -69,9 +70,18 @@ export function inferSaleSubject(title = "", rawModel = ""): SaleSubjectEvidence
     const compatibility =
       /(?:専用|対応|互換|適合|用)\s*$/u.test(left) ||
       /^\s*(?:for|compatible\s+with)\b/i.test(right);
+    const completePersonalAudio =
+      /(?:ヘッドホン|イヤホン|ヘッドセット)|\b(?:headphones?|earphones?|headsets?)\b/i.test(value);
+    const explicitWearSaleObject =
+      /(?:交換|交換用|補修|予備|単品|パーツ)|\b(?:replacement|spare|pair|set)\b/i.test(value);
     // An explicit remote/adapter is a sale object even when the seller omits "for". Generic
     // "stand" / "case" mentions require an explicit relationship to avoid equipment prose.
-    if (compatibility || categoryId === "ACC.PART" || categoryId === "PWR.SUPPLY") {
+    if (
+      compatibility ||
+      (categoryId === "ACC.WEAR" && (!completePersonalAudio || explicitWearSaleObject)) ||
+      categoryId === "ACC.PART" ||
+      categoryId === "PWR.SUPPLY"
+    ) {
       return { kind: "accessory", categoryId, ruleId: `sale_subject.${categoryId}` };
     }
   }

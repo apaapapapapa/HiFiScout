@@ -176,7 +176,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "ACC.ACOUSTIC",
     /acoustic\s+(?:panel|absorber|diffuser|treatment)|bass\s+trap|吸音|拡散パネル|ルームアコースティック|ベーストラップ/i,
   ],
-  ["ACC.WEAR", /ear\s*(?:pad|tip)|headband|イヤーパッド|イヤーピース|ヘッドバンド/i],
+  ["ACC.WEAR", /ear[\s-]*(?:pad|tip)|headband|イヤーパッド|イヤーピース|ヘッドバンド/i],
   [
     "ACC.CASE",
     /(?:equipment|headphone|earphone|record)?\s*(?:case|cover|bag)|ケース|カバー|バッグ|ダストカバー/i,

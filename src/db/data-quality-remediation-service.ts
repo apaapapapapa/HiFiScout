@@ -44,6 +44,7 @@ import type { QueryableDatabase } from "./types.js";
 
 interface RemediationListingRow {
   id: number;
+  is_active: number;
   shop_key: string;
   source_id: string;
   manufacturer: string;
@@ -275,7 +276,7 @@ async function loadListing(
 ): Promise<RemediationListingRow | null> {
   return db
     .prepare(`
-      SELECT id, shop_key, source_id,
+      SELECT id, is_active, shop_key, source_id,
              manufacturer, raw_manufacturer, normalized_raw_manufacturer,
              manufacturer_id, canonical_manufacturer_id,
              manufacturer_resolution_status, manufacturer_resolution_method,
@@ -618,7 +619,7 @@ async function prepareJob(
 ): Promise<PreparedRemediationJob | null> {
   if (!job.listingProductId) return null;
   const row = await loadListing(db, job.listingProductId);
-  if (!row) return null;
+  if (!row || row.is_active === 0) return null;
 
   let projectionToken = row.remediation_projection_token;
   let projectionRequired = true;
@@ -727,7 +728,7 @@ export async function runDataQualityRemediationSweep(
     try {
       const prepared = await prepareJob(db, job, aliases, evaluatedAt, categoryConfigForShop);
       if (!prepared) {
-        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
+        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt, job);
         resolved += 1;
         continue;
       }
@@ -836,7 +837,7 @@ export async function runDataQualityRemediationSweep(
 
     for (const job of shopJobs) {
       try {
-        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
+        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt, job);
         resolved += 1;
       } catch (error) {
         const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
