@@ -653,7 +653,8 @@ export async function seedTargetedDataQualityRemediationQueue(
       const status = row.queue_status || "";
       if (
         (status === "pending" || status === "processing") &&
-        number(row.queue_attempt_count) < number(row.queue_max_attempts)
+        number(row.queue_attempt_count) < number(row.queue_max_attempts) &&
+        number(row.queue_priority) < 1000
       ) {
         return [{ listingProductId, workKey, insert: false }];
       }

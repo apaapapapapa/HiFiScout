@@ -263,6 +263,13 @@ test("targeted replay priority seeding bounds visited requests before excluding 
     0,
   );
 
+  const duplicate = await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:00:30.000Z",
+    limit: 1,
+  });
+  assert.equal(duplicate.selectedCount, 0, "an already-promoted job is not reported as seeded");
+  assert.equal(duplicate.scannedCount, 1, "the duplicate request remains visible as visited work");
+
   sqlite
     .prepare("DELETE FROM data_quality_targeted_replay_requests WHERE listing_product_id=1")
     .run();
