@@ -688,7 +688,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // derivation, the three projection stages, snapshot persistence and durable completion.
     // Migration-owned discovery adds at most five calls before a replay: one bounded scan page
     // costs three and request seeding costs two. The floor includes the maintenance and queue
-    // claims, and is reachable after General Cron's three mandatory pre-admission calls.
+    // claims, and is reachable after General Cron's two mandatory pre-admission calls.
     // Starting with only the generic eight-call floor allowed search projection writes before
     // identity resolution hit the hard cap, so the next tick repeated work that could not finish.
     minimumRemainingCalls: 37,
@@ -890,8 +890,8 @@ async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void
       scheduledAt,
     );
     await runGeneralCronTick(
-      () => runGeneralCronWatchdogs(limitedEnv, scheduledAt),
       () => runPendingMaintenance(limitedEnv, scheduledAt, budget),
+      () => runGeneralCronWatchdogs(limitedEnv, scheduledAt),
       (dispatch) => logScheduledSyncHealthIfNeeded(limitedEnv, GENERAL_CRON, dispatch, scheduledAt),
     );
   } catch (error) {
@@ -911,22 +911,22 @@ async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void
 }
 
 /**
- * Runs the GENERAL_CRON watchdog, maintenance and health snapshot as one sequential task tree.
+ * Runs GENERAL_CRON maintenance, watchdogs and the health snapshot as one sequential task tree.
  *
  * The watchdog and maintenance both issue D1 work. Starting them through separate `waitUntil`
  * calls lets the two query trees contend inside the same isolate, undermining the maintenance
- * serialization above. Maintenance must still run when the watchdog fails, while the watchdog
- * failure must remain visible as the cron outcome. The cross-shop health snapshot follows
- * maintenance so the non-checkpointed remediation floor is reachable; if maintenance consumes the
- * work budget, the next five-minute tick provides the next authoritative snapshot.
+ * serialization above. Maintenance runs first so neither watchdog read can make a non-checkpointed
+ * remediation floor unreachable. The watchdog failure remains visible as the cron outcome. If
+ * maintenance consumes the work budget, watchdog and health observation resume on the next
+ * five-minute tick.
  */
 export async function runGeneralCronTick<T>(
-  scheduledWork: () => Promise<T>,
   maintenanceWork: () => Promise<void>,
+  scheduledWork: () => Promise<T>,
   healthWork?: (scheduledResult: T) => Promise<void>,
 ): Promise<T> {
-  const scheduledResult = await settled(scheduledWork);
   const maintenanceResult = await settled(maintenanceWork);
+  const scheduledResult = await settled(scheduledWork);
   if (scheduledResult.status === "rejected") throw scheduledResult.reason;
   if (maintenanceResult.status === "rejected") throw maintenanceResult.reason;
   if (healthWork) await healthWork(scheduledResult.value);

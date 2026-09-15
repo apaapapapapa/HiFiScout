@@ -217,7 +217,6 @@ test("the remediation budget floor remains reachable after mandatory cron work",
   const { db, sqlite } = migratedSqlite();
   try {
     const at = new Date("2030-01-01T00:00:00Z");
-    await enqueueMaintenance(db, ["data_quality_remediation_sweep"], at);
     let runs = 0;
     const tasks = [
       {
@@ -235,16 +234,21 @@ test("the remediation budget floor remains reachable after mandatory cron work",
     ];
     const budget = invocationBudget(db, { maxCalls: 45, finalizationReserve: 5 });
     let healthRuns = 0;
+    let watchdogCalls = 0;
+
+    // Schedule persistence is the only binding call before maintenance admission.
+    await enqueueMaintenance(budget.db, ["data_quality_remediation_sweep"], at);
 
     await assert.rejects(
       runGeneralCronTick(
+        () => runPendingMaintenance({ DB: budget.db } as unknown as Env, at, budget, tasks),
         async () => {
-          // Schedule persistence and watchdog recovery are the two calls before pending lookup.
+          watchdogCalls += 1;
           await budget.db.prepare("SELECT 1").first();
+          watchdogCalls += 1;
           await budget.db.prepare("SELECT 1").first();
           return "dispatch";
         },
-        () => runPendingMaintenance({ DB: budget.db } as unknown as Env, at, budget, tasks),
         async () => {
           healthRuns += 1;
           await budget.db.prepare("SELECT 1").first();
@@ -254,7 +258,8 @@ test("the remediation budget floor remains reachable after mandatory cron work",
     );
 
     assert.equal(runs, 1);
-    assert.equal(healthRuns, 1);
+    assert.equal(watchdogCalls, 2);
+    assert.equal(healthRuns, 0);
     assert.equal(budget.metrics().d1Calls, 40);
     assert.equal(budget.metrics().yieldReason, "d1_calls");
     assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 5 * 60_000)), []);
