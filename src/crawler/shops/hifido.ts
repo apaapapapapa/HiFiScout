@@ -23,13 +23,16 @@ const PRODUCT_LINK_RE =
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const CATEGORY_NAMES =
   "オープンリールテープ|カセットテープ|録音用テープ|空リール|仮想アース|スピーカーアクセサリー|スピーカーユニット|スピーカー|フルレンジユニット|ドライバーユニット|ドライバー|スーパーツイーター|ツイーター|ウーファーユニット|ホーン|エンクロージャー|チャンネルデバイダー|チャンネルディバイダー|イコライザー|チューナー|カセットデッキ|テープデッキ|オープンリール|DATデッキ|DCCデッキ|MDデッキ|LDプレーヤー|DVDプレーヤー|コントロールアンプ|プリアンプ|プリメインアンプ|パワーアンプ|AVアンプ|ヘッドホンアンプ|レコードプレーヤー|CDトランスポート|SACDトランスポート|CDプレーヤー|SACD(?:\\/CD)?プレーヤー|D\\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|トーンアーム|カートリッジ|昇圧トランス|フォノイコライザー|ヘッドホン|イヤホン|ケーブル ラインRCAケーブル|ケーブル|アクセサリー|インシュレータ(?:ー)?|真空管|ラック|その他オーディオ機器";
-const CATEGORY_VALUE_RE = new RegExp(`^(${CATEGORY_NAMES})(?:（[^）]+）)?$`, "i");
+const CATEGORY_VALUE_RE = new RegExp(
+  `^((?:${CATEGORY_NAMES})(?:\\s+(?:MM|MC|VM)型)?)(?:（[^）]+）)?$`,
+  "i",
+);
 const CATEGORY_LABEL_RE = new RegExp(
-  `(?:ジャンル|カテゴリ)\\s*[:：]\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?`,
+  `(?:ジャンル|カテゴリ)\\s*[:：]\\s*((?:${CATEGORY_NAMES})(?:\\s+(?:MM|MC|VM)型)?)(?:（[^）]+）)?`,
   "i",
 );
 const LEGACY_PRICE_CATEGORY_RE = new RegExp(
-  `売価(?:\\([^)]*\\))?\\s*[:：]\\s*[¥￥]?\\s*[0-9０-９][0-9０-９,，]*\\s*円?(?:\\s*\\([^)]*\\))?\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\\s+(?:在庫|注文|売約|商談|20\\d{2}-\\d{1,2}-\\d{1,2}\\s*入荷)|\\s*$)`,
+  `売価(?:\\([^)]*\\))?\\s*[:：]\\s*[¥￥]?\\s*[0-9０-９][0-9０-９,，]*\\s*円?(?:\\s*\\([^)]*\\))?\\s*((?:${CATEGORY_NAMES})(?:\\s+(?:MM|MC|VM)型)?)(?:（[^）]+）)?(?=\\s+(?:在庫|注文|売約|商談|20\\d{2}-\\d{1,2}-\\d{1,2}\\s*入荷)|\\s*$)`,
   "i",
 );
 const PAGE_SIZE = 30;
@@ -98,6 +101,9 @@ export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   トーンアーム: "tonearm",
   シェル: "headshell",
   カートリッジ: "cartridge",
+  "カートリッジ MM型": "cartridge",
+  "カートリッジ MC型": "cartridge",
+  "カートリッジ VM型": "cartridge",
   昇圧トランス: "phono_step_up_transformer",
   フォノイコライザー: "phono_eq",
   ヘッドホン: "headphone",
@@ -113,7 +119,12 @@ export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
 });
 
 export const HIFIDO_CATEGORY_POLICY = Object.freeze({
-  sellerCategory: Object.freeze({ default: "authoritative" as const }),
+  sellerCategory: Object.freeze({
+    default: "authoritative" as const,
+    // A seller occasionally files an AV receiver under the integrated-amplifier bucket. Keep the
+    // bucket as a safe fallback, but let an independently reviewed exact product type win.
+    categories: Object.freeze({ "AMP.INTEGRATED": "corroborative" as const }),
+  }),
   parserHint: "corroborative" as const,
   enrichment: Object.freeze({
     maxRequestsPerCrawl: 10,
@@ -205,8 +216,12 @@ function detailSellerCategory(html: string, sourceId: string): string {
     );
     const header = cleanText(boundary >= 0 ? visible.slice(0, boundary) : visible.slice(0, 120));
     const category =
-      header.match(new RegExp(`(?:^|\\s)(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\\s|$)`, "i"))?.[1] ||
-      "";
+      header.match(
+        new RegExp(
+          `(?:^|\\s)((?:${CATEGORY_NAMES})(?:\\s+(?:MM|MC|VM)型)?)(?:（[^）]+）)?(?=\\s|$)`,
+          "i",
+        ),
+      )?.[1] || "";
     const normalized = normalizeHifidoCategory(category);
     if (normalized) return normalized;
   }

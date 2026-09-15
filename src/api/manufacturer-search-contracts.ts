@@ -192,16 +192,21 @@ function escapeRegExp(value: string): string {
 }
 
 export function manufacturerPrefixPattern(alias: unknown = ""): RegExp | null {
-  const tokens = String(alias)
-    .normalize("NFKC")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .split(/[\s・･_\-/&+.,'"()（）]+/u)
-    .filter(Boolean);
+  const normalizedAlias = String(alias).normalize("NFKC").replace(/\s+/gu, " ").trim();
+  const tokens = normalizedAlias.split(/[\s・･_\-/&+.,'"()（）]+/u).filter(Boolean);
   if (!tokens.length) return null;
   const separator = `[\\s・･_\\-\\/&+.,'"()（）]*`;
   const boundary = `[\\s・･_\\-\\/&+.,'"()（）]`;
-  return new RegExp(`^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary})`, "iu");
+  // Some Japanese shops concatenate a kana/kanji brand and an ASCII model (`ゼンハイザーHD800S`).
+  // Treat that script transition as a boundary only when the adjacent token contains a digit;
+  // arbitrary prose such as `ゼンハイザーヘッドホン` must remain unmatched.
+  const attachedAsciiModel = /[ぁ-んァ-ヶ一-龯]/u.test(normalizedAlias)
+    ? `|(?=[A-Z][A-Z0-9._\\/-]*\\d[A-Z0-9._\\/-]*(?=$|${boundary}|[※《【]))`
+    : "";
+  return new RegExp(
+    `^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary}${attachedAsciiModel})`,
+    "iu",
+  );
 }
 
 const SEARCH_PREFIXES = MANUFACTURER_SOURCE.flatMap(([id, name, aliases]) =>

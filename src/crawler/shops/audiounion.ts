@@ -13,6 +13,11 @@ import { parseProductPage } from "../parser.js";
 import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
+export const AUDIOUNION_CATEGORY_MAPPING = Object.freeze({
+  // The slash describes a DAC capability on one integrated amplifier, not two sale objects.
+  "USB-DAC/プリメインアンプ": "AMP.INTEGRATED",
+});
+
 const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DETAIL_URL_PATTERN = /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i;
 const BRAND_SUFFIXES = new Set([

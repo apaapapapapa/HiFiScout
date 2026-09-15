@@ -54,6 +54,74 @@ test("Shimamusen keeps a verified multi-word manufacturer out of the model", () 
   assert.equal(normalized.model, "Simply Four");
 });
 
+test("Shimamusen separates an attached Japanese manufacturer from a digit-bearing model", () => {
+  const html = `
+    <ul>
+      <li>
+        <a href="/shopdetail/000000019826/ct826/page1/order/">
+          【中古品】ゼンハイザーHD800S ※送料無料《北海道・沖縄・離島を除く》
+        </a>
+        <span class="price">販売価格198,000円(税込)</span>
+      </li>
+    </ul>`;
+
+  const [parsed] = parseShimamusenListing(html, { kind: "中古品" });
+  const normalized = normalizeCatalogProduct(parsed, {}, { shopKey: "shimamusen" });
+
+  assert.equal(parsed.rawManufacturer, "ゼンハイザー");
+  assert.equal(parsed.model, "HD800S ※送料無料");
+  assert.equal(normalized.manufacturer, "Sennheiser");
+  assert.equal(normalized.manufacturerId, "sennheiser");
+  assert.equal(normalized.model, "HD800S");
+  assert.equal(normalized.primaryCategoryId, "PER.HEADPHONE");
+});
+
+test("Shimamusen does not assign the compatible device manufacturer to an accessory", () => {
+  const html = `
+    <ul>
+      <li>
+        <a href="/shopdetail/000000019999/ct826/page1/order/">
+          【中古品】ゼンハイザーHD800S用 交換ケーブル
+        </a>
+        <span class="price">販売価格19,800円(税込)</span>
+      </li>
+    </ul>`;
+
+  const [parsed] = parseShimamusenListing(html, { kind: "中古品" });
+  const normalized = normalizeCatalogProduct(parsed, {}, { shopKey: "shimamusen" });
+
+  assert.notEqual(normalized.manufacturerId, "sennheiser");
+  assert.notEqual(normalized.manufacturer, "Sennheiser");
+});
+
+test("legacy attached-manufacturer rows recover without rewriting immutable raw evidence", () => {
+  const normalized = normalizeCatalogProduct(
+    {
+      sourceId: "000000019831",
+      sourceUrl: "https://www.shimamusen.com/shopdetail/000000019831/ct826/page1/order/",
+      title: "【中古品】ゼンハイザーHDVD800 ※送料無料《北海道・沖縄・離島を除く》",
+      rawManufacturer: "ゼンハイザーHDVD800",
+      manufacturer: "ゼンハイザーHDVD800",
+      rawModel: "※送料無料",
+      model: "※送料無料",
+      rawCategory: "中古品",
+      category: "",
+      conditionText: "中古品",
+      priceYen: 198000,
+      stockStatus: "in_stock",
+    },
+    {},
+    { shopKey: "shimamusen" },
+  );
+
+  assert.equal(normalized.rawManufacturer, "ゼンハイザーHDVD800");
+  assert.equal(normalized.rawModel, "※送料無料");
+  assert.equal(normalized.manufacturer, "Sennheiser");
+  assert.equal(normalized.manufacturerId, "sennheiser");
+  assert.equal(normalized.model, "HDVD800");
+  assert.equal(normalized.primaryCategoryId, "AMP.HEADPHONE");
+});
+
 /**
  * The three shapes a Shimamusen listing title uses to say something that is not the product: the
  * brand written twice with the second spelling bracketed, a `※` delivery footnote, and a product

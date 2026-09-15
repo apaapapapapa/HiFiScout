@@ -13,7 +13,7 @@ import {
   DEFAULT_PRODUCT_ACTIVITY_POLICY,
   type ProductActivityPolicy,
 } from "../../db/product-activity-policy.js";
-import { audioUnionAdapter } from "./audiounion.js";
+import { AUDIOUNION_CATEGORY_MAPPING, audioUnionAdapter } from "./audiounion.js";
 import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
 import {
@@ -48,7 +48,7 @@ import {
   SOUND_SUPPORT_CATEGORY_POLICY,
   soundSupportAdapter,
 } from "./sound-support.js";
-import { avacAdapter } from "./avac.js";
+import { AVAC_CATEGORY_MAPPING, avacAdapter } from "./avac.js";
 import { tereonAdapter } from "./tereon.js";
 import {
   AUDIO_SPACE_CORE_CATEGORY_MAPPING,
@@ -103,6 +103,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     {
       transport: { kind: "relay" },
+      catalog: { categoryMapping: AUDIOUNION_CATEGORY_MAPPING },
       inventoryRecheck: audioUnionInventoryRecheck,
       diagnostics: { diagnosePage: diagnoseAudioUnionHtml },
     },
@@ -246,13 +247,17 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       },
     },
   ),
-  defineShopPlugin(avacAdapter, {
-    key: "avac",
-    name: "アバック",
-    baseUrl: "https://www.avac.co.jp",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
-    defaultMaxPages: 50,
-  }),
+  defineShopPlugin(
+    avacAdapter,
+    {
+      key: "avac",
+      name: "アバック",
+      baseUrl: "https://www.avac.co.jp",
+      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultMaxPages: 50,
+    },
+    { catalog: { categoryMapping: AVAC_CATEGORY_MAPPING } },
+  ),
   defineShopPlugin(tereonAdapter, {
     key: "tereon",
     name: "テレオン",

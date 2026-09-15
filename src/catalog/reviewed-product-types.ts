@@ -1,5 +1,5 @@
 import { inferSaleSubject, saleSubjectText } from "./sale-subject.js";
-import type { CategoryEvidenceInput } from "./types.js";
+import type { CategoryEvidenceInput, ClassifiableCategoryId } from "./types.js";
 
 interface ReviewedNoiseAccessory {
   id: string;
@@ -13,7 +13,7 @@ interface ReviewedProductType {
   id: string;
   brand: RegExp;
   model: RegExp;
-  categoryId: "CAB.ANALOG" | "PER.EARPHONE" | "PER.HEADPHONE";
+  categoryId: ClassifiableCategoryId;
   sourceUrl: string;
   excludeAccessorySubjects?: boolean;
 }
@@ -27,6 +27,30 @@ function isReviewedProductAccessory(subject: string): boolean {
 
 /** Narrow product-type facts confirmed from manufacturer or specialist-retailer evidence. */
 const PRODUCT_TYPES: readonly ReviewedProductType[] = [
+  {
+    id: "sennheiser_hd_800_s",
+    brand: /\bsennheiser\b|ゼンハイザー/i,
+    model: /\bhd\s*800\s*s\b/i,
+    categoryId: "PER.HEADPHONE",
+    sourceUrl: "https://global.sennheiser-hearing.com/products/hd-800-s",
+    excludeAccessorySubjects: true,
+  },
+  {
+    id: "sennheiser_hdvd_800",
+    brand: /\bsennheiser\b|ゼンハイザー/i,
+    model: /\bhdvd\s*800\b/i,
+    categoryId: "AMP.HEADPHONE",
+    sourceUrl: "https://newsroom.sennheiser.com/a-legendary-combination-297964",
+    excludeAccessorySubjects: true,
+  },
+  {
+    id: "onkyo_tx_nr656",
+    brand: /\bonkyo\b|オンキヨー|オンキョー/i,
+    model: /\btx\s*-?\s*nr656\b/i,
+    categoryId: "AMP.RECEIVER",
+    sourceUrl: "https://onkyo.com/tx-nr656",
+    excludeAccessorySubjects: true,
+  },
   {
     id: "grado_gs3000_classic",
     brand: /\bgrado\b|グラド/i,
