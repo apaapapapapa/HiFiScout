@@ -77,12 +77,7 @@ export function collectReplayCases(reports: unknown[]) {
       cases.push({
         id: `${file}::<suite>`,
         stage: REPLAY_SUITES[file],
-        status:
-          suite.status === "failed"
-            ? "fail"
-            : suite.status === "passed" && report.success === true
-              ? "pass"
-              : "unknown",
+        status: suite.status === "failed" ? "fail" : suite.status === "passed" ? "pass" : "unknown",
         failures: typeof suite.message === "string" && suite.message ? [suite.message] : [],
       });
       for (const assertion of suite.assertionResults) {
