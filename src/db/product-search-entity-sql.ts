@@ -115,7 +115,14 @@ export const NEW_OFFER_WINDOW_MS = NEW_OFFER_WINDOW_HOURS * 60 * 60 * 1000;
 
 /** Whether a listing row is newly published/first seen, as a SQL predicate over `products`. */
 export function newOfferPredicate(alias: string): string {
-  return `COALESCE(${alias}.source_published_at, ${alias}.first_seen_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${NEW_OFFER_WINDOW_HOURS} hours')`;
+  return newOfferTimestampPredicate(
+    `COALESCE(${alias}.source_published_at, ${alias}.first_seen_at)`,
+  );
+}
+
+/** Whether an already-projected effective listing timestamp is inside the new-offer window. */
+export function newOfferTimestampPredicate(timestampSql: string): string {
+  return `${timestampSql} >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${NEW_OFFER_WINDOW_HOURS} hours')`;
 }
 
 /** `IN (?, ?, ...)` scope fragment, or `""` for the whole table. */

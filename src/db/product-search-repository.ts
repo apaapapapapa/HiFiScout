@@ -54,7 +54,7 @@ import {
   toProductOffer,
   toProductSearchItem,
 } from "./product-search-entity-mapper.js";
-import { newOfferPredicate } from "./product-search-entity-sql.js";
+import { newOfferPredicate, newOfferTimestampPredicate } from "./product-search-entity-sql.js";
 import { effectiveOfferFacts } from "./offer-fact-repository.js";
 import { publicModelRelations } from "./public-model-relations-repository.js";
 import { catalogProductWithoutOffers } from "./catalog-product-detail-repository.js";
@@ -467,10 +467,29 @@ export async function searchProducts(
   const relevance = usesRelevanceOrder(query);
   const requestScopedSort = needsRequestScopedSort(query, filter, relevance, inStockOnly);
 
+  // `newest_in_stock_listed_at` is maintained from the same active in-stock offers as this exact
+  // filter. Counting through that partial index avoids probing every entity and then every offer
+  // for the common "new in-stock products" total. Other offer predicates still need the exact
+  // same-offer membership query below.
+  const projectedInStockNewOnly = Boolean(
+    query.inStock &&
+    query.newOnly &&
+    query.shop.length === 0 &&
+    !query.priceDropped &&
+    !query.offerFacts?.length &&
+    query.minPrice == null &&
+    query.maxPrice == null,
+  );
+
   // Totals have no sort join and must count the whole result set, before the cursor predicate.
   const countWhere = [...where];
   const countBinds = [...binds];
-  addOfferFilter(filter, countWhere, countBinds, inStockOnly);
+  if (projectedInStockNewOnly) {
+    countWhere.push("e.in_stock_offer_count > 0");
+    countWhere.push(newOfferTimestampPredicate("e.newest_in_stock_listed_at"));
+  } else {
+    addOfferFilter(filter, countWhere, countBinds, inStockOnly);
+  }
   // matching_sort already selects exactly the entities with a matching offer, including an empty
   // result. Relevance, persisted sorts and dealScore have no such join and still need this filter.
   if (!requestScopedSort) addOfferFilter(filter, where, binds, inStockOnly);
