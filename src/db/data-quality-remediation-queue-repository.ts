@@ -96,6 +96,21 @@ interface TargetedReplayListingRow {
   matched: number;
 }
 
+interface TargetedReplayRequestRow {
+  listing_product_id: number;
+  request_key: string;
+  queue_id: number | null;
+  queue_status: string | null;
+  queue_priority: number | null;
+  queue_attempt_count: number | null;
+  queue_max_attempts: number | null;
+}
+
+export interface TargetedReplayScanResult {
+  hadScan: boolean;
+  scannedCount: number;
+}
+
 /**
  * The outstanding work, and nothing about work that has finished.
  *
@@ -466,11 +481,12 @@ const TARGETED_REPLAY_SCANS: readonly TargetedReplayScanDefinition[] = [
  * writes made in that deployment interval. Each scan is paged by listing id and deleted only after
  * reaching its tail; normal writes made by the new runtime already contain the reviewed rules.
  */
-async function materializeTargetedReplayScans(
+export async function advanceTargetedReplayScans(
   db: QueryableDatabase,
   limit: number,
   now: string,
-): Promise<void> {
+  maxSelectors = TARGETED_REPLAY_SCANS.length,
+): Promise<TargetedReplayScanResult> {
   let scan;
   try {
     scan = await db
@@ -482,10 +498,10 @@ async function materializeTargetedReplayScans(
       .first<TargetedReplayScanRow>();
   } catch (error) {
     // Historical-schema tests intentionally run current code before migration 0131.
-    if (isTargetedReplayTableMissing(error)) return;
+    if (isTargetedReplayTableMissing(error)) return { hadScan: false, scannedCount: 0 };
     throw error;
   }
-  if (!scan) return;
+  if (!scan) return { hadScan: false, scannedCount: 0 };
 
   const afterIds = [
     number(scan.grado_exact_after_id),
@@ -500,9 +516,12 @@ async function materializeTargetedReplayScans(
     number(scan.ear_wear_done) === 1,
   ];
   let remaining = limit;
+  let scannedCount = 0;
+  let processedSelectors = 0;
   const statements = [];
   for (const [index, definition] of TARGETED_REPLAY_SCANS.entries()) {
-    if (done[index] || remaining === 0) continue;
+    if (done[index] || remaining === 0 || processedSelectors >= maxSelectors) continue;
+    processedSelectors += 1;
     const rows = await db
       .prepare(`WITH visited AS MATERIALIZED (
           SELECT p.id FROM ${definition.source}
@@ -516,6 +535,7 @@ async function materializeTargetedReplayScans(
       .bind(afterIds[index], remaining)
       .all<TargetedReplayListingRow>();
     const visited = rows.results || [];
+    scannedCount += visited.length;
     const listings = visited.filter((listing) => number(listing.matched) === 1);
     statements.push(
       ...listings.map((listing) =>
@@ -588,6 +608,112 @@ async function materializeTargetedReplayScans(
     );
   }
   await db.batch(statements);
+  return { hadScan: true, scannedCount };
+}
+
+/**
+ * Put migration-owned replay requests ahead of the ordinary stale-version backlog.
+ *
+ * A replacement Worker must consume these requests promptly: they describe reviewed corrections
+ * whose migration has already reached production. The normal scheduled path intentionally drains
+ * its existing queue before rotating stale selectors, so relying on that rotation would starve a
+ * targeted request whenever a large version backlog already exists. Keep this probe indexed and
+ * bounded, and give the resulting jobs higher priority than ordinary automatic replay work.
+ */
+export async function seedTargetedDataQualityRemediationQueue(
+  db: QueryableDatabase,
+  {
+    limit = DEFAULT_SEED_LIMIT,
+    now = new Date().toISOString(),
+  }: { limit?: number; now?: string } = {},
+): Promise<SeedRemediationResult> {
+  const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
+  try {
+    const rows = await db
+      .prepare(`WITH visited AS MATERIALIZED (
+          SELECT listing_product_id,request_key
+          FROM data_quality_targeted_replay_requests INDEXED BY idx_dq_targeted_replay_listing
+          ORDER BY listing_product_id
+          LIMIT ?
+        )
+        SELECT t.listing_product_id,t.request_key,q.id AS queue_id,q.status AS queue_status,
+          q.priority AS queue_priority,q.attempt_count AS queue_attempt_count,
+          q.max_attempts AS queue_max_attempts
+        FROM visited t
+        LEFT JOIN data_quality_remediation_queue q
+          ON q.work_key='targeted:' || t.request_key || ':listing:' || t.listing_product_id
+        ORDER BY t.listing_product_id`)
+      .bind(selectedLimit)
+      .all<TargetedReplayRequestRow>();
+    const visited = rows.results || [];
+    const actionable = visited.flatMap((row) => {
+      const listingProductId = number(row.listing_product_id);
+      const workKey = `targeted:${row.request_key}:listing:${listingProductId}`;
+      if (row.queue_id == null) return [{ listingProductId, workKey, insert: true }];
+      const status = row.queue_status || "";
+      if (
+        (status === "pending" || status === "processing") &&
+        number(row.queue_attempt_count) < number(row.queue_max_attempts) &&
+        number(row.queue_priority) < 1000
+      ) {
+        return [{ listingProductId, workKey, insert: false }];
+      }
+      return [];
+    });
+    const terminal = visited.filter((row) => {
+      if (row.queue_id == null) return false;
+      const status = row.queue_status || "";
+      return (
+        (status !== "pending" && status !== "processing") ||
+        number(row.queue_attempt_count) >= number(row.queue_max_attempts)
+      );
+    });
+    const statements = [
+      ...actionable.map(({ listingProductId, workKey, insert }) =>
+        insert
+          ? db
+              .prepare(`INSERT INTO data_quality_remediation_queue(
+                work_key,work_type,listing_product_id,entity_id,reason,source,status,
+                priority,max_attempts,available_at,created_at,updated_at
+              ) VALUES (?,'reprocess_listing',?,?,?,'scheduled_sweep','pending',1000,3,?,?,?)
+              ON CONFLICT(work_key) DO NOTHING`)
+              .bind(
+                workKey,
+                listingProductId,
+                String(listingProductId),
+                "migration_targeted_data_quality_remediation",
+                now,
+                now,
+                now,
+              )
+          : db
+              .prepare(`UPDATE data_quality_remediation_queue
+                SET priority=1000,updated_at=?
+                WHERE work_key=? AND priority<1000
+                  AND status IN ('pending','processing') AND attempt_count<max_attempts`)
+              .bind(now, workKey),
+      ),
+      ...terminal.map((row) =>
+        db
+          .prepare(`DELETE FROM data_quality_targeted_replay_requests
+            WHERE listing_product_id=? AND request_key=?`)
+          .bind(row.listing_product_id, row.request_key),
+      ),
+    ];
+    if (statements.length) {
+      await db.batch(statements);
+    }
+    return {
+      selectedCount: actionable.length,
+      workKeys: actionable.map(({ workKey }) => workKey),
+      scannedCount: visited.length,
+    };
+  } catch (error) {
+    if (isTargetedReplayTableMissing(error)) {
+      return { selectedCount: 0, workKeys: [], scannedCount: 0 };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -675,7 +801,7 @@ export async function seedDataQualityRemediationQueue(
   }: { limit?: number; now?: string } = {},
 ): Promise<SeedRemediationResult> {
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
-  await materializeTargetedReplayScans(db, selectedLimit, now);
+  await advanceTargetedReplayScans(db, selectedLimit, now);
   const versionKey = JSON.stringify(RESOLUTION_VERSIONS);
   const keys = [...STALE_SELECTORS.map((selector) => selector.key), "rotation"];
   const saved = await db

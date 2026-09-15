@@ -449,6 +449,95 @@ test("targeted replay is consumed once and retires requests for listings that be
   }
 });
 
+test("scheduled sweeps prioritize migration-owned replay over an existing ordinary backlog", async () => {
+  const { sqlite, db } = migratedSqlite({ before: MIGRATION });
+  try {
+    sqlite.exec(`
+      INSERT OR IGNORE INTO knowledge_catalog_manufacturers(
+        id,canonical_name,verification_status,source,provenance_json,created_at,updated_at
+      ) VALUES ('grado','GRADO','verified','test','{}','${AT}','${AT}');
+    `);
+    const grado = insertListing(sqlite, {
+      ...CURRENT_REPLAY_STATE,
+      at: AT,
+      shop_key: "fujiya-avic",
+      source_id: "priority-grado-gs3000",
+      title: "GRADO グラド GS3000-Classic Series",
+      manufacturer: "GRADO",
+      raw_manufacturer: "GRADO",
+      normalized_raw_manufacturer: "grado",
+      manufacturer_id: "grado",
+      canonical_manufacturer_id: "grado",
+      raw_model: "GS3000-Classic Series",
+      model: "GS3000-Classic Series",
+      normalized_model: "GS3000CLASSICSERIES",
+    });
+    const ordinary = insertListing(sqlite, {
+      ...CURRENT_REPLAY_STATE,
+      at: AT,
+      shop_key: "other-shop",
+      source_id: "ordinary-backlog",
+      title: "Ordinary backlog",
+    });
+    sqlite.exec(migration);
+    sqlite
+      .prepare(`INSERT INTO data_quality_remediation_queue(
+        work_key,work_type,listing_product_id,entity_id,reason,source,status,priority,
+        max_attempts,available_at,created_at,updated_at
+      ) VALUES (?,?,?,?,?,?,'pending',100,3,?,?,?)`)
+      .run(
+        `ordinary:listing:${ordinary}`,
+        "resolve_model",
+        ordinary,
+        String(ordinary),
+        "test_backlog",
+        "test",
+        AT,
+        AT,
+        AT,
+      );
+    sqlite
+      .prepare(`INSERT INTO data_quality_remediation_queue(
+        work_key,work_type,listing_product_id,entity_id,reason,source,status,priority,
+        max_attempts,available_at,created_at,updated_at
+      ) VALUES (?,?,?,?,?,?,'pending',100,3,?,?,?)`)
+      .run(
+        `targeted:0131-grado-gs3000:listing:${grado}`,
+        "reprocess_listing",
+        grado,
+        String(grado),
+        "generic_targeted_replay",
+        "scheduled_sweep",
+        AT,
+        AT,
+        AT,
+      );
+
+    const sweep = await runDataQualityRemediationSweep(db, {
+      preferQueuedWork: true,
+      seedLimit: 10,
+      claimLimit: 1,
+      now: new Date(AT),
+    });
+
+    assert.equal(sweep.resolved, 1);
+    assert.equal(
+      sqlite
+        .prepare("SELECT status FROM data_quality_remediation_queue WHERE work_key=?")
+        .get(`targeted:0131-grado-gs3000:listing:${grado}`)?.status,
+      "resolved",
+    );
+    assert.equal(
+      sqlite
+        .prepare("SELECT status FROM data_quality_remediation_queue WHERE work_key=?")
+        .get(`ordinary:listing:${ordinary}`)?.status,
+      "pending",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("replay converges GS3000 catalog identity and both corrected search categories", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {

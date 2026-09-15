@@ -408,6 +408,15 @@ repositories. `enqueueFullDataQualityRebuild` is a separate bounded full-recover
 normal crawl step; its old public HTTP handler has been removed. The shared resolver and
 projection functions above own the dependency order.
 
+Migration-owned targeted replay is probed before the scheduled sweep claims ordinary work and is
+queued at a higher priority. This keeps a reviewed production correction from waiting behind an
+unrelated resolver-version backlog while retaining the same one-listing scheduled claim budget.
+The probe and deployment-window scan are indexed, bounded, and become empty once their durable
+requests have been resolved. Each sweep advances at most one deployment-window selector page, so
+the attainable remaining-call floor still covers discovery and one complete listing replay. An
+existing actionable job with the same targeted key is promoted in place; a terminal job keeps its
+queue audit row while its request is retired so it cannot pin the bounded request window.
+
 ## Verified model relationships
 
 Model-family memberships, predecessor/successor chains and symmetric variants belong to the
