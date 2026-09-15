@@ -62,3 +62,40 @@ test("GENERAL_CRON still runs maintenance before rethrowing a scheduled failure"
   await assert.rejects(tick, (error: unknown) => error === scheduledError);
   assert.deepEqual(events, ["scheduled", "maintenance:start", "maintenance:end"]);
 });
+
+test("GENERAL_CRON admits maintenance before the cross-shop health snapshot", async () => {
+  const events: string[] = [];
+  const result = await runGeneralCronTick(
+    async () => {
+      events.push("watchdog");
+      return "dispatch";
+    },
+    async () => {
+      events.push("maintenance");
+    },
+    async (dispatch) => {
+      assert.equal(dispatch, "dispatch");
+      events.push("health");
+    },
+  );
+
+  assert.equal(result, "dispatch");
+  assert.deepEqual(events, ["watchdog", "maintenance", "health"]);
+});
+
+test("GENERAL_CRON leaves health for the next tick when maintenance yields", async () => {
+  let healthRuns = 0;
+  await assert.rejects(
+    runGeneralCronTick(
+      async () => "dispatch",
+      async () => {
+        throw new Error("budget yield");
+      },
+      async () => {
+        healthRuns += 1;
+      },
+    ),
+    /budget yield/,
+  );
+  assert.equal(healthRuns, 0);
+});

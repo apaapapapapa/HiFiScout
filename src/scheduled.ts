@@ -284,16 +284,7 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
   // triggers delivered after 08:00 must not create a catch-up burst.
   const crawlPaused = isCrawlQuietHours(scheduledAt.getTime()) || isCrawlQuietHours();
   if (cron === GENERAL_CRON) {
-    // Runs are reconciled before dispatches: an abandoned run records the shop failure, and the
-    // backoff that failure applies is what stops a shop that keeps timing out from being redialled
-    // on the very next tick.
-    if (!crawlPaused) await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
-    const recovered = crawlPaused
-      ? []
-      : await recoverStalledCrawlDispatches(env, { now: scheduledAt });
-    const dispatch: DispatchResult = recovered.length
-      ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
-      : ({ status: "skipped", queued: [] } satisfies DispatchResult);
+    const dispatch = await runGeneralCronWatchdogs(env, scheduledAt, crawlPaused);
     await logScheduledSyncHealthIfNeeded(env, cron, dispatch, scheduledAt);
     return dispatch;
   }
@@ -311,6 +302,23 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
   logDispatchResult(cron, dispatch);
   await logScheduledSyncHealthIfNeeded(env, cron, dispatch, scheduledAt);
   return dispatch;
+}
+
+async function runGeneralCronWatchdogs(
+  env: Env,
+  scheduledAt: Date,
+  crawlPaused = isCrawlQuietHours(scheduledAt.getTime()) || isCrawlQuietHours(),
+): Promise<DispatchResult> {
+  // Runs are reconciled before dispatches: an abandoned run records the shop failure, and the
+  // backoff that failure applies is what stops a shop that keeps timing out from being redialled
+  // on the very next tick.
+  if (!crawlPaused) await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
+  const recovered = crawlPaused
+    ? []
+    : await recoverStalledCrawlDispatches(env, { now: scheduledAt });
+  return recovered.length
+    ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
+    : ({ status: "skipped", queued: [] } satisfies DispatchResult);
 }
 
 /**
@@ -882,8 +890,9 @@ async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void
       scheduledAt,
     );
     await runGeneralCronTick(
-      () => runScheduled(GENERAL_CRON, limitedEnv, scheduledAt),
+      () => runGeneralCronWatchdogs(limitedEnv, scheduledAt),
       () => runPendingMaintenance(limitedEnv, scheduledAt, budget),
+      (dispatch) => logScheduledSyncHealthIfNeeded(limitedEnv, GENERAL_CRON, dispatch, scheduledAt),
     );
   } catch (error) {
     if (!(error instanceof InvocationBudgetExceeded)) throw error;
@@ -902,21 +911,25 @@ async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void
 }
 
 /**
- * Runs the GENERAL_CRON watchdog and maintenance as one sequential task tree.
+ * Runs the GENERAL_CRON watchdog, maintenance and health snapshot as one sequential task tree.
  *
  * The watchdog and maintenance both issue D1 work. Starting them through separate `waitUntil`
  * calls lets the two query trees contend inside the same isolate, undermining the maintenance
  * serialization above. Maintenance must still run when the watchdog fails, while the watchdog
- * failure must remain visible as the cron outcome.
+ * failure must remain visible as the cron outcome. The cross-shop health snapshot follows
+ * maintenance so the non-checkpointed remediation floor is reachable; if maintenance consumes the
+ * work budget, the next five-minute tick provides the next authoritative snapshot.
  */
 export async function runGeneralCronTick<T>(
   scheduledWork: () => Promise<T>,
   maintenanceWork: () => Promise<void>,
+  healthWork?: (scheduledResult: T) => Promise<void>,
 ): Promise<T> {
   const scheduledResult = await settled(scheduledWork);
   const maintenanceResult = await settled(maintenanceWork);
   if (scheduledResult.status === "rejected") throw scheduledResult.reason;
   if (maintenanceResult.status === "rejected") throw maintenanceResult.reason;
+  if (healthWork) await healthWork(scheduledResult.value);
   return scheduledResult.value;
 }
 

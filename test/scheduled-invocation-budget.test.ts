@@ -14,7 +14,7 @@ import {
   completeMaintenance,
   MAINTENANCE_PENDING,
 } from "../src/db/scheduled-maintenance-repository.js";
-import { runPendingMaintenance } from "../src/scheduled.js";
+import { runGeneralCronTick, runPendingMaintenance } from "../src/scheduled.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 
@@ -223,21 +223,40 @@ test("the remediation budget floor remains reachable after mandatory cron work",
       {
         name: "data_quality_remediation_sweep",
         minimumRemainingCalls: 37,
-        async run() {
+        async run(env: Env) {
           runs += 1;
+          // The floor includes the task claim and reserves one finalization call. Consume every
+          // remaining ordinary call to prove the later health snapshot cannot starve admission.
+          for (let call = 0; call < 35; call += 1) {
+            await env.DB.prepare("SELECT 1").first();
+          }
         },
       },
     ];
     const budget = invocationBudget(db, { maxCalls: 45, finalizationReserve: 5 });
+    let healthRuns = 0;
 
-    // General Cron performs two calls before runPendingMaintenance; its pending-work query is the
-    // third mandatory pre-admission call. The production remediation floor must still be admitted.
-    await budget.db.prepare("SELECT 1").first();
-    await budget.db.prepare("SELECT 1").first();
-    await runPendingMaintenance({ DB: budget.db } as unknown as Env, at, budget, tasks);
+    await assert.rejects(
+      runGeneralCronTick(
+        async () => {
+          // Schedule persistence and watchdog recovery are the two calls before pending lookup.
+          await budget.db.prepare("SELECT 1").first();
+          await budget.db.prepare("SELECT 1").first();
+          return "dispatch";
+        },
+        () => runPendingMaintenance({ DB: budget.db } as unknown as Env, at, budget, tasks),
+        async () => {
+          healthRuns += 1;
+          await budget.db.prepare("SELECT 1").first();
+        },
+      ),
+      InvocationBudgetExceeded,
+    );
 
     assert.equal(runs, 1);
-    assert.equal(budget.metrics().yieldReason, null);
+    assert.equal(healthRuns, 1);
+    assert.equal(budget.metrics().d1Calls, 40);
+    assert.equal(budget.metrics().yieldReason, "d1_calls");
     assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 5 * 60_000)), []);
   } finally {
     sqlite.close();
