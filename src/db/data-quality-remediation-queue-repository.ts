@@ -99,7 +99,11 @@ interface TargetedReplayListingRow {
 interface TargetedReplayRequestRow {
   listing_product_id: number;
   request_key: string;
-  queued: number;
+  queue_id: number | null;
+  queue_status: string | null;
+  queue_priority: number | null;
+  queue_attempt_count: number | null;
+  queue_max_attempts: number | null;
 }
 
 export interface TargetedReplayScanResult {
@@ -632,47 +636,75 @@ export async function seedTargetedDataQualityRemediationQueue(
           ORDER BY listing_product_id
           LIMIT ?
         )
-        SELECT t.listing_product_id,t.request_key,
-          EXISTS (
-            SELECT 1 FROM data_quality_remediation_queue q
-            WHERE q.work_key='targeted:' || t.request_key || ':listing:' || t.listing_product_id
-          ) AS queued
+        SELECT t.listing_product_id,t.request_key,q.id AS queue_id,q.status AS queue_status,
+          q.priority AS queue_priority,q.attempt_count AS queue_attempt_count,
+          q.max_attempts AS queue_max_attempts
         FROM visited t
+        LEFT JOIN data_quality_remediation_queue q
+          ON q.work_key='targeted:' || t.request_key || ':listing:' || t.listing_product_id
         ORDER BY t.listing_product_id`)
       .bind(selectedLimit)
       .all<TargetedReplayRequestRow>();
     const visited = rows.results || [];
-    const candidates = visited
-      .filter((row) => !number(row.queued))
-      .map((row) => {
-        const listingProductId = number(row.listing_product_id);
-        const workKey = `targeted:${row.request_key}:listing:${listingProductId}`;
-        return { listingProductId, workKey };
-      });
-    if (candidates.length) {
-      await db.batch(
-        candidates.map(({ listingProductId, workKey }) =>
-          db
-            .prepare(`INSERT INTO data_quality_remediation_queue(
-              work_key,work_type,listing_product_id,entity_id,reason,source,status,
-              priority,max_attempts,available_at,created_at,updated_at
-            ) VALUES (?,'reprocess_listing',?,?,?,'scheduled_sweep','pending',1000,3,?,?,?)
-            ON CONFLICT(work_key) DO NOTHING`)
-            .bind(
-              workKey,
-              listingProductId,
-              String(listingProductId),
-              "migration_targeted_data_quality_remediation",
-              now,
-              now,
-              now,
-            ),
-        ),
+    const actionable = visited.flatMap((row) => {
+      const listingProductId = number(row.listing_product_id);
+      const workKey = `targeted:${row.request_key}:listing:${listingProductId}`;
+      if (row.queue_id == null) return [{ listingProductId, workKey, insert: true }];
+      const status = row.queue_status || "";
+      if (
+        (status === "pending" || status === "processing") &&
+        number(row.queue_attempt_count) < number(row.queue_max_attempts)
+      ) {
+        return [{ listingProductId, workKey, insert: false }];
+      }
+      return [];
+    });
+    const terminal = visited.filter((row) => {
+      if (row.queue_id == null) return false;
+      const status = row.queue_status || "";
+      return (
+        (status !== "pending" && status !== "processing") ||
+        number(row.queue_attempt_count) >= number(row.queue_max_attempts)
       );
+    });
+    const statements = [
+      ...actionable.map(({ listingProductId, workKey, insert }) =>
+        insert
+          ? db
+              .prepare(`INSERT INTO data_quality_remediation_queue(
+                work_key,work_type,listing_product_id,entity_id,reason,source,status,
+                priority,max_attempts,available_at,created_at,updated_at
+              ) VALUES (?,'reprocess_listing',?,?,?,'scheduled_sweep','pending',1000,3,?,?,?)
+              ON CONFLICT(work_key) DO NOTHING`)
+              .bind(
+                workKey,
+                listingProductId,
+                String(listingProductId),
+                "migration_targeted_data_quality_remediation",
+                now,
+                now,
+                now,
+              )
+          : db
+              .prepare(`UPDATE data_quality_remediation_queue
+                SET priority=1000,updated_at=?
+                WHERE work_key=? AND priority<1000
+                  AND status IN ('pending','processing') AND attempt_count<max_attempts`)
+              .bind(now, workKey),
+      ),
+      ...terminal.map((row) =>
+        db
+          .prepare(`DELETE FROM data_quality_targeted_replay_requests
+            WHERE listing_product_id=? AND request_key=?`)
+          .bind(row.listing_product_id, row.request_key),
+      ),
+    ];
+    if (statements.length) {
+      await db.batch(statements);
     }
     return {
-      selectedCount: candidates.length,
-      workKeys: candidates.map(({ workKey }) => workKey),
+      selectedCount: actionable.length,
+      workKeys: actionable.map(({ workKey }) => workKey),
       scannedCount: visited.length,
     };
   } catch (error) {

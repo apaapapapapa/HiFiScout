@@ -237,7 +237,7 @@ test("targeted replay priority seeding bounds visited requests before excluding 
       max_attempts,available_at,created_at,updated_at
     ) VALUES (
       'targeted:queued-request:listing:1','reprocess_listing',1,'1','test','test',
-      'pending',1000,3,'2026-08-15T00:00:00.000Z','2026-08-15T00:00:00.000Z',
+      'pending',100,3,'2026-08-15T00:00:00.000Z','2026-08-15T00:00:00.000Z',
       '2026-08-15T00:00:00.000Z'
     )`);
 
@@ -245,8 +245,15 @@ test("targeted replay priority seeding bounds visited requests before excluding 
     now: "2026-08-15T00:00:00.000Z",
     limit: 1,
   });
-  assert.equal(first.selectedCount, 0, "the selector must not scan past its visited-ID budget");
+  assert.equal(first.selectedCount, 1, "actionable queued work remains in the bounded selection");
   assert.equal(first.scannedCount, 1, "an already-queued request still counts as visited work");
+  assert.equal(
+    sqlite
+      .prepare("SELECT priority FROM data_quality_remediation_queue WHERE listing_product_id=1")
+      .get()?.priority,
+    1000,
+    "a targeted request must promote an ordinary-priority copy of the same work key",
+  );
   assert.equal(
     sqlite
       .prepare(
@@ -259,6 +266,61 @@ test("targeted replay priority seeding bounds visited requests before excluding 
   sqlite
     .prepare("DELETE FROM data_quality_targeted_replay_requests WHERE listing_product_id=1")
     .run();
+  const second = await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:01:00.000Z",
+    limit: 1,
+  });
+  assert.equal(second.selectedCount, 1);
+  assert.equal(
+    sqlite
+      .prepare("SELECT priority FROM data_quality_remediation_queue WHERE listing_product_id=2")
+      .get()?.priority,
+    1000,
+  );
+});
+
+test("targeted replay priority seeding retires a terminal prefix before advancing", async () => {
+  const { sqlite, db } = migratedSqlite();
+  seedListings(sqlite);
+  sqlite.exec(`INSERT INTO data_quality_targeted_replay_requests(
+    listing_product_id,request_key,reason,created_at
+  ) VALUES
+    (1,'terminal-request','query-plan','2026-08-15T00:00:00.000Z'),
+    (2,'next-request','query-plan','2026-08-15T00:00:00.000Z');
+    INSERT INTO data_quality_remediation_queue(
+      work_key,work_type,listing_product_id,entity_id,reason,source,status,priority,
+      attempt_count,max_attempts,available_at,created_at,updated_at
+    ) VALUES (
+      'targeted:terminal-request:listing:1','reprocess_listing',1,'1','test','test',
+      'failed',100,3,3,'2026-08-15T00:00:00.000Z','2026-08-15T00:00:00.000Z',
+      '2026-08-15T00:00:00.000Z'
+    )`);
+
+  const first = await seedTargetedDataQualityRemediationQueue(db, {
+    now: "2026-08-15T00:00:00.000Z",
+    limit: 1,
+  });
+  assert.equal(first.selectedCount, 0);
+  assert.equal(first.scannedCount, 1);
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM data_quality_targeted_replay_requests WHERE listing_product_id=1",
+      )
+      .get()?.n,
+    0,
+    "terminal work remains in the queue for audit but must not pin the request cursor",
+  );
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM data_quality_remediation_queue WHERE listing_product_id=2",
+      )
+      .get()?.n,
+    0,
+    "the bounded window must not inspect the next request early",
+  );
+
   const second = await seedTargetedDataQualityRemediationQueue(db, {
     now: "2026-08-15T00:01:00.000Z",
     limit: 1,

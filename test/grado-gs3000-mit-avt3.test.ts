@@ -496,6 +496,22 @@ test("scheduled sweeps prioritize migration-owned replay over an existing ordina
         AT,
         AT,
       );
+    sqlite
+      .prepare(`INSERT INTO data_quality_remediation_queue(
+        work_key,work_type,listing_product_id,entity_id,reason,source,status,priority,
+        max_attempts,available_at,created_at,updated_at
+      ) VALUES (?,?,?,?,?,?,'pending',100,3,?,?,?)`)
+      .run(
+        `targeted:0131-grado-gs3000:listing:${grado}`,
+        "reprocess_listing",
+        grado,
+        String(grado),
+        "generic_targeted_replay",
+        "scheduled_sweep",
+        AT,
+        AT,
+        AT,
+      );
 
     const sweep = await runDataQualityRemediationSweep(db, {
       preferQueuedWork: true,
