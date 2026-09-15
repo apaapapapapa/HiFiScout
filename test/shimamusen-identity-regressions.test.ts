@@ -76,6 +76,24 @@ test("Shimamusen separates an attached Japanese manufacturer from a digit-bearin
   assert.equal(normalized.primaryCategoryId, "PER.HEADPHONE");
 });
 
+test("Shimamusen does not assign the compatible device manufacturer to an accessory", () => {
+  const html = `
+    <ul>
+      <li>
+        <a href="/shopdetail/000000019999/ct826/page1/order/">
+          【中古品】ゼンハイザーHD800S用 交換ケーブル
+        </a>
+        <span class="price">販売価格19,800円(税込)</span>
+      </li>
+    </ul>`;
+
+  const [parsed] = parseShimamusenListing(html, { kind: "中古品" });
+  const normalized = normalizeCatalogProduct(parsed, {}, { shopKey: "shimamusen" });
+
+  assert.notEqual(normalized.manufacturerId, "sennheiser");
+  assert.notEqual(normalized.manufacturer, "Sennheiser");
+});
+
 test("legacy attached-manufacturer rows recover without rewriting immutable raw evidence", () => {
   const normalized = normalizeCatalogProduct(
     {

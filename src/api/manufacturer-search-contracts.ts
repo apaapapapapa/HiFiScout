@@ -201,7 +201,7 @@ export function manufacturerPrefixPattern(alias: unknown = ""): RegExp | null {
   // Treat that script transition as a boundary only when the adjacent token contains a digit;
   // arbitrary prose such as `ゼンハイザーヘッドホン` must remain unmatched.
   const attachedAsciiModel = /[ぁ-んァ-ヶ一-龯]/u.test(normalizedAlias)
-    ? `|(?=[A-Z][A-Z0-9._\\/-]*\\d[A-Z0-9._\\/-]*)`
+    ? `|(?=[A-Z][A-Z0-9._\\/-]*\\d[A-Z0-9._\\/-]*(?=$|${boundary}|[※《【]))`
     : "";
   return new RegExp(
     `^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary}${attachedAsciiModel})`,

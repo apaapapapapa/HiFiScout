@@ -59,6 +59,20 @@ test("Hifido parser keeps factual listing fields only", () => {
   );
 });
 
+test("Hifido parser preserves cartridge technology suffixes", () => {
+  const html = `
+    <div class="item">
+      <a href="/26-32956-21049-00.html">VM-27G</a>
+      <p>メーカー:SONY ソニー</p>
+      <p>売価:9,900円(税込)</p>
+      <p>カートリッジ MM型</p>
+      <p>2026-09-15入荷</p>
+    </div>`;
+
+  const [product] = parseHifidoListing(html);
+  assert.equal(product.rawCategory, "カートリッジ MM型");
+});
+
 test("Hifido parser handles rendered list-item markup with duplicate product links", () => {
   const html = `
     <div class="list-item">
