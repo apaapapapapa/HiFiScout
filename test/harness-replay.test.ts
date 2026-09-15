@@ -60,6 +60,31 @@ test("replay retains failed and skipped assertions and missing stages without in
   assert.throws(() => collectReplayCases([report, report]), /duplicate_replay_suite/u);
 });
 
+test("replay keeps a selected suite passed when an unrelated suite fails its shard", () => {
+  const selected = Object.keys(REPLAY_SUITES)[0];
+  const report = {
+    success: false,
+    testResults: [
+      {
+        name: "/runner/work/repo/test/unrelated.test.ts",
+        status: "failed",
+        assertionResults: [
+          { fullName: "unrelated failure", status: "failed", failureMessages: ["timed out"] },
+        ],
+      },
+      {
+        name: `/runner/work/repo/${selected}`,
+        status: "passed",
+        assertionResults: [{ fullName: "stable replay", status: "passed", failureMessages: [] }],
+      },
+    ],
+  };
+
+  const cases = collectReplayCases([report]);
+  assert.equal(cases.cases.find((item) => item.id === `${selected}::<suite>`)?.status, "pass");
+  assert.equal(cases.cases.find((item) => item.id.endsWith("::stable replay"))?.status, "pass");
+});
+
 test("before/after replay reports exact regressed cases and refuses changed, missing or stale evidence", () => {
   const before = fixture(),
     after = fixture();
