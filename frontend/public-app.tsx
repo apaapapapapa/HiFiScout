@@ -258,36 +258,6 @@ function FilterPanel({
         </div>
 
         <div className="filter-fields">
-          <FilterMultiSelect
-            id="shop"
-            label="ショップ"
-            selected={filters.shop}
-            options={shops.map((shop) => ({
-              value: shop.key,
-              label: shop.name,
-              count: shop.activeProductCount,
-            }))}
-            onChange={(values) => onSelectionChange("shop", values)}
-          />
-          <FilterMultiSelect
-            id="manufacturer"
-            label="メーカー"
-            selected={filters.manufacturer}
-            options={
-              meta?.manufacturerFacets?.length
-                ? meta.manufacturerFacets.map((facet) => ({
-                    value: facet.name,
-                    label: facet.name,
-                    count: facet.activeProductCount,
-                    aliases: facet.aliases,
-                  }))
-                : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
-            }
-            onChange={(values) => onSelectionChange("manufacturer", values)}
-          />
-          <p className="filter-note">
-            メーカー・ショップなど異なる項目の条件は、すべて一致する商品を表示します。候補の件数は全体の掲載数です。
-          </p>
           <label>
             <span>カテゴリ</span>
             <select
@@ -357,6 +327,36 @@ function FilterPanel({
           </div>
           <p id="price-error" className="field-error" role="status">
             {Object.values(errors).join(" ")}
+          </p>
+          <FilterMultiSelect
+            id="shop"
+            label="ショップ"
+            selected={filters.shop}
+            options={shops.map((shop) => ({
+              value: shop.key,
+              label: shop.name,
+              count: shop.activeProductCount,
+            }))}
+            onChange={(values) => onSelectionChange("shop", values)}
+          />
+          <FilterMultiSelect
+            id="manufacturer"
+            label="メーカー"
+            selected={filters.manufacturer}
+            options={
+              meta?.manufacturerFacets?.length
+                ? meta.manufacturerFacets.map((facet) => ({
+                    value: facet.name,
+                    label: facet.name,
+                    count: facet.activeProductCount,
+                    aliases: facet.aliases,
+                  }))
+                : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
+            }
+            onChange={(values) => onSelectionChange("manufacturer", values)}
+          />
+          <p className="filter-note">
+            項目間はすべて一致する条件で検索します。候補の件数は全体の掲載数です。
           </p>
           <details
             className="advanced-filters"
@@ -501,6 +501,9 @@ function SyncStatus({ meta, failed }: { meta: MetaResponse | null; failed: boole
         </span>
       </summary>
       <div id="sync-status-details" className="sync-status-details">
+        <p className="filter-note">
+          店舗ごとの巡回処理の状況です。全商品の在庫を同時に確認した時刻ではありません。出品情報の取得日時は商品詳細で確認できます。
+        </p>
         {failed && !meta ? (
           <p>一覧の「再読み込み」から再取得できます。</p>
         ) : (

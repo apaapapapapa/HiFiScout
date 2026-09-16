@@ -92,6 +92,7 @@ export function ProductCorrectionReportForm({
           報告する対象
           <select
             name="target"
+            aria-label="報告する対象"
             value={listingProductId}
             disabled={disabled}
             onChange={(event) => setListingProductId(event.currentTarget.value)}

@@ -57,7 +57,17 @@ export interface CategoryOptionModel {
 }
 
 export function categoryOptionModel(meta: MetaResponse): CategoryOptionModel {
-  const facets = Array.isArray(meta.categoryFacets) ? meta.categoryFacets : [];
+  const rawFacets = Array.isArray(meta.categoryFacets) ? meta.categoryFacets : [];
+  const facets = rawFacets.map((facet) => {
+    const parent = rawFacets.find((candidate) => candidate.id === facet.parentId);
+    const name =
+      !facet.classifiable && rawFacets.some((candidate) => candidate.parentId === facet.id)
+        ? `${facet.name}（すべて）`
+        : parent?.name.trim() === facet.name.trim()
+          ? `${facet.name}本体`
+          : facet.name;
+    return { ...facet, name };
+  });
   if (!facets.length) return { topLevel: [], groups: [], legacy: meta.categories || [] };
 
   const ungrouped: MetaCategoryFacet[] = [];
@@ -110,7 +120,7 @@ export function syncStatusSummary(meta: MetaResponse): SyncStatusSummary {
       ? `⚠ ${Math.max(critical.length, problems.length)}店舗で更新に問題があります`
       : reported === "warning"
         ? `⚠ ${problems.length}店舗で更新が遅れています`
-        : "データ更新 正常";
+        : "巡回処理 正常";
   return { status, summary };
 }
 

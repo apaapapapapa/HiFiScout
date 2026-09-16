@@ -159,7 +159,9 @@ export function ProductCard({
   const colors = productColors(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
-  const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
+  const representative = product.representative_offer;
+  const representsLowestPrice =
+    representative != null && representative.price_yen === product.lowest_price_yen;
   const favoriteLabel = favorite ? "お気に入りから削除" : "お気に入りに追加";
   const hasServerDetail = !isLegacyFavoriteKey(product.key);
   const updated = activity.activity
@@ -223,7 +225,6 @@ export function ProductCard({
         </h2>
         <div className="product-submeta">
           <ProductCategoryLinks product={product} navigation={filterNavigation} />
-          {condition ? <span className="condition">{condition}</span> : null}
         </div>
         {favoriteShopUnconfirmed ? (
           <p className="filter-note">
@@ -235,6 +236,10 @@ export function ProductCard({
         <div className="price-row">
           <strong>{priceSummary(product)}</strong>
         </div>
+        <p className="price-condition">
+          {product.lowest_price_yen == null ? "出品の状態" : "最安出品の状態"}:{" "}
+          {representsLowestPrice ? representative.condition_text || "記載なし" : "詳細で確認"}
+        </p>
         {product.representative_offer ? (
           <div className="representative-terms">
             {multiOffer ? (
@@ -243,6 +248,9 @@ export function ProductCard({
                 {product.representative_offer.price_yen == null
                   ? "価格不明"
                   : yen.format(product.representative_offer.price_yen)}
+                {!representsLowestPrice
+                  ? ` / 状態: ${product.representative_offer.condition_text || "記載なし"}`
+                  : ""}
               </p>
             ) : null}
             <OfferTerms facts={product.representative_offer.offer_facts} compact />
@@ -290,7 +298,7 @@ export function ProductCard({
             type="button"
             onClick={() => onOffers(product.key)}
           >
-            {multiOffer ? `${product.offer_count}件の在庫を比較` : "商品詳細"}
+            {multiOffer ? `${product.offer_count}件の出品を比較` : "商品詳細"}
           </button>
         ) : null}
         {!multiOffer ? (
@@ -406,7 +414,7 @@ function OfferRow({
       <p className="offer-title">{offer.title}</p>
       <OfferFacts facts={offer.offer_facts} />
       <p className="offer-updated">
-        最終確認:{" "}
+        掲載情報の最終取得:{" "}
         {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (
           <time dateTime={offer.last_seen_at}>
             {new Date(offer.last_seen_at).toLocaleString("ja-JP")}
@@ -507,11 +515,17 @@ export function OffersContent({
       </div>
       {product.identity_kind === "catalog" ? (
         <p className="offers-note">
-          {product.shop_count}店舗 / {product.offer_count}件の在庫
+          {`${product.shop_count}店舗 / ${product.offer_count}件の出品（在庫あり ${product.in_stock_offer_count}件・売り切れ ${product.sold_out_offer_count}件・未確認 ${Math.max(0, product.offer_count - product.in_stock_offer_count - product.sold_out_offer_count)}件）`}
         </p>
       ) : (
         <p className="offers-note">この商品はまだ他店の在庫と照合できていません。</p>
       )}
+      <p className="filter-note">
+        商品詳細には、検索条件にかかわらず売り切れ・在庫未確認を含む出品を表示します。
+        {offers.length < product.offer_count
+          ? `全${product.offer_count}件のうち${offers.length}件を表示しています。`
+          : ""}
+      </p>
       {offers.length > 1 ? (
         <div
           className="offer-overview"
@@ -525,6 +539,7 @@ export function OffersContent({
               <tr>
                 <th scope="col">販売店</th>
                 <th scope="col">価格</th>
+                <th scope="col">状態</th>
                 <th scope="col">在庫</th>
                 <th scope="col">販売単位・仕様</th>
                 <th scope="col">確認先</th>
@@ -535,6 +550,7 @@ export function OffersContent({
                 <tr key={offer.listing_product_id}>
                   <th scope="row">{shopName(offer.shop_key)}</th>
                   <td>{offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen)}</td>
+                  <td>{offer.condition_text || "記載なし"}</td>
                   <td>{stockLabel(offer.stock_status)}</td>
                   <td>
                     {offerTermGroups(offer.offer_facts).every((group) =>
@@ -546,6 +562,21 @@ export function OffersContent({
                     )}
                   </td>
                   <td>
+                    <a
+                      href={`#offer-details-${offer.listing_product_id}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        const details = document.getElementById(
+                          `offer-details-${offer.listing_product_id}`,
+                        );
+                        if (!(details instanceof HTMLDetailsElement)) return;
+                        details.open = true;
+                        details.querySelector("summary")?.focus();
+                        details.scrollIntoView({ block: "nearest" });
+                      }}
+                    >
+                      出品詳細
+                    </a>
                     <a
                       href={safeExternalUrl(offer.source_url)}
                       target="_blank"
@@ -564,12 +595,24 @@ export function OffersContent({
       <ol className="offers">
         {offers.length ? (
           offers.map((offer) => (
-            <OfferRow
-              key={offer.listing_product_id}
-              offer={offer}
-              shopName={shopName}
-              onHistory={onHistory}
-            />
+            <li key={offer.listing_product_id} className="offer-item">
+              <details
+                id={`offer-details-${offer.listing_product_id}`}
+                className="offer-details"
+                open={offers.length === 1}
+              >
+                <summary>
+                  {shopName(offer.shop_key)} /{" "}
+                  {offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen)}
+                  {" / "}
+                  {offer.condition_text || "状態の記載なし"} / {stockLabel(offer.stock_status)}
+                  <span className="offer-reference">出品番号 {offer.listing_product_id}</span>
+                </summary>
+                <ol className="offer-detail-content">
+                  <OfferRow offer={offer} shopName={shopName} onHistory={onHistory} />
+                </ol>
+              </details>
+            </li>
           ))
         ) : (
           <li>表示できる在庫がありません。</li>
@@ -577,7 +620,7 @@ export function OffersContent({
       </ol>
       <p className="filter-note">
         記載なしは「付属しない」「保証がない」「整備歴がない」という意味ではありません。
-        店舗独自の外観ランクは共通ランクに換算していません。日付は情報の確認日で、整備日や保証期限ではありません。
+        店舗独自の外観ランクは共通ランクに換算していません。日付はこの出品情報を取得した記録で、現在の在庫を保証するものではありません。最新の状態は販売店で確認してください。
       </p>
       <ProductPriceIndexSummary product={product} />
       <MarketAnalysis analysis={product.market_analysis} />
