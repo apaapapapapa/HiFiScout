@@ -6,7 +6,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { escapeHtml, relativeTime, safeDate } from "../frontend/format.js";
 import { pageNumbers, pageOffset, resultSummary } from "../frontend/pagination.js";
 import { activityData, priceDropped } from "../frontend/product-activity.js";
-import { safeExternalUrl, syncStatusSummary } from "../frontend/product-presentation.js";
+import {
+  categoryOptionModel,
+  safeExternalUrl,
+  syncStatusSummary,
+} from "../frontend/product-presentation.js";
 import {
   EmptyProducts,
   HistoryContent,
@@ -230,10 +234,80 @@ test("a multi-shop card leads to the comparison instead of one arbitrary shop", 
 
   assert.match(markup, /class="shop shop-multiple">2店舗/u);
   assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
-  assert.match(markup, /3件の在庫を比較/u);
+  assert.match(markup, /3件の出品を比較/u);
   assert.match(markup, /2\/3件が在庫あり/u);
   assert.match(markup, /￥1,000,000〜/u);
   assert.doesNotMatch(markup, /class="shop-link"/u);
+});
+
+test("a grouped price exposes junk condition without attributing another offer's condition to the minimum", () => {
+  const junk = product({
+    offer_count: 3,
+    lowest_price_yen: 3000,
+    representative_offer: offer({ price_yen: 3000, condition_text: "ジャンク" }),
+  });
+  assert.match(renderCard(junk), /最安出品の状態: ジャンク/u);
+  const other = product({
+    ...junk,
+    representative_offer: offer({ price_yen: 25000, condition_text: "美品" }),
+  });
+  assert.match(renderCard(other), /最安出品の状態: 詳細で確認/u);
+  assert.match(renderCard(other), /￥25,000 \/ 状態: 美品/u);
+  assert.doesNotMatch(renderCard(other), /最安出品の状態: 美品/u);
+});
+
+test("category options distinguish the entire parent scope from its same-named leaf", () => {
+  const meta: MetaResponse = {
+    status: "healthy",
+    shops: [],
+    manufacturers: [],
+    categories: [],
+    categoryFacets: [
+      {
+        id: "SPK",
+        name: "スピーカー",
+        parentId: null,
+        classifiable: false,
+        order: 1,
+        filterable: true,
+        group: null,
+        activeProductCount: 1,
+      },
+      {
+        id: "SPK.LOUDSPEAKER",
+        name: "　スピーカー",
+        parentId: "SPK",
+        classifiable: true,
+        order: 2,
+        filterable: true,
+        group: null,
+        activeProductCount: 1,
+      },
+    ],
+  };
+  const options = categoryOptionModel(meta).topLevel.filter((entry) => entry !== "separator");
+  assert.deepEqual(
+    options.map((entry) => [entry.id, entry.name]),
+    [
+      ["SPK", "スピーカー（すべて）"],
+      ["SPK.LOUDSPEAKER", "　スピーカー本体"],
+    ],
+  );
+  assert.equal(meta.categoryFacets[0].name, "スピーカー");
+});
+
+test("detail separates stock states and discloses capped unfiltered offers", () => {
+  const markup = renderOffers(
+    product({ offer_count: 19, in_stock_offer_count: 12, sold_out_offer_count: 6, shop_count: 4 }),
+    [offer(), offer({ listing_product_id: 2, condition_text: "ジャンク" })],
+  );
+  assert.match(markup, /4店舗 \/ 19件の出品/u);
+  assert.match(markup, /在庫あり 12件・売り切れ 6件・未確認 1件/u);
+  assert.match(markup, /全19件のうち2件を表示/u);
+  assert.match(markup, /検索条件にかかわらず/u);
+  assert.match(markup, /<th scope="col">状態<\/th>/u);
+  assert.match(markup, /<td>ジャンク<\/td>/u);
+  assert.doesNotMatch(markup, /class="offer-details" open/u);
 });
 
 test("a product with no price and no stock says so rather than inventing one", () => {
@@ -288,7 +362,7 @@ test("the offer list keeps what actually distinguishes two offers of the same mo
     }),
   ]);
 
-  assert.match(markup, /2店舗 \/ 2件の在庫/u);
+  assert.match(markup, /2店舗 \/ 2件の出品/u);
   assert.match(markup, /元箱付き/u);
   assert.match(markup, /美品/u);
   assert.match(markup, /並品/u);
@@ -392,6 +466,6 @@ test("failed detail and history dialogs expose retries and offers carry observat
   assert.match(detail, /<button[^>]*>在庫情報を再読み込み/);
   assert.match(history, /<button[^>]*>価格履歴を再読み込み/);
   const ready = renderOffers(product(), [offer()]);
-  assert.match(ready, /最終確認:/);
+  assert.match(ready, /掲載情報の最終取得:/);
   assert.match(ready, /dateTime="2026-08-11T00:00:00.000Z"/i);
 });

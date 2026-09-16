@@ -998,8 +998,46 @@ test("unknown card terms stay compact and the overview exposes every shop before
   await expect(overview).toContainText("120,000");
   await expect(overview.getByRole("link", { name: "別の販売店で確認" })).toBeInViewport();
   await expect(page.locator(".offer-facts[open]")).toHaveCount(0);
+  await expect(page.locator(".offer-details[open]")).toHaveCount(0);
+  await overview.getByRole("link", { name: "出品詳細", exact: true }).first().click();
+  await expect(page.locator(".offer-details[open]")).toHaveCount(1);
+  await expect(page.locator(".offer-details > summary").first()).toBeFocused();
   await page.locator(".offer-facts summary").first().click();
   await expect(page.locator(".offer-facts[open]")).toContainText("記載なし");
+});
+
+test("correction targets distinguish identically titled offers even while details are collapsed", async ({
+  page,
+  mount,
+}) => {
+  await mockCatalog(page);
+  const offers = [
+    offer({ listing_product_id: 11, title: "DL-103", condition_text: "ジャンク", price_yen: 3000 }),
+    offer({ listing_product_id: 22, title: "DL-103", condition_text: "中古", price_yen: 25000 }),
+  ];
+  const grouped = product({
+    representative_offer: offers[0],
+    offer_count: 2,
+    shop_count: 1,
+    lowest_price_yen: 3000,
+  });
+  await page.route("**/api/product-search?**", (route) =>
+    route.fulfill({ json: { ...results, items: [grouped] } }),
+  );
+  await page.route("**/api/product-search/c-1", (route) =>
+    route.fulfill({ json: { product: grouped, offers } }),
+  );
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".price-condition")).toHaveText("最安出品の状態: ジャンク");
+  await page.locator(".offers-button[data-offers]").click();
+  await page.getByText("情報の誤りを報告", { exact: true }).click();
+  const target = page.getByLabel("報告する対象", { exact: true });
+  await expect(target.locator('option[value="11"]')).toContainText("3,000 / ジャンク");
+  await expect(target.locator('option[value="22"]')).toContainText("25,000 / 中古");
+  await expect(target.locator('option[value="11"]')).toContainText("出品番号 11");
+  await expect(target.locator('option[value="22"]')).toContainText("出品番号 22");
+  await target.selectOption("22");
+  await expect(target).toHaveValue("22");
 });
 
 test("desktop applies prices once and keeps pending details separate from immediate controls", async ({
@@ -1010,6 +1048,9 @@ test("desktop applies prices once and keeps pending details separate from immedi
   const seen = await mockCatalog(page);
   await mount("frontend/public-app/Default");
   await expect(page.locator(".card")).toHaveCount(1);
+  await expect(page.locator("#category")).toBeInViewport();
+  await expect(page.locator("#minPrice")).toBeInViewport();
+  await expect(page.locator("#maxPrice")).toBeInViewport();
   await page.locator("#minPrice").fill("5万");
   await page.locator("#maxPrice").fill("12.5万円");
   await selectShop(page);

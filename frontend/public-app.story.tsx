@@ -1,4 +1,5 @@
 import { PublicApp } from "./public-app.js";
+import "./product-correction-report-ui.js";
 
 export function Default() {
   return (

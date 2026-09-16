@@ -221,7 +221,7 @@ test("healthy metadata renders the simple normal sync summary", async ({ page, c
   );
 
   await catalogPage.goto();
-  await expect(catalogPage.syncSummaryText).toHaveText("データ更新 正常");
+  await expect(catalogPage.syncSummaryText).toHaveText("巡回処理 正常");
   await catalogPage.openSyncDetails();
   await expect(catalogPage.syncStatusDetails).toContainText("12分前");
   await expect(catalogPage.syncStatusDetails).toContainText("停止中");

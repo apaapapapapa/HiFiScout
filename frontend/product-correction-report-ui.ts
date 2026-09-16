@@ -21,7 +21,13 @@ export function correctionReportTargets(dialog: HTMLElement): ProductCorrectionR
     if (!Number.isSafeInteger(listingProductId) || listingProductId <= 0) continue;
     const shop = textContent(offer, ".offer-shop") || "ショップ不明";
     const title = textContent(offer, ".offer-title") || `listing #${listingProductId}`;
-    targets.push({ listingProductId, label: `${shop}: ${title}` });
+    const price = textContent(offer, ".offer-commerce strong") || "価格不明";
+    const condition = textContent(offer, ".condition") || "状態の記載なし";
+    const stock = textContent(offer, ".stock");
+    targets.push({
+      listingProductId,
+      label: `${shop}: ${title} / ${price} / ${condition} / ${stock} / 出品番号 ${listingProductId}`,
+    });
   }
   return targets;
 }
