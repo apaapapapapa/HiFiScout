@@ -111,6 +111,7 @@ interface OfferFilter {
   binds: unknown[];
   active: boolean;
   shopScoped: boolean;
+  priceRangeScoped: boolean;
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
@@ -241,6 +242,14 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
 function offerFilter(query: ProductQuery): OfferFilter {
   const predicates: string[] = [];
   const binds: unknown[] = [];
+  const entityAlreadyScoped =
+    Boolean(query.q) ||
+    query.manufacturer.length > 0 ||
+    Boolean(query.category) ||
+    query.features.length > 0 ||
+    query.facets.length > 0 ||
+    Object.keys(query.specificationFilters ?? {}).length > 0 ||
+    query.newOnly;
   if (query.shop.length) {
     predicates.push(
       query.shop.length === 1 ? "p.shop_key = ?" : "p.shop_key IN (SELECT value FROM json_each(?))",
@@ -276,15 +285,29 @@ function offerFilter(query: ProductQuery): OfferFilter {
     binds,
     active: predicates.length > 0,
     shopScoped: query.shop.length > 0,
+    // The production shape this plan serves supplies a genuinely bounded price window. A
+    // one-sided range, minPrice=0, or the API's 12-digit ceiling can be semantically a no-op and
+    // would turn the price index into an inventory-wide scan for otherwise selective searches.
+    priceRangeScoped:
+      query.priceDropped &&
+      !entityAlreadyScoped &&
+      query.minPrice != null &&
+      query.minPrice > 0 &&
+      query.maxPrice != null &&
+      query.maxPrice < 999_999_999_999 &&
+      query.maxPrice >= query.minPrice,
   };
 }
 
-/** Start shop-filtered work at the existing shop/active index, never at all search entities. */
+/** Start selective offer work at an existing offer index, never at all search entities. */
 function matchingOfferFrom(filter: OfferFilter): string {
-  return filter.shopScoped
-    ? `products p INDEXED BY idx_products_shop_active_quality
-       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`
-    : `product_search_entity_offers m
+  if (filter.shopScoped)
+    return `products p INDEXED BY idx_products_shop_active_quality
+       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
+  if (filter.priceRangeScoped)
+    return `products p INDEXED BY idx_products_active_price
+       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
+  return `product_search_entity_offers m
        JOIN products p ON p.id = m.listing_product_id`;
 }
 
@@ -305,9 +328,9 @@ function addOfferFilter(
     return;
   }
   if (!filter.active) return;
-  if (filter.shopScoped) {
+  if (filter.shopScoped || filter.priceRangeScoped) {
     // IN is a set of entity IDs: two matching listings still count as one product. Resolving the
-    // small shop set first also avoids probing every entity when there are no matching offers.
+    // selective offer set first also avoids probing every entity when there are no matches.
     where.push(`e.id IN (
       SELECT m.entity_id FROM ${matchingOfferFrom(filter)}
       WHERE p.is_active = 1${filter.sql}
