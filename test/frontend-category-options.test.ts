@@ -58,7 +58,7 @@ test("category options preserve server order and separate non-classifiable paren
   assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 4);
   assert.match(
     markup,
-    /^<option disabled="" data-category-separator="true">────────────<\/option><option value="amplifier">アンプ<\/option>/u,
+    /^<option disabled="" data-category-separator="true">────────────<\/option><option value="amplifier">アンプ（すべて）<\/option>/u,
   );
   assert.ok(markup.indexOf('value="amplifier"') < markup.indexOf('value="integrated_amp"'));
   assert.ok(markup.indexOf('value="integrated_amp"') < markup.indexOf('value="digital"'));
