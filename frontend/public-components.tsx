@@ -159,9 +159,6 @@ export function ProductCard({
   const colors = productColors(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
-  const representative = product.representative_offer;
-  const representsLowestPrice =
-    representative != null && representative.price_yen === product.lowest_price_yen;
   const favoriteLabel = favorite ? "お気に入りから削除" : "お気に入りに追加";
   const hasServerDetail = !isLegacyFavoriteKey(product.key);
   const updated = activity.activity
@@ -236,10 +233,6 @@ export function ProductCard({
         <div className="price-row">
           <strong>{priceSummary(product)}</strong>
         </div>
-        <p className="price-condition">
-          {product.lowest_price_yen == null ? "出品の状態" : "最安出品の状態"}:{" "}
-          {representsLowestPrice ? representative.condition_text || "記載なし" : "詳細で確認"}
-        </p>
         {product.representative_offer ? (
           <div className="representative-terms">
             {multiOffer ? (
@@ -248,9 +241,6 @@ export function ProductCard({
                 {product.representative_offer.price_yen == null
                   ? "価格不明"
                   : yen.format(product.representative_offer.price_yen)}
-                {!representsLowestPrice
-                  ? ` / 状態: ${product.representative_offer.condition_text || "記載なし"}`
-                  : ""}
               </p>
             ) : null}
             <OfferTerms facts={product.representative_offer.offer_facts} compact />

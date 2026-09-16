@@ -1030,7 +1030,7 @@ test("correction targets distinguish identically titled offers even while detail
     route.fulfill({ json: { product: grouped, offers } }),
   );
   await mount("frontend/public-app/Default");
-  await expect(page.locator(".price-condition")).toHaveText("最安出品の状態: ジャンク");
+  await expect(page.locator(".card")).not.toContainText("ジャンク");
   await page.locator(".offers-button[data-offers]").click();
   await page.getByText("情報の誤りを報告", { exact: true }).click();
   const target = page.getByLabel("報告する対象", { exact: true });
