@@ -22,6 +22,17 @@ import type {
 const DEFAULT_REPLAY_LIMIT = 100;
 const MAX_REPLAY_LIMIT = 250;
 
+interface ManufacturerAliasRevision {
+  generation: string;
+  version: number;
+}
+
+interface ManufacturerAliasCache extends ManufacturerAliasRevision {
+  aliases: ManufacturerAliasEvidence[];
+}
+
+let manufacturerAliasCache: ManufacturerAliasCache | null = null;
+
 export interface SaveManufacturerAliasInput {
   manufacturerId: string;
   canonicalName: string;
@@ -126,7 +137,36 @@ function titlePrefixPattern(alias: string): string {
   return likePrefix(firstToken || alias);
 }
 
-export async function listManufacturerAliasEvidence(
+async function manufacturerAliasRevision(
+  db: ReadableDatabase,
+): Promise<ManufacturerAliasRevision | null> {
+  let result: D1Result<{ generation: string; version: number }>;
+  try {
+    result = await db
+      .prepare("SELECT generation,version FROM admin_manufacturer_registry_clock WHERE id=1")
+      .all<{ generation: string; version: number }>();
+  } catch (error) {
+    // Rolling deploys and historical migration tests may briefly use a schema from before the
+    // cache generation existed. Preserve the old uncached behavior there; unrelated D1 failures
+    // still surface instead of being mistaken for a cache miss.
+    if (
+      /no such (?:table|column): (?:admin_manufacturer_registry_clock|generation)/u.test(
+        String(error),
+      )
+    ) {
+      return null;
+    }
+    throw error;
+  }
+  const row = result.results?.[0];
+  const generation = String(row?.generation || "");
+  const version = Number(row?.version);
+  return generation && Number.isSafeInteger(version) && version >= 0
+    ? { generation, version }
+    : null;
+}
+
+async function loadManufacturerAliasEvidence(
   db: ReadableDatabase,
 ): Promise<ManufacturerAliasEvidence[]> {
   const result = await db
@@ -155,6 +195,35 @@ export async function listManufacturerAliasEvidence(
     source: row.source,
     ruleVersion: Number(row.rule_version) || 1,
   }));
+}
+
+/**
+ * Load resolver-visible manufacturer evidence with revision-checked isolate reuse.
+ *
+ * Alias and canonical-manufacturer edits advance the existing administrative registry clock.
+ * Cache hits therefore cost one singleton lookup instead of scanning and returning the complete
+ * alias snapshot. A second revision read prevents a concurrent edit from making a partially stale
+ * snapshot reusable; that invocation still gets the same point-in-time result the old query would
+ * have returned, while the next invocation reloads it.
+ */
+export async function listManufacturerAliasEvidence(
+  db: ReadableDatabase,
+): Promise<ManufacturerAliasEvidence[]> {
+  const before = await manufacturerAliasRevision(db);
+  if (
+    before &&
+    manufacturerAliasCache?.generation === before.generation &&
+    manufacturerAliasCache.version === before.version
+  ) {
+    return manufacturerAliasCache.aliases.slice();
+  }
+
+  const aliases = await loadManufacturerAliasEvidence(db);
+  const after = before ? await manufacturerAliasRevision(db) : null;
+  if (before && after?.generation === before.generation && after.version === before.version) {
+    manufacturerAliasCache = { ...after, aliases };
+  }
+  return aliases.slice();
 }
 
 /** Persist canonical manufacturer plus alias evidence atomically. Pending aliases never resolve. */

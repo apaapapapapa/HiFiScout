@@ -30,6 +30,9 @@ export interface BackupTable {
 const DEFAULT_BATCH_SIZE = 500;
 const EXCLUDED_TABLE_NAMES = new Set([
   "d1_migrations",
+  // This singleton is derived from restored registry rows. Keeping the destination generation
+  // prevents an isolate-local alias cache from being reused if a binding moves to the restore.
+  "admin_manufacturer_registry_clock",
   // Migrations create the singleton at zero and entity INSERT triggers rebuild it during restore.
   // Dumping this derived row could pair a newer total with an older entity snapshot.
   "product_search_totals",

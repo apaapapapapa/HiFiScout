@@ -21,6 +21,7 @@ test("logical D1 backup excludes FTS virtual/shadow and provider-owned tables", 
     { schema: "main", name: "sqlite_sequence", type: "table", wr: 0 },
     { schema: "main", name: "_cf_METADATA", type: "table", wr: 0 },
     { schema: "main", name: "d1_migrations", type: "table", wr: 0 },
+    { schema: "main", name: "admin_manufacturer_registry_clock", type: "table", wr: 0 },
     { schema: "main", name: "product_search_totals", type: "table", wr: 0 },
     { schema: "temp", name: "temporary_rows", type: "table", wr: 0 },
     { schema: "main", name: "settings", type: "table", wr: 1 },
@@ -39,6 +40,17 @@ test("logical D1 backup rebuilds the derived in-stock total from restored entiti
   ]);
 
   assert.deepEqual(tables, [{ name: "product_search_entities", withoutRowid: false }]);
+});
+
+test("logical D1 backup preserves the restore database cache generation", () => {
+  const tables = selectBackupTables([
+    { schema: "main", name: "admin_manufacturer_registry_clock", type: "table", wr: 0 },
+    { schema: "main", name: "knowledge_catalog_manufacturer_aliases", type: "table", wr: 0 },
+  ]);
+
+  assert.deepEqual(tables, [
+    { name: "knowledge_catalog_manufacturer_aliases", withoutRowid: false },
+  ]);
 });
 
 test("rowid backup SQL uses server-side quote() and a fixed upper boundary", () => {
