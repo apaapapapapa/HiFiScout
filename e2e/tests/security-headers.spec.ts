@@ -242,10 +242,9 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   await catalogPage.offerButton(key!).click();
   await expect(catalogPage.offersDialog).toBeVisible();
 
-  const historyButtons = catalogPage.offersDialog.locator("[data-history]");
-  // Multi-offer products can put the first action below the dialog scroll viewport. Mirror a real
-  // user scrolling the offer list before asserting that the action is interactable.
-  await historyButtons.first().scrollIntoViewIfNeeded();
+  // Responsive offer markup can contain hidden duplicate actions. Restrict the candidates to
+  // actions a user can actually interact with before selecting one that has recorded history.
+  const historyButtons = catalogPage.offersDialog.locator("[data-history]:visible");
   await expect(historyButtons.first()).toBeVisible();
   const listingIds = await historyButtons.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("data-history") ?? ""),
@@ -262,7 +261,7 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   }
   expect(charted, "an offer on this page has recorded price history").not.toBe("");
 
-  await catalogPage.offersDialog.locator(`[data-history="${charted}"]`).click();
+  await catalogPage.offersDialog.locator(`[data-history="${charted}"]:visible`).click();
   await expect(page.locator("#history-dialog")).toBeVisible();
   await expect(page.locator("svg.history-sparkline")).toBeVisible();
 
