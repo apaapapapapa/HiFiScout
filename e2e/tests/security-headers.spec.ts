@@ -243,6 +243,9 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   await expect(catalogPage.offersDialog).toBeVisible();
 
   const historyButtons = catalogPage.offersDialog.locator("[data-history]");
+  // Multi-offer products can put the first action below the dialog scroll viewport. Mirror a real
+  // user scrolling the offer list before asserting that the action is interactable.
+  await historyButtons.first().scrollIntoViewIfNeeded();
   await expect(historyButtons.first()).toBeVisible();
   const listingIds = await historyButtons.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("data-history") ?? ""),
