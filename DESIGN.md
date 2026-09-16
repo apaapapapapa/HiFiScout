@@ -93,7 +93,10 @@ Favor catalog rows or visually quiet product cells over floating ecommerce cards
 2. model;
 3. price / price range;
 4. availability and offer count;
-5. category, condition, recency, price movement, and other metadata.
+5. category, recency, price movement, and other metadata.
+
+Offer condition belongs in the per-offer comparison and details. Result cards omit the cheapest
+and representative offer's condition labels.
 
 Do not use shadows to make every result a separate card. Prefer whitespace, alignment, and hairline dividers. Keep NEW, PRICE DOWN, relative-price, comparison, and similar badges compact so they do not compete with the model name.
 
