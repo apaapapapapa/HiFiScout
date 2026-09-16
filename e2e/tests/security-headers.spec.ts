@@ -242,8 +242,8 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   await catalogPage.offerButton(key!).click();
   await expect(catalogPage.offersDialog).toBeVisible();
 
-  // Multi-offer products keep each action inside a closed disclosure. Use the disclosure id
-  // to find a listing with history, then open that offer before interacting with its action.
+  // Multi-offer products keep actions inside closed disclosures. Use each disclosure id to find
+  // a listing with history, then open that offer before interacting with its action.
   const offerDetails = catalogPage.offersDialog.locator("details.offer-details");
   await expect(offerDetails.first()).toBeVisible();
   let charted = "";
