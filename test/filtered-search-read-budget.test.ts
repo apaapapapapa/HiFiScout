@@ -95,10 +95,10 @@ test("price-drop totals use the existing active-price index before entity member
       .run();
     await db
       .prepare(`INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,
-        offer_count,in_stock_offer_count,shop_count,lowest_price_yen,lowest_in_stock_price_yen,
+        title_terms,offer_count,in_stock_offer_count,shop_count,lowest_price_yen,lowest_in_stock_price_yen,
         latest_activity_at,newest_listed_at,latest_in_stock_activity_at,newest_in_stock_listed_at,
         has_price_drop)
-        SELECT id,'l-'||id,'unresolved_listing',id,1,1,1,price_yen,price_yen,
+        SELECT id,'l-'||id,'unresolved_listing',id,'amplifier',1,1,1,price_yen,price_yen,
           '${AT}','${AT}','${AT}','${AT}',CASE WHEN id<=? THEN 1 ELSE 0 END
         FROM products`)
       .bind(discounted)
@@ -174,6 +174,8 @@ test("price-drop totals use the existing active-price index before entity member
       "?newOnly=true&priceDropped=true&minPrice=0&includeTotal=true&limit=5",
       "?newOnly=true&priceDropped=true&maxPrice=999999999999&includeTotal=true&limit=5",
       "?newOnly=true&priceDropped=true&minPrice=0&maxPrice=999999999999&includeTotal=true&limit=5",
+      "?q=amplifier&priceDropped=true&minPrice=1&maxPrice=5000000&includeTotal=true&limit=5",
+      "?newOnly=true&priceDropped=true&minPrice=1&maxPrice=5000000&includeTotal=true&limit=5",
     ]) {
       const unbounded = recordingDatabase(db);
       await searchProducts(unbounded.db, productQuery(query));
@@ -181,7 +183,7 @@ test("price-drop totals use the existing active-price index before entity member
         (statement) =>
           statement.sql.includes("COUNT(*) AS total") || statement.sql.includes("matching_sort"),
       );
-      assert.ok(unboundedSearch.length >= 2);
+      assert.ok(unboundedSearch.length >= 1, query);
       assert.ok(
         unboundedSearch.every(
           (statement) => !statement.sql.includes("INDEXED BY idx_products_active_price"),

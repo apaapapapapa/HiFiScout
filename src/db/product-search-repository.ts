@@ -242,6 +242,14 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
 function offerFilter(query: ProductQuery): OfferFilter {
   const predicates: string[] = [];
   const binds: unknown[] = [];
+  const entityAlreadyScoped =
+    Boolean(query.q) ||
+    query.manufacturer.length > 0 ||
+    Boolean(query.category) ||
+    query.features.length > 0 ||
+    query.facets.length > 0 ||
+    Object.keys(query.specificationFilters ?? {}).length > 0 ||
+    query.newOnly;
   if (query.shop.length) {
     predicates.push(
       query.shop.length === 1 ? "p.shop_key = ?" : "p.shop_key IN (SELECT value FROM json_each(?))",
@@ -282,6 +290,7 @@ function offerFilter(query: ProductQuery): OfferFilter {
     // would turn the price index into an inventory-wide scan for otherwise selective searches.
     priceRangeScoped:
       query.priceDropped &&
+      !entityAlreadyScoped &&
       query.minPrice != null &&
       query.minPrice > 0 &&
       query.maxPrice != null &&
