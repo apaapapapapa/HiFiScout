@@ -479,7 +479,6 @@ test("native handoff requires complete workflow and status pages matching the sn
   try {
     await handoff("publish", { snapshot: snapshot(f) });
     await handoff("review", {
-      snapshot: snapshot(f),
       receipt: {
         sourceSha: f.owner.headSha,
         method: "self",
@@ -489,6 +488,8 @@ test("native handoff requires complete workflow and status pages matching the sn
         unresolvedFindings: 0,
         artifactUri: ".generated/self.json",
       },
+      // Collect evidence after the review receipt, even across a millisecond boundary.
+      snapshot: snapshot(f),
     });
     const value = snapshot(f);
     const collected = handoffInput({ snapshot: value });
@@ -615,7 +616,6 @@ test("deployment handoff binds version and receipts to retained artifact files",
   try {
     await handoff("publish", { snapshot: snapshot(f) });
     await handoff("review", {
-      snapshot: snapshot(f),
       receipt: {
         sourceSha: f.owner.headSha,
         method: "self",
@@ -625,6 +625,8 @@ test("deployment handoff binds version and receipts to retained artifact files",
         unresolvedFindings: 0,
         artifactUri: ".generated/self.json",
       },
+      // Collect evidence after the review receipt, even across a millisecond boundary.
+      snapshot: snapshot(f),
     });
     const repoUrl = "https://api.github.com/repos/apaapapapapa/HiFiScout";
     const sourceSha = "b".repeat(40);
