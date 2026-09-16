@@ -258,7 +258,7 @@ test("paging re-renders under connect-src, and the price history graphic draws",
     if ((body.history ?? []).length === 0) continue;
 
     charted = listingId;
-    if ((await details.getAttribute("open")) === null) await details.locator("summary").click();
+    if ((await details.getAttribute("open")) === null) await details.locator(":scope > summary").click();
     const historyButton = details.locator(`[data-history="${listingId}"]`);
     await expect(historyButton).toBeVisible();
     await historyButton.click();
