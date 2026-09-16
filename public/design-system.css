@@ -1091,4 +1091,5 @@ body.filters-open { overflow: hidden; }
 .offer-detail-content { list-style: none; padding: 0; }
 .offer-item { border-top: 1px solid var(--hs-divider); }
 .offer-item .offer { border-top: 0; }
-.offer-overview td:last-child a { display: block; white-space: nowrap; }
+.offer-overview td:last-child { white-space: nowrap; }
+.offer-overview td:last-child a { display: inline-flex; margin-inline-end: 8px; }
