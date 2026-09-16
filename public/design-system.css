@@ -1084,8 +1084,7 @@ body.filters-open { overflow: hidden; }
 .watch-editor input, .watch-editor textarea { width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px; font: inherit; }
 .watch-editor button { min-height: 44px; }
 
-/* Price conditions and compact offer navigation from the audit. */
-.price-condition { margin: 6px 0; color: var(--hs-ink); font-size: 13px; line-height: 1.6; }
+/* Compact offer navigation. */
 .offer-details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .offer-reference { margin-left: 12px; color: var(--hs-muted); font-size: 12px; }
 .offer-detail-content { list-style: none; padding: 0; }

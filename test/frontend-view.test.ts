@@ -240,22 +240,6 @@ test("a multi-shop card leads to the comparison instead of one arbitrary shop", 
   assert.doesNotMatch(markup, /class="shop-link"/u);
 });
 
-test("a grouped price exposes junk condition without attributing another offer's condition to the minimum", () => {
-  const junk = product({
-    offer_count: 3,
-    lowest_price_yen: 3000,
-    representative_offer: offer({ price_yen: 3000, condition_text: "ジャンク" }),
-  });
-  assert.match(renderCard(junk), /最安出品の状態: ジャンク/u);
-  const other = product({
-    ...junk,
-    representative_offer: offer({ price_yen: 25000, condition_text: "美品" }),
-  });
-  assert.match(renderCard(other), /最安出品の状態: 詳細で確認/u);
-  assert.match(renderCard(other), /￥25,000 \/ 状態: 美品/u);
-  assert.doesNotMatch(renderCard(other), /最安出品の状態: 美品/u);
-});
-
 test("category options distinguish the entire parent scope from its same-named leaf", () => {
   const meta: MetaResponse = {
     status: "healthy",
