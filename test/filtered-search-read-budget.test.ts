@@ -169,21 +169,26 @@ test("price-drop totals use the existing active-price index before entity member
       }),
     );
 
-    const unbounded = recordingDatabase(db);
-    await searchProducts(
-      unbounded.db,
-      productQuery("?newOnly=true&priceDropped=true&includeTotal=true&limit=5"),
-    );
-    const unboundedSearch = unbounded.executed.filter(
-      (statement) =>
-        statement.sql.includes("COUNT(*) AS total") || statement.sql.includes("matching_sort"),
-    );
-    assert.ok(unboundedSearch.length >= 2);
-    assert.ok(
-      unboundedSearch.every(
-        (statement) => !statement.sql.includes("INDEXED BY idx_products_active_price"),
-      ),
-    );
+    for (const query of [
+      "?newOnly=true&priceDropped=true&includeTotal=true&limit=5",
+      "?newOnly=true&priceDropped=true&minPrice=0&includeTotal=true&limit=5",
+      "?newOnly=true&priceDropped=true&maxPrice=999999999999&includeTotal=true&limit=5",
+      "?newOnly=true&priceDropped=true&minPrice=0&maxPrice=999999999999&includeTotal=true&limit=5",
+    ]) {
+      const unbounded = recordingDatabase(db);
+      await searchProducts(unbounded.db, productQuery(query));
+      const unboundedSearch = unbounded.executed.filter(
+        (statement) =>
+          statement.sql.includes("COUNT(*) AS total") || statement.sql.includes("matching_sort"),
+      );
+      assert.ok(unboundedSearch.length >= 2);
+      assert.ok(
+        unboundedSearch.every(
+          (statement) => !statement.sql.includes("INDEXED BY idx_products_active_price"),
+        ),
+        query,
+      );
+    }
   } finally {
     await dispose();
   }

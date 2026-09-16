@@ -277,7 +277,16 @@ function offerFilter(query: ProductQuery): OfferFilter {
     binds,
     active: predicates.length > 0,
     shopScoped: query.shop.length > 0,
-    priceRangeScoped: query.priceDropped && (query.minPrice != null || query.maxPrice != null),
+    // The production shape this plan serves supplies a genuinely bounded price window. A
+    // one-sided range, minPrice=0, or the API's 12-digit ceiling can be semantically a no-op and
+    // would turn the price index into an inventory-wide scan for otherwise selective searches.
+    priceRangeScoped:
+      query.priceDropped &&
+      query.minPrice != null &&
+      query.minPrice > 0 &&
+      query.maxPrice != null &&
+      query.maxPrice < 999_999_999_999 &&
+      query.maxPrice >= query.minPrice,
   };
 }
 
