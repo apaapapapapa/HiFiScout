@@ -111,7 +111,7 @@ interface OfferFilter {
   binds: unknown[];
   active: boolean;
   shopScoped: boolean;
-  priceDropScoped: boolean;
+  priceRangeScoped: boolean;
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
@@ -277,7 +277,7 @@ function offerFilter(query: ProductQuery): OfferFilter {
     binds,
     active: predicates.length > 0,
     shopScoped: query.shop.length > 0,
-    priceDropScoped: query.priceDropped,
+    priceRangeScoped: query.priceDropped && (query.minPrice != null || query.maxPrice != null),
   };
 }
 
@@ -286,7 +286,7 @@ function matchingOfferFrom(filter: OfferFilter): string {
   if (filter.shopScoped)
     return `products p INDEXED BY idx_products_shop_active_quality
        CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
-  if (filter.priceDropScoped)
+  if (filter.priceRangeScoped)
     return `products p INDEXED BY idx_products_active_price
        CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
   return `product_search_entity_offers m
@@ -310,7 +310,7 @@ function addOfferFilter(
     return;
   }
   if (!filter.active) return;
-  if (filter.shopScoped || filter.priceDropScoped) {
+  if (filter.shopScoped || filter.priceRangeScoped) {
     // IN is a set of entity IDs: two matching listings still count as one product. Resolving the
     // selective offer set first also avoids probing every entity when there are no matches.
     where.push(`e.id IN (

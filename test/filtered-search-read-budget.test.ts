@@ -168,6 +168,22 @@ test("price-drop totals use the existing active-price index before entity member
         responseRowsRead: measured.rowsRead(),
       }),
     );
+
+    const unbounded = recordingDatabase(db);
+    await searchProducts(
+      unbounded.db,
+      productQuery("?newOnly=true&priceDropped=true&includeTotal=true&limit=5"),
+    );
+    const unboundedSearch = unbounded.executed.filter(
+      (statement) =>
+        statement.sql.includes("COUNT(*) AS total") || statement.sql.includes("matching_sort"),
+    );
+    assert.ok(unboundedSearch.length >= 2);
+    assert.ok(
+      unboundedSearch.every(
+        (statement) => !statement.sql.includes("INDEXED BY idx_products_active_price"),
+      ),
+    );
   } finally {
     await dispose();
   }
