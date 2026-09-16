@@ -242,26 +242,29 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   await catalogPage.offerButton(key!).click();
   await expect(catalogPage.offersDialog).toBeVisible();
 
-  // Responsive offer markup can contain hidden duplicate actions. Restrict the candidates to
-  // actions a user can actually interact with before selecting one that has recorded history.
-  const historyButtons = catalogPage.offersDialog.locator("[data-history]:visible");
-  await expect(historyButtons.first()).toBeVisible();
-  const listingIds = await historyButtons.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("data-history") ?? ""),
-  );
-  // Only a listing with recorded observations draws a line, so pick one instead of hoping.
+  // Multi-offer products keep each action inside a closed disclosure. Use the disclosure id
+  // to find a listing with history, then open that offer before interacting with its action.
+  const offerDetails = catalogPage.offersDialog.locator("details.offer-details");
+  await expect(offerDetails.first()).toBeVisible();
   let charted = "";
-  for (const listingId of listingIds) {
+  for (let index = 0; index < (await offerDetails.count()); index += 1) {
+    const details = offerDetails.nth(index);
+    const detailId = await details.getAttribute("id");
+    const listingId = detailId?.replace(/^offer-details-/u, "") ?? "";
+    if (!listingId) continue;
+
     const response = await page.request.get(`/api/products/${listingId}/history`);
     const body = (await response.json()) as { history?: unknown[] };
-    if ((body.history ?? []).length > 0) {
-      charted = listingId;
-      break;
-    }
+    if ((body.history ?? []).length === 0) continue;
+
+    charted = listingId;
+    await details.locator("summary").click();
+    const historyButton = details.locator(`[data-history="${listingId}"]`);
+    await expect(historyButton).toBeVisible();
+    await historyButton.click();
+    break;
   }
   expect(charted, "an offer on this page has recorded price history").not.toBe("");
-
-  await catalogPage.offersDialog.locator(`[data-history="${charted}"]:visible`).click();
   await expect(page.locator("#history-dialog")).toBeVisible();
   await expect(page.locator("svg.history-sparkline")).toBeVisible();
 
