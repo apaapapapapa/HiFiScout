@@ -78,6 +78,101 @@ test("new in-stock totals use the projected date index as stale inventory grows"
   }
 }, 60_000);
 
+test("price-drop totals use the existing active-price index before entity membership", async () => {
+  const { db, dispose } = await database();
+  try {
+    const discounted = 12;
+    const size = 10_000;
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (
+        SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?
+      ) INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,
+        first_seen_at,last_seen_at,last_changed_at,last_activity_at,price_yen,previous_price_yen)
+        SELECT i,'hifido',CAST(i AS TEXT),'amplifier','https://example.test/'||i,'in_stock',
+          '${AT}','${AT}','${AT}','${AT}',CASE WHEN i<=? THEN 100000 ELSE 200000 END,
+          CASE WHEN i<=? THEN 120000 ELSE NULL END FROM n`)
+      .bind(size, discounted, discounted)
+      .run();
+    await db
+      .prepare(`INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,
+        offer_count,in_stock_offer_count,shop_count,lowest_price_yen,lowest_in_stock_price_yen,
+        latest_activity_at,newest_listed_at,latest_in_stock_activity_at,newest_in_stock_listed_at,
+        has_price_drop)
+        SELECT id,'l-'||id,'unresolved_listing',id,1,1,1,price_yen,price_yen,
+          '${AT}','${AT}','${AT}','${AT}',CASE WHEN id<=? THEN 1 ELSE 0 END
+        FROM products`)
+      .bind(discounted)
+      .run();
+    await db
+      .prepare(`INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        SELECT id,id,shop_key FROM products`)
+      .run();
+
+    const legacy = accountReads(db);
+    const oldCount = await legacy.db
+      .prepare(`SELECT COUNT(*) AS total FROM product_search_entities e
+        WHERE EXISTS (SELECT 1 FROM product_search_entity_offers m
+          JOIN products p ON p.id=m.listing_product_id
+          WHERE m.entity_id=e.id AND p.is_active=1 AND p.stock_status='in_stock'
+            AND p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL
+            AND p.price_yen < p.previous_price_yen AND p.price_yen>=? AND p.price_yen<=?)`)
+      .bind(75000, 125000)
+      .all<{ total: number }>();
+    assert.equal(oldCount.results?.[0].total, discounted);
+
+    const recorded = recordingDatabase(db);
+    const measured = accountReads(recorded.db);
+    const result = await searchProducts(
+      measured.db,
+      productQuery(
+        "?inStock=true&priceDropped=true&minPrice=75000&maxPrice=125000&sort=priceAsc&includeTotal=true&limit=5",
+      ),
+    );
+    assert.equal(result.totalCount, discounted);
+    assert.equal(result.items.length, 5);
+    assert.equal(measured.rowsWritten(), 0);
+    assert.ok(measured.rowsRead() < 500, String(measured.rowsRead()));
+
+    const count = recorded.executed.find((statement) =>
+      statement.sql.includes("COUNT(*) AS total"),
+    );
+    assert.ok(count);
+    const optimizedCount = accountReads(db);
+    const optimizedCountResult = await optimizedCount.db
+      .prepare(count.sql)
+      .bind(...count.binds)
+      .all<{ total: number }>();
+    assert.equal(optimizedCountResult.results?.[0].total, discounted);
+    assert.equal(optimizedCount.rowsWritten(), 0);
+    assert.ok(optimizedCount.rowsRead() < 500, String(optimizedCount.rowsRead()));
+    assert.ok(optimizedCount.rowsRead() < legacy.rowsRead() / 20);
+    assert.match(count.sql, /products p INDEXED BY idx_products_active_price/);
+    assert.match(count.sql, /e\.id IN/);
+    const plan = await db
+      .prepare(`EXPLAIN QUERY PLAN ${count.sql}`)
+      .bind(...count.binds)
+      .all<PlanStep>();
+    assert.ok(
+      plan.results?.some((step: PlanStep) =>
+        /SEARCH p USING INDEX idx_products_active_price/.test(step.detail),
+      ),
+      JSON.stringify(plan.results),
+    );
+    console.log(
+      JSON.stringify({
+        event: "price_drop_total_read_budget",
+        inventorySize: size,
+        discounted,
+        legacyRowsRead: legacy.rowsRead(),
+        rowsRead: optimizedCount.rowsRead(),
+        responseRowsRead: measured.rowsRead(),
+      }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
 test("shop totals and pages stay scoped when other shops grow", async () => {
   const { db, dispose } = await database();
   try {

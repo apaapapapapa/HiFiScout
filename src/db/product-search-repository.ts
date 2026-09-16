@@ -111,6 +111,7 @@ interface OfferFilter {
   binds: unknown[];
   active: boolean;
   shopScoped: boolean;
+  priceDropScoped: boolean;
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
@@ -276,15 +277,19 @@ function offerFilter(query: ProductQuery): OfferFilter {
     binds,
     active: predicates.length > 0,
     shopScoped: query.shop.length > 0,
+    priceDropScoped: query.priceDropped,
   };
 }
 
-/** Start shop-filtered work at the existing shop/active index, never at all search entities. */
+/** Start selective offer work at an existing offer index, never at all search entities. */
 function matchingOfferFrom(filter: OfferFilter): string {
-  return filter.shopScoped
-    ? `products p INDEXED BY idx_products_shop_active_quality
-       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`
-    : `product_search_entity_offers m
+  if (filter.shopScoped)
+    return `products p INDEXED BY idx_products_shop_active_quality
+       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
+  if (filter.priceDropScoped)
+    return `products p INDEXED BY idx_products_active_price
+       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`;
+  return `product_search_entity_offers m
        JOIN products p ON p.id = m.listing_product_id`;
 }
 
@@ -305,9 +310,9 @@ function addOfferFilter(
     return;
   }
   if (!filter.active) return;
-  if (filter.shopScoped) {
+  if (filter.shopScoped || filter.priceDropScoped) {
     // IN is a set of entity IDs: two matching listings still count as one product. Resolving the
-    // small shop set first also avoids probing every entity when there are no matching offers.
+    // selective offer set first also avoids probing every entity when there are no matches.
     where.push(`e.id IN (
       SELECT m.entity_id FROM ${matchingOfferFrom(filter)}
       WHERE p.is_active = 1${filter.sql}
