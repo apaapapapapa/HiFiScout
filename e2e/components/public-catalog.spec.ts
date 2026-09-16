@@ -1002,6 +1002,8 @@ test("unknown card terms stay compact and the overview exposes every shop before
   await overview.getByRole("link", { name: "出品詳細", exact: true }).first().click();
   await expect(page.locator(".offer-details[open]")).toHaveCount(1);
   await expect(page.locator(".offer-details > summary").first()).toBeFocused();
+  const terms = page.locator(".offer-details[open] .offer-terms");
+  await expect(terms.locator("dd")).toHaveText(["記載なし", "記載なし", "記載なし"]);
   await page.locator(".offer-facts summary").first().click();
   await expect(page.locator(".offer-facts[open]")).toContainText("記載なし");
 });

@@ -429,7 +429,7 @@ function OfferRow({
           <del>{yen.format(offer.previous_price_yen)}</del>
         ) : null}
       </div>
-      <OfferTerms facts={offer.offer_facts} compact />
+      <OfferTerms facts={offer.offer_facts} />
       <div className="offer-actions">
         <button
           type="button"
