@@ -46,7 +46,10 @@ test("D1 aliases load with canonical names and verification metadata", async () 
       ruleVersion: 2,
     },
   ]);
-  assert.match(db.calls[0].sql, /verification_status IN \('pending', 'verified'\)/);
+  assert.match(
+    db.calls.find((call) => call.sql.includes("WITH aliases AS"))?.sql || "",
+    /verification_status IN \('pending', 'verified'\)/,
+  );
 });
 
 test("manufacturer alias writes are auditable and idempotent", async () => {
