@@ -82,6 +82,10 @@ const listings: readonly (readonly [string, string, (CrawlPage | SoundPitPage)?]
     `<a href="/webshop/2026/08/01/product-1/">McIntosh XRT22 / MQ107 スピーカー ¥198,000(税込) スピーカー</a>`,
   ],
   ["home-shokai", `<a href="/item.php?z=101">LUXMAN プリアンプ C-10X 委託販売品 ￥980,000</a>`],
+  [
+    "e-earphone",
+    `<div class="grid-product" data-product-handle="778386" data-product-id="9817052676337"><a class="grid-product__meta" href="/products/778386"><div class="grid-product__vendor">SENNHEISER</div><div class="grid-product__title">【中古】MOMENTUM 4 Wireless【日本橋】</div><span class="grid-product__price--regurar">¥22,900</span></a></div>`,
+  ],
 ];
 
 test("hidden-markup regression controls cover every registered shop", () => {

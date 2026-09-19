@@ -14,6 +14,7 @@ export interface ShopFilterOption {
 export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.freeze({
   avac: "あばっく",
   afroaudio: "あふろおーでぃお",
+  "e-earphone": "いいいやほん",
   ippinkan: "いっぴんかん",
   "audio-space-core": "おーでぃおすぺーすこあ",
   audiounion: "おーでぃおゆにおん",

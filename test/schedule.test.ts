@@ -109,7 +109,7 @@ test("dedicated shop crons are declared in wrangler and may be shared", () => {
 test("all non-dedicated shops have twice-daily intervals and share a staggered trigger", () => {
   const dailyShops = shopsInDailyRotation();
   const expectedIntervalMinutes = 12 * 60;
-  assert.equal(dailyShops.length, 14);
+  assert.equal(dailyShops.length, 15);
   assert.equal(CRAWL_ROTATION_CRON, "*/10 2-13 * * *");
   assert.ok(wranglerConfig.triggers.crons.includes(CRAWL_ROTATION_CRON));
 
@@ -139,9 +139,9 @@ test("daily rotation makes one pass from 11:00 and 17:00 JST, including across N
   for (const at of [
     "2026-12-31T08:00:00+09:00",
     "2026-12-31T10:59:59.999+09:00",
-    "2026-12-31T13:20:00+09:00",
+    "2026-12-31T13:30:00+09:00",
     "2026-12-31T16:59:59.999+09:00",
-    "2026-12-31T19:20:00+09:00",
+    "2026-12-31T19:30:00+09:00",
     "2026-12-31T22:50:00+09:00",
     "2026-12-31T23:00:00+09:00",
     "2027-01-01T00:00:00+09:00",
