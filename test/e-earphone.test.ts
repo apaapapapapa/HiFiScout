@@ -7,10 +7,10 @@ import { coverageDecision, discoverPages, initialPageQueue } from "../src/crawle
 import { getShopEnabled, getShopMaxPages, getShopRequestDelayMs } from "../src/config.js";
 import { isPathAllowed } from "../src/crawler/robots.js";
 
-const fixture = readFileSync(
-  new URL("./fixtures/e-earphone/list.html", import.meta.url),
-  "utf8",
-).replace(/<!--[\s\S]*?-->/g, "");
+// Minimal factual markup observed 2026-09-19, without seller media/descriptions. The first
+// card uses observed identifiers; other cards are synthetic counterexamples. Keep the fixture
+// comment-free so the hidden-markup tests can wrap it in one valid HTML comment.
+const fixture = readFileSync(new URL("./fixtures/e-earphone/list.html", import.meta.url), "utf8");
 const firstPage = { url: "https://www.e-earphone.jp/collections/recently-used", page: 1 };
 
 test("e-earphone extracts card-scoped seller facts and preserves model revisions, SKUs and bundles", () => {
