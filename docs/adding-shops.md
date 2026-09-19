@@ -279,7 +279,9 @@ The collector makes no product-detail requests and does not retrieve images or s
 
 The adapter scopes manufacturer, title, selling price and collection membership to each product card.
 Membership must match both the card's product ID and handle. Seller collection IDs provide category,
-known rank and positive availability evidence; unknown/missing IDs stay unknown. Sale prices take
+known rank and positive availability evidence; unknown/missing IDs stay unknown. The combined
+amp/DAC bucket stays corroborative, so it cannot force a headphone-amplifier classification.
+Sale prices take
 precedence over crossed-out prices. Only recognized trailing store names and the leading used marker
 are removed from the model, preserving revisions, bracketed SKUs, bundles and missing-accessory notes.
 

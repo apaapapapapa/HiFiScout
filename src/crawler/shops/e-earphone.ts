@@ -42,7 +42,8 @@ export const E_EARPHONE_CATEGORY_MAPPING = Object.freeze({
   中古左右一体型ワイヤレスイヤホン: "btw_earphone",
   中古ワイヤレスヘッドホン: "btw_headphone",
   中古プレイヤー: "dap",
-  "中古アンプ・DAC": ["headphone_amp", "dac"],
+  // The mixed 中古アンプ・DAC bucket has no deterministic leaf. Leave it unmapped so
+  // shared raw-label inference stays corroborative and product-specific evidence decides.
   中古ケーブル: "cable",
   中古スピーカー: "speaker",
   中古アクセサリ: "accessory",

@@ -53,6 +53,22 @@ test("e-earphone stock remains unknown on contradictory or malformed collection 
   assert.equal(parseEEarphoneListing(malformed)[1].stockStatus, "sold_out");
 });
 
+test("e-earphone mixed amp/DAC merchandising never overrides product-specific category evidence", () => {
+  const plugin = getShopPlugin("e-earphone")!;
+  for (const [model, expected] of [
+    ["Example D/Aコンバーター DAC", "PRC.DAC"],
+    ["Example ヘッドホンアンプ", "AMP.HEADPHONE"],
+    ["Unknown Model II", "unclassified"],
+  ]) {
+    const html = fixture
+      .replaceAll("446591140081", "446591205617")
+      .replace("MOMENTUM 4 Wireless ブラック 【M4AEBT BLACK】", model);
+    const [product] = plugin.parse(html);
+    assert.equal(product.rawCategory, "中古アンプ・DAC");
+    assert.equal(product.primaryCategoryId, expected, model);
+  }
+});
+
 test("e-earphone rejects foreign/mismatched links, skips new products and deduplicates listing handles", () => {
   assert.equal(parseEEarphoneListing(fixture + fixture).length, 3);
   assert.equal(
