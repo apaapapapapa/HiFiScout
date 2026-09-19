@@ -85,6 +85,15 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
   if (Object.keys(input).some((key) => !OBSERVATION_KEYS.has(key))) return null;
+  const { sourceStartedAt, scheduledEndAt, requestedAt, observedAt } = input;
+  if (
+    !nullableInstant(sourceStartedAt) ||
+    !nullableInstant(scheduledEndAt) ||
+    !isAuctionInstant(requestedAt) ||
+    !isAuctionInstant(observedAt)
+  ) {
+    return null;
+  }
   const id = auctionId(input.auctionId);
   const sourceUrl = id ? canonicalAuctionUrl(input.sourceUrl, id) : null;
   const condition = member(input.condition, ["new", "used", "junk", "unknown"] as const);
@@ -124,15 +133,9 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
     !nullableInteger(input.currentPriceYen) ||
     !nullableInteger(input.buyNowPriceYen) ||
     !nullableInteger(input.bidCount) ||
-    !nullableInstant(input.sourceStartedAt) ||
-    !nullableInstant(input.scheduledEndAt) ||
-    !isAuctionInstant(input.requestedAt) ||
-    !isAuctionInstant(input.observedAt) ||
-    input.observedAt < input.requestedAt ||
-    (input.sourceStartedAt !== null && input.sourceStartedAt > input.observedAt) ||
-    (input.sourceStartedAt !== null &&
-      input.scheduledEndAt !== null &&
-      input.scheduledEndAt < input.sourceStartedAt)
+    observedAt < requestedAt ||
+    (sourceStartedAt !== null && sourceStartedAt > observedAt) ||
+    (sourceStartedAt !== null && scheduledEndAt !== null && scheduledEndAt < sourceStartedAt)
   ) {
     return null;
   }
@@ -154,10 +157,10 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
     taxStatus,
     shipping,
     sourceStatus,
-    sourceStartedAt: input.sourceStartedAt,
-    scheduledEndAt: input.scheduledEndAt,
-    requestedAt: input.requestedAt,
-    observedAt: input.observedAt,
+    sourceStartedAt,
+    scheduledEndAt,
+    requestedAt,
+    observedAt,
   };
 }
 
