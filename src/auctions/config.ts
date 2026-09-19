@@ -50,9 +50,14 @@ export function auctionConfiguration(env: AuctionSettingsInput): AuctionConfigur
   }
   if (env.YAHOO_AUCTIONS_SOURCE_VALIDATED !== "true") blockers.push("source_fixture_unverified");
   if (env.YAHOO_AUCTIONS_BUDGET_REVIEWED !== "true") blockers.push("account_budget_unreviewed");
-  const rawCategories = env.YAHOO_AUCTIONS_CATEGORY_IDS?.split(",").map((part) => part.trim()) ?? [];
+  const rawCategories =
+    env.YAHOO_AUCTIONS_CATEGORY_IDS?.split(",").map((part) => part.trim()) ?? [];
   const categoryIds = [...new Set(rawCategories)];
-  if (!categoryIds.length || categoryIds.length > 16 || categoryIds.some((id) => !/^\d{1,12}$/u.test(id))) {
+  if (
+    !categoryIds.length ||
+    categoryIds.length > 16 ||
+    categoryIds.some((id) => !/^\d{1,12}$/u.test(id))
+  ) {
     blockers.push("category_scope_unreviewed");
   }
   const maxItems = bounded("YAHOO_AUCTIONS_MAX_ITEMS", 3000, 1, 20_000);

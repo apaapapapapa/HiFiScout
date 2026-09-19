@@ -63,17 +63,16 @@ function nullableInstant(value: unknown): value is string | null {
 }
 
 function boundedText(value: unknown, max: number, required = false): value is string {
-  return (
-    typeof value === "string" &&
-    value.length <= max &&
-    (!required || value.trim().length > 0)
-  );
+  return typeof value === "string" && value.length <= max && (!required || value.trim().length > 0);
 }
 
 function nullableInteger(value: unknown): value is number | null {
   return (
     value === null ||
-    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000_000)
+    (typeof value === "number" &&
+      Number.isSafeInteger(value) &&
+      value >= 0 &&
+      value <= 1_000_000_000_000)
   );
 }
 
@@ -90,22 +89,46 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
   const sourceUrl = id ? canonicalAuctionUrl(input.sourceUrl, id) : null;
   const condition = member(input.condition, ["new", "used", "junk", "unknown"] as const);
   const saleSubject = member(input.saleSubject, [
-    "product", "accessory", "parts", "empty_box", "bundle", "unknown",
+    "product",
+    "accessory",
+    "parts",
+    "empty_box",
+    "bundle",
+    "unknown",
   ] as const);
   const saleUnit = member(input.saleUnit, ["single", "pair", "set", "unknown"] as const);
   const taxStatus = member(input.taxStatus, ["included", "excluded", "unknown"] as const);
   const shipping = member(input.shipping, ["free", "additional", "collect", "unknown"] as const);
-  const sourceStatus = member(input.sourceStatus, ["active", "ended", "unavailable", "unknown"] as const);
+  const sourceStatus = member(input.sourceStatus, [
+    "active",
+    "ended",
+    "unavailable",
+    "unknown",
+  ] as const);
   if (
-    input.source !== "yahoo-auctions" || !id || !sourceUrl ||
-    !boundedText(input.title, 500, true) || !boundedText(input.rawManufacturer, 160) ||
-    !boundedText(input.rawModel, 300) || !boundedText(input.rawCategoryPath, 500) ||
-    typeof input.sourceCategoryId !== "string" || !/^\d{1,12}$/u.test(input.sourceCategoryId) ||
-    !condition || !saleSubject || !saleUnit || !taxStatus || !shipping || !sourceStatus ||
-    !nullableInteger(input.currentPriceYen) || !nullableInteger(input.buyNowPriceYen) ||
-    !nullableInteger(input.bidCount) || !nullableInstant(input.sourceStartedAt) ||
-    !nullableInstant(input.scheduledEndAt) || !isAuctionInstant(input.requestedAt) ||
-    !isAuctionInstant(input.observedAt) || input.observedAt < input.requestedAt
+    input.source !== "yahoo-auctions" ||
+    !id ||
+    !sourceUrl ||
+    !boundedText(input.title, 500, true) ||
+    !boundedText(input.rawManufacturer, 160) ||
+    !boundedText(input.rawModel, 300) ||
+    !boundedText(input.rawCategoryPath, 500) ||
+    typeof input.sourceCategoryId !== "string" ||
+    !/^\d{1,12}$/u.test(input.sourceCategoryId) ||
+    !condition ||
+    !saleSubject ||
+    !saleUnit ||
+    !taxStatus ||
+    !shipping ||
+    !sourceStatus ||
+    !nullableInteger(input.currentPriceYen) ||
+    !nullableInteger(input.buyNowPriceYen) ||
+    !nullableInteger(input.bidCount) ||
+    !nullableInstant(input.sourceStartedAt) ||
+    !nullableInstant(input.scheduledEndAt) ||
+    !isAuctionInstant(input.requestedAt) ||
+    !isAuctionInstant(input.observedAt) ||
+    input.observedAt < input.requestedAt
   ) {
     return null;
   }
@@ -140,7 +163,8 @@ export function auctionDisplayState(
   now: number,
   staleAfterMs = 2 * 60 * 60_000,
 ): AuctionDisplayState {
-  if (item.sourceStatus === "ended" || item.sourceStatus === "unavailable") return item.sourceStatus;
+  if (item.sourceStatus === "ended" || item.sourceStatus === "unavailable")
+    return item.sourceStatus;
   if (!Number.isFinite(now) || now < Date.parse(item.observedAt)) return "unknown";
   if (item.scheduledEndAt !== null && Date.parse(item.scheduledEndAt) <= now) {
     return "end_confirmation_pending";
@@ -154,7 +178,8 @@ export function acceptsAuctionObservation(
   previous: AuctionObservation,
   next: AuctionObservation,
 ): boolean {
-  if (previous.auctionId !== next.auctionId || next.requestedAt <= previous.requestedAt) return false;
+  if (previous.auctionId !== next.auctionId || next.requestedAt <= previous.requestedAt)
+    return false;
   if (previous.sourceStatus === "ended" && next.sourceStatus === "active") {
     return (
       previous.sourceStartedAt !== null &&

@@ -39,7 +39,10 @@ function observation(changes: Partial<AuctionObservation> = {}): AuctionObservat
 test("auction facts keep starting bids, unknown buy-now/fees and zero bids distinct", () => {
   assert.deepEqual(parseAuctionObservation(observation()), observation());
   assert.equal(parseAuctionObservation(observation({ bidCount: null }))?.bidCount, null);
-  assert.equal(parseAuctionObservation(observation({ currentPriceYen: null }))?.currentPriceYen, null);
+  assert.equal(
+    parseAuctionObservation(observation({ currentPriceYen: null }))?.currentPriceYen,
+    null,
+  );
   assert.equal(parseAuctionObservation({ ...observation(), description: "seller text" }), null);
   assert.equal(parseAuctionObservation({ ...observation(), images: [] }), null);
   assert.equal(parseAuctionObservation({ ...observation(), priceYen: 1 }), null);
@@ -55,13 +58,22 @@ test("auction validation rejects invalid prices, missing fields, dates and unsup
   for (const value of ["2026-02-30T00:00:00.000Z", "tomorrow", "", undefined]) {
     assert.equal(parseAuctionObservation({ ...observation(), scheduledEndAt: value }), null);
   }
-  assert.equal(parseAuctionObservation(observation({ observedAt: "2026-09-18T00:00:00.000Z" })), null);
-  assert.equal(parseAuctionObservation(observation({ title: " ", sourceCategoryId: "not-a-category" })), null);
+  assert.equal(
+    parseAuctionObservation(observation({ observedAt: "2026-09-18T00:00:00.000Z" })),
+    null,
+  );
+  assert.equal(
+    parseAuctionObservation(observation({ title: " ", sourceCategoryId: "not-a-category" })),
+    null,
+  );
 });
 
 test("auction detail URLs reject foreign origins, credentials and identifier mismatch", () => {
   const path = "/jp/auction/a1234567890";
-  assert.equal(canonicalAuctionUrl(`https://page.auctions.yahoo.co.jp${path}?tracking=1#x`), `https://auctions.yahoo.co.jp${path}`);
+  assert.equal(
+    canonicalAuctionUrl(`https://page.auctions.yahoo.co.jp${path}?tracking=1#x`),
+    `https://auctions.yahoo.co.jp${path}`,
+  );
   for (const url of [
     `http://auctions.yahoo.co.jp${path}`,
     `https://auctions.yahoo.co.jp.evil.example${path}`,
@@ -77,20 +89,82 @@ test("auction detail URLs reject foreign origins, credentials and identifier mis
 });
 
 test("passing scheduled end never asserts a confirmed ending or completed sale", () => {
-  assert.equal(auctionDisplayState(observation(), Date.parse("2026-09-19T11:00:00.000Z")), "active");
-  assert.equal(auctionDisplayState(observation(), Date.parse("2026-09-19T12:00:00.000Z")), "end_confirmation_pending");
-  assert.equal(auctionDisplayState(observation({ sourceStatus: "ended" }), Date.parse("2026-09-19T12:00:00.000Z")), "ended");
-  assert.equal(auctionDisplayState(observation({ scheduledEndAt: null }), Date.parse("2026-09-19T14:00:00.000Z")), "stale");
-  assert.equal(auctionDisplayState(observation({ sourceStatus: "unknown" }), Date.parse("2026-09-19T11:00:00.000Z")), "unknown");
+  assert.equal(
+    auctionDisplayState(observation(), Date.parse("2026-09-19T11:00:00.000Z")),
+    "active",
+  );
+  assert.equal(
+    auctionDisplayState(observation(), Date.parse("2026-09-19T12:00:00.000Z")),
+    "end_confirmation_pending",
+  );
+  assert.equal(
+    auctionDisplayState(
+      observation({ sourceStatus: "ended" }),
+      Date.parse("2026-09-19T12:00:00.000Z"),
+    ),
+    "ended",
+  );
+  assert.equal(
+    auctionDisplayState(
+      observation({ scheduledEndAt: null }),
+      Date.parse("2026-09-19T14:00:00.000Z"),
+    ),
+    "stale",
+  );
+  assert.equal(
+    auctionDisplayState(
+      observation({ sourceStatus: "unknown" }),
+      Date.parse("2026-09-19T11:00:00.000Z"),
+    ),
+    "unknown",
+  );
 });
 
 test("delayed/repeated observations do not roll back state and a newer end extension is accepted", () => {
   const previous = observation();
   assert.equal(acceptsAuctionObservation(previous, previous), false);
-  assert.equal(acceptsAuctionObservation(previous, observation({ requestedAt: "2026-09-19T09:00:00.000Z", observedAt: "2026-09-19T11:00:00.000Z" })), false);
-  assert.equal(acceptsAuctionObservation(previous, observation({ requestedAt: "2026-09-19T11:00:00.000Z", observedAt: "2026-09-19T11:00:01.000Z", scheduledEndAt: "2026-09-19T13:00:00.000Z" })), true);
-  assert.equal(acceptsAuctionObservation(observation({ sourceStatus: "ended" }), observation({ requestedAt: "2026-09-19T11:00:00.000Z", observedAt: "2026-09-19T11:00:01.000Z" })), false);
-  assert.equal(acceptsAuctionObservation(observation({ sourceStatus: "ended" }), observation({ sourceStartedAt: "2026-09-19T10:30:00.000Z", requestedAt: "2026-09-19T11:00:00.000Z", observedAt: "2026-09-19T11:00:01.000Z" })), true);
+  assert.equal(
+    acceptsAuctionObservation(
+      previous,
+      observation({
+        requestedAt: "2026-09-19T09:00:00.000Z",
+        observedAt: "2026-09-19T11:00:00.000Z",
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    acceptsAuctionObservation(
+      previous,
+      observation({
+        requestedAt: "2026-09-19T11:00:00.000Z",
+        observedAt: "2026-09-19T11:00:01.000Z",
+        scheduledEndAt: "2026-09-19T13:00:00.000Z",
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    acceptsAuctionObservation(
+      observation({ sourceStatus: "ended" }),
+      observation({
+        requestedAt: "2026-09-19T11:00:00.000Z",
+        observedAt: "2026-09-19T11:00:01.000Z",
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    acceptsAuctionObservation(
+      observation({ sourceStatus: "ended" }),
+      observation({
+        sourceStartedAt: "2026-09-19T10:30:00.000Z",
+        requestedAt: "2026-09-19T11:00:00.000Z",
+        observedAt: "2026-09-19T11:00:01.000Z",
+      }),
+    ),
+    true,
+  );
 });
 
 test("auction collection is opt-in with independent source-validation and account-budget gates", () => {
@@ -114,8 +188,17 @@ test("auction collection is opt-in with independent source-validation and accoun
   assert.equal(on.publicEnabled, false);
   assert.deepEqual(on.categoryIds, ["23764"]);
   for (const value of ["0", "-1", "100", "1e4", "oops"]) {
-    assert.equal(auctionConfiguration({ ...env, YAHOO_AUCTIONS_REQUEST_DELAY_MS: value }).collectionEnabled, false);
+    assert.equal(
+      auctionConfiguration({ ...env, YAHOO_AUCTIONS_REQUEST_DELAY_MS: value }).collectionEnabled,
+      false,
+    );
   }
-  assert.equal(auctionConfiguration({ ...env, YAHOO_AUCTIONS_CATEGORY_IDS: "23764," }).collectionEnabled, false);
-  assert.equal(auctionConfiguration({ ...env, YAHOO_AUCTIONS_BUDGET_REVIEWED: "false" }).collectionEnabled, false);
+  assert.equal(
+    auctionConfiguration({ ...env, YAHOO_AUCTIONS_CATEGORY_IDS: "23764," }).collectionEnabled,
+    false,
+  );
+  assert.equal(
+    auctionConfiguration({ ...env, YAHOO_AUCTIONS_BUDGET_REVIEWED: "false" }).collectionEnabled,
+    false,
+  );
 });
