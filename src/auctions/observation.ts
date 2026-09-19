@@ -128,7 +128,11 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
     !nullableInstant(input.scheduledEndAt) ||
     !isAuctionInstant(input.requestedAt) ||
     !isAuctionInstant(input.observedAt) ||
-    input.observedAt < input.requestedAt
+    input.observedAt < input.requestedAt ||
+    (input.sourceStartedAt !== null && input.sourceStartedAt > input.observedAt) ||
+    (input.sourceStartedAt !== null &&
+      input.scheduledEndAt !== null &&
+      input.scheduledEndAt < input.sourceStartedAt)
   ) {
     return null;
   }
@@ -180,7 +184,8 @@ export function acceptsAuctionObservation(
 ): boolean {
   if (previous.auctionId !== next.auctionId || next.requestedAt <= previous.requestedAt)
     return false;
-  if (previous.sourceStatus === "ended" && next.sourceStatus === "active") {
+  if (previous.sourceStatus === "ended" && next.sourceStatus !== "ended") {
+    if (next.sourceStatus !== "active") return false;
     return (
       previous.sourceStartedAt !== null &&
       next.sourceStartedAt !== null &&
