@@ -269,6 +269,27 @@ other editorial content.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
 
 
+## e☆イヤホン collection
+
+`e-earphone` reads the public `/collections/recently-used` HTML feed. It shares the normal
+11:00/17:00 JST rotation when enabled; current page and pacing limits live in `wrangler.jsonc`.
+Coverage is deliberately **partial**: reaching the page ceiling or the end of recent arrivals cannot
+deactivate absent listings, and older inventory is not a complete, continuously rechecked snapshot.
+The collector makes no product-detail requests and does not retrieve images or seller descriptions.
+
+The adapter scopes manufacturer, title, selling price and collection membership to each product card.
+Membership must match both the card's product ID and handle. Seller collection IDs provide category,
+known rank and positive availability evidence; unknown/missing IDs stay unknown. Sale prices take
+precedence over crossed-out prices. Only recognized trailing store names and the leading used marker
+are removed from the model, preserving revisions, bracketed SKUs, bundles and missing-accessory notes.
+
+The shop is registered with `defaultEnabled: false` and deployed `E_EARPHONE_ENABLED=false`.
+On 2026-09-19, [the seller's terms, Article 15](https://www.e-earphone.jp/policies/terms-of-service)
+explicitly required seller consent for automated collection. Confirm that consent and revalidate
+the current markup, collection IDs and robots policy before enabling. The observed robots policy
+allows the feed and ordinary `?page=` pagination but disallows collection `sort_by` URLs; the
+adapter follows only the immediate next page and keeps the platform's robots/redirect/body guards.
+
 ## Optional capabilities
 
 A normal shop does not need either capability. Seller-specific diagnostics and threshold tuning are

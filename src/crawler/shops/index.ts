@@ -61,6 +61,7 @@ import {
   HOME_SHOKAI_CATEGORY_POLICY,
   homeShokaiAdapter,
 } from "./home-shokai.js";
+import { E_EARPHONE_CATEGORY_MAPPING, eEarphoneAdapter } from "./e-earphone.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -305,6 +306,23 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
         categoryMapping: HOME_SHOKAI_CATEGORY_MAPPING,
         categoryPolicy: HOME_SHOKAI_CATEGORY_POLICY,
       },
+    },
+  ),
+  defineShopPlugin(
+    eEarphoneAdapter,
+    {
+      key: "e-earphone",
+      name: "e☆イヤホン",
+      baseUrl: "https://www.e-earphone.jp",
+      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultRequestDelayMs: 2000,
+      defaultMaxPages: 10,
+      // Terms of service §15 require the seller's consent before automated collection.
+      defaultEnabled: false,
+    },
+    {
+      transport: { kind: "direct" },
+      catalog: { categoryMapping: E_EARPHONE_CATEGORY_MAPPING },
     },
   ),
   // shop-generator:plugins

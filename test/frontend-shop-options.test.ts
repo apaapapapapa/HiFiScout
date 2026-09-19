@@ -9,6 +9,7 @@ import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
 const GOJUON_KEYS = [
   "avac",
   "afroaudio",
+  "e-earphone",
   "ippinkan",
   "audio-space-core",
   "audiounion",
