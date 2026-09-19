@@ -1,0 +1,33 @@
+name: Auction candidate verification
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auction-candidate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/703-yahoo-auction-contracts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: ./.github/actions/setup-node-deps
+      - name: Run canonical verification and retain any formatter changes
+        shell: bash
+        run: |
+          set +e
+          vp run verify
+          result=$?
+          echo '::group::Candidate formatter patch'
+          git diff --
+          echo '::endgroup::'
+          exit "$result"
