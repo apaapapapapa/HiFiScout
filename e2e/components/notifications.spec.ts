@@ -136,8 +136,11 @@ test("opt-in sends the saved conditions and desired price, survives reload and c
     page.getByText("この端末の通知をすべて停止しました。", { exact: true }),
   ).toBeVisible();
   expect(state.watches).toEqual([]);
+  state.failDelete = true;
+  const requestsAfterStop = state.requests.length;
   await page.getByRole("button", { name: "LUXMANの候補を削除", exact: true }).click();
   await expect(page.getByText("保存した検索 (0/20)", { exact: true })).toBeVisible();
+  expect(state.requests).toHaveLength(requestsAfterStop);
 });
 
 test("permission denial leaves notification registration untouched and shows recovery guidance", async ({

@@ -180,7 +180,11 @@ export function SavedSearches({
                 onClick={async () => {
                   if (!window.confirm(`「${entry.name}」を削除しますか？`)) return;
                   try {
-                    await disableNotification(entry.id);
+                    if (
+                      notifications === null ||
+                      notifications.watches.some((watch) => watch.id === entry.id)
+                    )
+                      await disableNotification(entry.id);
                   } catch {
                     setError(true);
                     setMessage(
