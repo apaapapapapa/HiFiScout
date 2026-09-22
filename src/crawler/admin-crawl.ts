@@ -131,8 +131,8 @@ export async function controlAdminCrawl(
     return {
       message:
         action === "pause"
-          ? "一時停止しました。実行中の1ステップは完了する場合があります。"
-          : "一時停止を解除しました。保留中の実行または次回予定から再開します。",
+          ? "収集をオフにしました。再度オンにするまで停止します。実行中の1ステップは完了する場合があります。"
+          : "収集をオンにしました。保留中の実行または次回予定から再開します。夜間は予定停止します。",
     };
   }
   if (
@@ -141,12 +141,12 @@ export async function controlAdminCrawl(
   )
     return { message: "このショップは無効または接続設定がありません。" };
   const control = await scheduler(env, shopKey, "wake");
-  if (control.paused) return { message: "一時停止を解除してから実行してください。" };
+  if (control.paused) return { message: "収集をオンにしてから実行してください。" };
   if (control.running)
     return { message: "保留中の実行を継続します。夜間停止と店舗ごとの待機時間を守ります。" };
   const state = (await getShopState(env.DB, shopKey)) as CrawlDispatchStateRow | null;
   if (state?.admin_paused)
-    return { message: "一時停止の設定が残っています。再開操作をもう一度実行してください。" };
+    return { message: "収集オフの設定が残っています。オンにする操作をもう一度実行してください。" };
   if (state?.dispatch_token && state.dispatch_requested_at) {
     await deliverCrawlDispatch(env, {
       shopKey,
