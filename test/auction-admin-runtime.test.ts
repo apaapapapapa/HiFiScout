@@ -100,6 +100,15 @@ it("bounds administrative status and keeps unknown usage separate from real coun
     const state = (await (await call("/state")).json()) as AuctionAdminStatus["state"];
     expect(state.paused).toBe(true);
     expect(state.reserved.alarmOperations).toBe(5);
+    for (const used of [4998, 4999, 5000]) {
+      const result = (await (await call(`/alarm-budget?used=${used}`)).json()) as {
+        state: AuctionAdminStatus["state"];
+        alarm: number | null;
+      };
+      expect(result.state.reserved.alarmOperations).toBe(used === 4998 ? 5000 : used);
+      expect(result.state.reserved.requests).toBe(used === 4998 ? 1 : 0);
+      expect(result.alarm).toBeNull(); // Disabled collection cannot re-arm a wake, even with recovery headroom.
+    }
   } finally {
     await mf.dispose();
   }

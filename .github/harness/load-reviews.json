@@ -300,6 +300,36 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/716"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "e4ade1b0f362a3a54d4f89a987371f62c0baca48",
+      "beforeDigest": "93f940e5f557c10d48f5c3544b5646a4b96a34923c2b074689f1d23a93c399d4",
+      "afterDigest": "1f79339bf08d44b6576bab2884575e73764ee789011a9b1f1f35775f8f0a06f4",
+      "reason": "Add bounded SQLite listing search cases with 2,000 retained items and zero versus 2,000 catalog keys. Existing ceilings are unchanged. Exact-source measurements: sorted page 5997/0/2; worst filtered workload 12001/0/2. New limits 6100 and 15000 reads are below the 15100 public admission reservation and establish initial offline baselines, not production capacity.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/717"
+      ]
+    },
+    {
+      "id": "auction-search-filtered",
+      "baseSha": "e4ade1b0f362a3a54d4f89a987371f62c0baca48",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "f800d64382f0426eacebd856ac29a6582ba01a33f2a11fb6c93fde1a10feefe0",
+      "reason": "Reviewed initial offline case with passing real D1/SQLite workerd regressions. Same-offer filters, null-price cursors, time/catalog expiry, four-term FTS, short-model index and pre-search inferred-model backfill are covered. No previous sample is invented and no existing ceiling is relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/717"
+      ]
+    },
+    {
+      "id": "auction-search-page",
+      "baseSha": "e4ade1b0f362a3a54d4f89a987371f62c0baca48",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "346cffae47590e37c9812582246058e8ce6dd3c15db51859123d8d272ea08d9d",
+      "reason": "Reviewed initial offline case with passing real D1/SQLite workerd regressions. Same-offer filters, null-price cursors, time/catalog expiry, four-term FTS, short-model index and pre-search inferred-model backfill are covered. No previous sample is invented and no existing ceiling is relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/717"
+      ]
     }
   ]
 }

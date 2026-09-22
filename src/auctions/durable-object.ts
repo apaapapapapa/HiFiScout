@@ -111,7 +111,7 @@ export class YahooAuctions extends DurableObject<Env> {
     const { store, scheduler } = this.engine();
     try {
       if (this.reserve(store, 50, 20, true, false, 6)) await scheduler.alarm();
-      else await scheduler.deferForBudget();
+      else if (this.reserve(store, 50, 20, true, false, 2)) await scheduler.deferForBudget();
     } finally {
       this.logUsage(store, "alarm");
     }

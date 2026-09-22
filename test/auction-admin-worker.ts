@@ -45,6 +45,17 @@ export class TestAuctionAdmin extends YahooAuctions {
       const status = await auctionAdminStatus(store, this.env, Date.now());
       return Response.json({ status, usage: store.usage, alarms: store.alarmOperations });
     }
+    if (path === "/alarm-budget") {
+      const store = new AuctionStore(this.ctx.storage);
+      const state = initialAuctionRuntime(Date.now());
+      state.reserved.alarmOperations = Number(new URL(request.url).searchParams.get("used"));
+      store.saveRuntime(state);
+      await super.alarm();
+      return Response.json({
+        state: store.runtime(Date.now()),
+        alarm: await this.ctx.storage.getAlarm(),
+      });
+    }
     if (path === "/state")
       return Response.json(new AuctionStore(this.ctx.storage).runtime(Date.now()));
     return super.fetch(request);

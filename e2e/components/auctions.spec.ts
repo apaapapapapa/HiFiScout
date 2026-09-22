@@ -60,6 +60,9 @@ test("auction facts stay distinct, pagination deduplicates IDs and filters prese
   await page.getByRole("button", { name: "次の出品を読み込む" }).click();
   await expect(page.getByRole("heading", { name: "PMA-1700NE", exact: true })).toHaveCount(2);
   await page.getByText("条件を絞り込む", { exact: true }).click();
+  expect((await page.getByLabel("型番（短い型番も入力可）").boundingBox())!.width).toBeGreaterThan(
+    200,
+  );
   await page.getByLabel("型番（短い型番も入力可）").fill("A8");
   await page.getByRole("button", { name: "条件を適用" }).click();
   await expect.poll(() => seen.at(-1)?.searchParams.get("model")).toBe("A8");
@@ -87,7 +90,7 @@ test("passing time removes an open claim and expires the visible response withou
   await mount("frontend/auctions/Default");
   await expect(page.getByText("開催中の観測あり")).toBeVisible();
   await page.clock.fastForward(21_000);
-  await expect(page.getByText("終了確認待ち")).toBeVisible();
+  await expect(page.getByRole("listitem").getByText("終了確認待ち", { exact: true })).toBeVisible();
   await page.clock.fastForward(41_000);
   await expect(page.getByText("表示の有効期限が切れました。再検索してください。")).toBeVisible();
   await expect(page.getByRole("heading", { name: "PMA-1700NE", exact: true })).toHaveCount(0);
@@ -143,7 +146,9 @@ test("public product cards never fan out auction reads and one-yen bids do not r
               },
             ],
             manufacturers: [],
+            manufacturerFacets: [],
             categories: [],
+            categoryFacets: [],
           },
         });
       if (url.pathname === "/api/product-search")

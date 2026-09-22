@@ -147,44 +147,49 @@ it.each(["wake", "public_pause", "public_resume"] as const)(
   },
 );
 
-it("reviewed halt clearing preserves pause, pacing and charged budgets and fences delayed work", async () => {
-  const now = Date.parse("2026-09-22T01:00:00Z");
-  let state = { ...initialAuctionRuntime(now), halt: "source_contract", throttleCount: 3 };
-  state.reserved.reads = 150_000;
-  state.backoffUntil = now + 3_600_000;
-  state.nextFetchAt = now + 60_000;
-  const store = {
-    runtime: () => structuredClone(state),
-    saveRuntime: (value: typeof state) => {
-      state = value;
-    },
-    storage: { transactionSync: (fn: () => void) => fn() },
-    deleteAlarm: vi.fn(async () => {}),
-  } as unknown as AuctionStore;
-  const request = vi.fn(async () => {
-    throw new Error("must_not_fetch");
-  });
-  let allowed = false;
-  const scheduler = new AuctionScheduler(
-    store,
-    { request },
-    yahooAuctionHtmlSource,
-    () => allowed,
-    () => now,
-  );
-  await expect(scheduler.control("clear_halt")).rejects.toThrow("auction_halt_review_required");
-  allowed = true;
-  state.paused = false;
-  await expect(scheduler.control("clear_halt")).rejects.toThrow("auction_halt_review_required");
-  state.paused = true;
-  const before = structuredClone(state);
-  await scheduler.control("clear_halt");
-  expect(state).toEqual({
-    ...before,
-    halt: null,
-    throttleCount: 0,
-    generation: before.generation + 1,
-  });
-  expect(store.deleteAlarm).toHaveBeenCalledOnce();
-  expect(request).not.toHaveBeenCalled();
-});
+it.each(["source_contract", "robots_disallowed"])(
+  "reviewed %s halt clearing preserves pause, pacing and budgets",
+  async (halt) => {
+    const now = Date.parse("2026-09-22T01:00:00Z");
+    let state = { ...initialAuctionRuntime(now), halt, throttleCount: 3 };
+    state.robots = { text: "User-agent: *\nDisallow: /", observedAt: now, delayMs: 60_000 };
+    state.reserved.reads = 150_000;
+    state.backoffUntil = now + 3_600_000;
+    state.nextFetchAt = now + 60_000;
+    const store = {
+      runtime: () => structuredClone(state),
+      saveRuntime: (value: typeof state) => {
+        state = value;
+      },
+      storage: { transactionSync: (fn: () => void) => fn() },
+      deleteAlarm: vi.fn(async () => {}),
+    } as unknown as AuctionStore;
+    const request = vi.fn(async () => {
+      throw new Error("must_not_fetch");
+    });
+    let allowed = false;
+    const scheduler = new AuctionScheduler(
+      store,
+      { request },
+      yahooAuctionHtmlSource,
+      () => allowed,
+      () => now,
+    );
+    await expect(scheduler.control("clear_halt")).rejects.toThrow("auction_halt_review_required");
+    allowed = true;
+    state.paused = false;
+    await expect(scheduler.control("clear_halt")).rejects.toThrow("auction_halt_review_required");
+    state.paused = true;
+    const before = structuredClone(state);
+    await scheduler.control("clear_halt");
+    expect(state).toEqual({
+      ...before,
+      halt: null,
+      throttleCount: 0,
+      robots: halt === "robots_disallowed" ? null : before.robots,
+      generation: before.generation + 1,
+    });
+    expect(store.deleteAlarm).toHaveBeenCalledOnce();
+    expect(request).not.toHaveBeenCalled();
+  },
+);

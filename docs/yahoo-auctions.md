@@ -216,7 +216,9 @@ resetting the shared budget or source halt. `wake` repairs missing Alarms withou
 Discovery's soft-budget exhaustion defers that task to the next UTC day, preserving confirmation
 work in the recovery reserve. Normal status/resume controls stop at the soft ceiling; bounded
 `pause` and `public_pause` controls may use the reserve. Hard exhaustion still requires the
-deployment switches, and a rejected Alarm retains its single next-day recovery wake.
+deployment switches. A rejected Alarm reserves a smaller recovery charge before scheduling its
+single next-day wake; if even that charge is unavailable it performs no Alarm operations. Use the
+admin wake after the UTC reset, subject to its ordinary admission and all other stops.
 
 Robots is its own paced/charged request with a maximum 64 KiB body. One external HTTP request uses
 one permit; redirects and authentication challenges stop for review. Existing robots parsing and
@@ -350,7 +352,7 @@ refreshing the page repeatedly consumes the same daily read allocation as search
 | Resume | Keeps source halt, next-fetch time, Retry-After, UTC charges and the nightly window. It does not override deployment/permission gates. |
 | Restore scheduled wake | Re-arms the one saved Alarm when eligible; it does not fetch in the admin HTTP request. |
 | Retry exhausted work | Resets at most 20 exhausted task cursors/attempts; shared budget, backoff and source halt remain. |
-| Clear reviewed source halt | Requires collection to be paused, collection gates to be approved and an explicit review acknowledgment. Clears halt/throttle streak, advances generation and keeps pause, budgets and backoff; resume is a separate action. |
+| Clear reviewed source halt | Requires collection to be paused, collection gates to be approved and an explicit review acknowledgment. Clears halt/throttle streak, advances generation and keeps pause, budgets and backoff; resume is a separate action. A saved robots denial is invalidated so the next eligible turn rechecks robots with normal pacing and admission. |
 
 After every control attempt, including a lost response, reload the persisted state before another
 change. If a stop write is rejected by quota/storage failure, disable all three deployment switches

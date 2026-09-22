@@ -47,6 +47,7 @@ export class AuctionScheduler {
       const state = this.store.runtime(now);
       if (action === "clear_halt") {
         if (!state.paused || !this.allowed()) throw new Error("auction_halt_review_required");
+        if (state.halt === "robots_disallowed") state.robots = null;
         state.halt = null;
         state.throttleCount = 0;
         state.generation++;

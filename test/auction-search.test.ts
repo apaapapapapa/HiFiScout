@@ -224,6 +224,29 @@ it("expires end/freshness and catalog links using the read clock without a new o
     rule: AUCTION_CATALOG_RULE,
   };
   await call("clock", { op: "match", entries: [entry] });
+  // Simulate a schema-2 row written before public search: identity is current but model_key is empty.
+  await call("legacy-model", { op: "apply", observations: [item] });
+  await call("legacy-model", { op: "match", entries: [entry] });
+  await call("legacy-model", { op: "legacy-model" });
+  expect(
+    (await call("legacy-model", { op: "search", query: "model=PMA" })).result.items,
+  ).toHaveLength(0);
+  await call("legacy-model", { op: "match", entries: [entry], now: now + AUCTION_CATALOG_TTL });
+  expect(
+    (
+      await call("legacy-model", {
+        op: "search",
+        query: "state=all&model=PMA",
+        now: now + AUCTION_CATALOG_TTL,
+      })
+    ).result.items,
+  ).toHaveLength(1);
+  const unchanged = await call("legacy-model", {
+    op: "match",
+    entries: [entry],
+    now: now + AUCTION_CATALOG_TTL + 1,
+  });
+  expect(Object.values(unchanged.usage).reduce((sum, use) => sum + use.rowsWritten, 0)).toBe(0);
   expect((await call("clock", { op: "search", query: "model=PMA" })).result.items).toHaveLength(1);
   expect(
     (await call("clock", { op: "search", query: "catalog=900001" })).result.items,
