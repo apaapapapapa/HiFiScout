@@ -49,7 +49,7 @@ export class AuctionStore {
       ? this.sql<{ version: number }>("schema", "SELECT version FROM auction_schema WHERE id=1")[0]
           .version
       : 0;
-    if (version > 1) throw new Error("auction_schema_newer_than_worker");
+    if (version > 2) throw new Error("auction_schema_newer_than_worker");
     if (version === 0)
       storage.transactionSync(() => {
         for (const statement of [
@@ -80,6 +80,18 @@ export class AuctionStore {
           "CREATE INDEX auction_cache_expiry ON catalog_match_cache(expires,key)",
           "CREATE TABLE auction_schema(id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL)",
           "INSERT INTO auction_schema VALUES(1,1)",
+        ])
+          this.sql("schema", statement);
+      });
+    if (version < 2)
+      storage.transactionSync(() => {
+        for (const statement of [
+          "ALTER TABLE auction_items ADD COLUMN match_key TEXT NOT NULL DEFAULT ''",
+          "ALTER TABLE auction_items ADD COLUMN match_revision TEXT NOT NULL DEFAULT ''",
+          "CREATE INDEX auction_match_key ON auction_items(match_key,auction_id)",
+          "CREATE TABLE auction_catalog_replays(key TEXT PRIMARY KEY,cursor TEXT NOT NULL)",
+          "CREATE TABLE auction_catalog_schedule(id INTEGER PRIMARY KEY CHECK(id=1),next_due INTEGER NOT NULL,error TEXT)",
+          "UPDATE auction_schema SET version=2 WHERE id=1",
         ])
           this.sql("schema", statement);
       });
@@ -163,7 +175,7 @@ export class AuctionStore {
         "item",
         `INSERT INTO auction_items(auction_id,source_url,item,fingerprint,model_key)
         VALUES(?,?,?,?,?) ON CONFLICT(auction_id) DO UPDATE SET item=excluded.item,fingerprint=excluded.fingerprint,
-        model_key=excluded.model_key,catalog_id=NULL,match_until=0`,
+        model_key=excluded.model_key,catalog_id=NULL,match_until=0,match_key='',match_revision=''`,
         next.auctionId,
         next.sourceUrl,
         item,
@@ -273,7 +285,8 @@ export class AuctionStore {
       );
       this.sql(
         "retention",
-        "DELETE FROM catalog_match_cache WHERE key IN (SELECT key FROM catalog_match_cache WHERE expires<? LIMIT 20)",
+        `DELETE FROM catalog_match_cache WHERE key IN (SELECT c.key FROM catalog_match_cache c WHERE c.expires<?
+          AND NOT EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) ORDER BY c.expires,c.key LIMIT 20)`,
         now - 86_400_000,
       );
     });

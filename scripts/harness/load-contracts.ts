@@ -28,6 +28,17 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "SQLite-backed auction DO replay writes zero rows; price updates preserve static attributes and FTS. Real workerd SQL rows are separate from production billing.",
   },
   {
+    id: "auction-catalog",
+    sources: ["src/auctions/catalog.ts", "src/db/auction-catalog-repository.ts"],
+    suites: ["test/auction-catalog.test.ts", "test/auction-catalog-runtime.test.ts"],
+    samples: {
+      "auction-catalog-shared": d1(40, 0, 8),
+      "auction-catalog-replay": d1(10, 0, 3),
+    },
+    reason:
+      "Bounded shared D1 candidate lookup is independent of duplicate auction count. Price-only updates reuse the SQLite candidate snapshot with zero writes and no D1 lookup.",
+  },
+  {
     id: "crawl-checkpoints",
     sources: ["src/db/crawl-fetch-*", "src/crawler/collection-progress.ts"],
     suites: ["test/d1-crawl-checkpoint-budget.test.ts", "test/d1-crawl-collection-budget.test.ts"],
