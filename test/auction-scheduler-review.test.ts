@@ -1,8 +1,10 @@
-import { it, expect } from "vite-plus/test";
+import { it, expect, vi } from "vite-plus/test";
 import { AuctionScheduler } from "../src/auctions/scheduler.js";
 import { initialAuctionRuntime } from "../src/auctions/runtime-policy.js";
 import type { AuctionStore } from "../src/auctions/storage.js";
 import { yahooAuctionHtmlSource } from "../src/auctions/yahoo/parser.js";
+import type { AuctionTask } from "../src/auctions/runtime-policy.js";
+import type { AuctionAcquisition } from "../src/auctions/yahoo/acquisition.js";
 
 it("a rejected invocation keeps one durable next-UTC-day wake without resetting consumption", async () => {
   const now = Date.parse("2026-09-22T23:00:00Z");
@@ -40,3 +42,82 @@ it("a rejected invocation keeps one durable next-UTC-day wake without resetting 
   await scheduler.deferForBudget();
   expect(writes).toBe(1);
 });
+
+it.each(["wake", "public_pause", "public_resume"] as const)(
+  "%s fences an in-flight response when the category scope is removed",
+  async (action) => {
+    const now = Date.parse("2026-09-22T01:00:00Z");
+    let state = { ...initialAuctionRuntime(now), paused: false, categories: ["2084037425"] };
+    state.robots = { text: "User-agent: *\nAllow: /", observedAt: now, delayMs: 60_000 };
+    let task: AuctionTask = {
+      id: "discover:2084037425",
+      kind: "discover",
+      categoryId: "2084037425",
+      auctionId: null,
+      page: 1,
+      due: now,
+      attempts: 0,
+      sequence: null,
+    };
+    let alarm: number | null = null;
+    const store = {
+      runtime: () => structuredClone(state),
+      saveRuntime: (value: typeof state) => {
+        state = value;
+      },
+      getTask: () => task,
+      nextTask: () => task,
+      task: (value: AuctionTask) => {
+        task = value;
+      },
+      retain: () => {},
+      storage: {
+        transactionSync: (fn: () => void) => fn(),
+        getAlarm: async () => alarm,
+        setAlarm: async (value: number) => {
+          alarm = value;
+        },
+        deleteAlarm: async () => {
+          alarm = null;
+        },
+      },
+    } as unknown as AuctionStore;
+    let complete!: (response: AuctionAcquisition) => void;
+    let started!: () => void;
+    const start = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const response = new Promise<AuctionAcquisition>((resolve) => {
+      complete = resolve;
+    });
+    const parse = vi.fn(yahooAuctionHtmlSource.parse);
+    const scheduler = new AuctionScheduler(
+      store,
+      {
+        request: async () => {
+          started();
+          return response;
+        },
+      },
+      { ...yahooAuctionHtmlSource, parse },
+      () => true,
+      () => now,
+    );
+    const pending = scheduler.alarm();
+    await start;
+    const issuedGeneration = state.generation;
+    await scheduler.control(action, []);
+    expect(state.generation).toBe(issuedGeneration + 1);
+    complete({
+      status: 200,
+      text: "<li class=Product>delayed</li>",
+      retryAfter: null,
+      authenticationRequired: false,
+    });
+    await pending;
+    expect(parse).not.toHaveBeenCalled();
+    expect(state.categories).toEqual([]);
+    expect(state.reserved.sellerRequests).toBe(1);
+    expect(state.lastSuccessAt).toBeNull();
+  },
+);

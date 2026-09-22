@@ -58,7 +58,13 @@ export class AuctionScheduler {
       if (categories) {
         if (categories.length > 2 || categories.some((id) => !yahooAuctionCategory(id)))
           throw new Error("invalid_auction_categories");
-        state.categories = [...new Set(categories)];
+        const next = [...new Set(categories)];
+        if (
+          next.length !== state.categories.length ||
+          next.some((id) => !state.categories.includes(id))
+        )
+          state.generation++;
+        state.categories = next;
       }
       // Resume never clears a source halt, exhausted UTC budget, pacing or backoff.
       if (!state.paused && this.allowed())
@@ -188,6 +194,7 @@ export class AuctionScheduler {
       if (
         current.generation !== generation ||
         current.paused ||
+        !current.categories.includes(task.categoryId) ||
         !pending ||
         pending.sequence !== issued.sequence
       )
