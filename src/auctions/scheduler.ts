@@ -97,7 +97,7 @@ export class AuctionScheduler {
     if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
   }
 
-  /** Soft invocation admission leaves the recovery reserve for this single durable UTC wake. */
+  /** Admission refusal still preserves a single durable UTC wake; it never refunds charges. */
   async deferForBudget(): Promise<void> {
     const now = this.clock();
     const state = this.store.runtime(now);
@@ -145,12 +145,14 @@ export class AuctionScheduler {
       task.kind === "confirm",
     );
     if (!reserved) {
-      state = {
-        ...state,
-        lastFailure: "budget_exhausted",
-        backoffUntil: (state.utcDay + 1) * 86_400_000,
-      };
-      this.store.saveRuntime(state);
+      // A soft discovery ceiling does not consume the confirmation/recovery opportunity.
+      this.store.storage.transactionSync(() => {
+        this.store.saveRuntime({ ...state, lastFailure: "budget_exhausted", lastKind: task.kind });
+        this.store.task({
+          ...task,
+          due: (Math.max(state.utcDay, Math.floor(now / 86_400_000)) + 1) * 86_400_000,
+        });
+      });
       await this.rearm();
       return;
     }

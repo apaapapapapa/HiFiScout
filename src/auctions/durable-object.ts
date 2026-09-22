@@ -29,8 +29,6 @@ export class YahooAuctions extends DurableObject<Env> {
     const { store, scheduler } = this.engine();
     const url = new URL(request.url);
     try {
-      if (!this.reserve(store, 6_100, 100))
-        return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
       if (url.pathname === "/admin/control" && request.method === "POST") {
         const body: unknown = await request.json();
         if (
@@ -43,6 +41,10 @@ export class YahooAuctions extends DurableObject<Env> {
               body.categories.some((id) => typeof id !== "string")))
         )
           return Response.json({ error: "invalid_auction_control" }, { status: 400 });
+        if (
+          !this.reserve(store, 100, 50, body.action === "pause" || body.action === "public_pause")
+        )
+          return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
         await scheduler.control(
           body.action as
             | "pause"
@@ -56,6 +58,8 @@ export class YahooAuctions extends DurableObject<Env> {
         return Response.json({ ok: true });
       }
       if (url.pathname === "/admin/status" && request.method === "GET") {
+        if (!this.reserve(store, 6_100, 100))
+          return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
         const { robots: _robots, ...state } = store.runtime(Date.now());
         return Response.json({
           state,
@@ -88,18 +92,18 @@ export class YahooAuctions extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const { store, scheduler } = this.engine();
     try {
-      if (this.reserve(store, 50, 20)) await scheduler.alarm();
+      if (this.reserve(store, 50, 20, true)) await scheduler.alarm();
       else await scheduler.deferForBudget();
     } finally {
       this.logUsage(store, "alarm");
     }
   }
-  private reserve(store: AuctionStore, reads: number, writes: number): boolean {
+  private reserve(store: AuctionStore, reads: number, writes: number, recovery = false): boolean {
     const next = reserveAuctionBudget(
       store.runtime(Date.now()),
       { ...emptyAuctionCharge(), requests: 1, reads, writes, durationGbSeconds: 0.25 },
       Date.now(),
-      false,
+      recovery,
     );
     if (!next || this.ctx.storage.sql.databaseSize >= YAHOO_AUCTION_PILOT_LIMITS.storedBytes)
       return false;

@@ -209,6 +209,10 @@ and UTC-day charges. Ready discovery/confirmation classes alternate. Discovery o
 minutes near/past the planned end. Eight successful-but-unconfirmed past-end checks stop that task.
 Four transport failures stop a task; `retry_failed` explicitly resets at most twenty tasks without
 resetting the shared budget or source halt. `wake` repairs missing Alarms without fetching directly.
+Discovery's soft-budget exhaustion defers that task to the next UTC day, preserving confirmation
+work in the recovery reserve. Normal status/resume controls stop at the soft ceiling; bounded
+`pause` and `public_pause` controls may use the reserve. Hard exhaustion still requires the
+deployment switches, and a rejected Alarm retains its single next-day recovery wake.
 
 Robots is its own paced/charged request with a maximum 64 KiB body. One external HTTP request uses
 one permit; redirects and authentication challenges stop for review. Existing robots parsing and
