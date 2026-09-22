@@ -13,6 +13,11 @@ Follow [adding shops](adding-shops.md) and [crawl orchestration](crawl-orchestra
 parsing, URL, pacing and quiet-hour boundaries. Auction prices must not enter `SellerProduct.priceYen`
 or the existing retail price/history projections.
 
+During this implementation, [#706](https://github.com/apaapapapapa/HiFiScout/pull/706) advanced main
+to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that seller's consent was
+confirmed. That independent authorization does **not** satisfy any Yahoo acquisition/redistribution
+gate. Preserve the concurrent shop change; Yahoo remains disabled and unverified.
+
 ### Acquisition and redistribution gate
 
 The following official references were retrieved on 2026-09-22. Search/page caches are not proof
