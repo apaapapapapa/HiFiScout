@@ -1,6 +1,6 @@
 import { it, expect, vi } from "vite-plus/test";
 import { AuctionScheduler } from "../src/auctions/scheduler.js";
-import { initialAuctionRuntime } from "../src/auctions/runtime-policy.js";
+import { initialAuctionRuntime, auctionRetryAt } from "../src/auctions/runtime-policy.js";
 import type { AuctionStore } from "../src/auctions/storage.js";
 import { yahooAuctionHtmlSource } from "../src/auctions/yahoo/parser.js";
 import type { AuctionTask } from "../src/auctions/runtime-policy.js";
@@ -15,6 +15,14 @@ it("unsupported robots pacing halts instead of creating an unbounded dormant tas
   expect(permit("2592000")).toEqual({ allowed: true, delayMs: 30 * 86_400_000 });
   expect(permit("2678401").allowed).toBe(false);
   expect(permit("1000000000000000000").allowed).toBe(false);
+});
+
+it("an overflowing numeric Retry-After remains a finite unsupported delay for the halt policy", () => {
+  const now = Date.parse("2026-09-22T01:00:00Z");
+  const due = auctionRetryAt(1, now, "9".repeat(400));
+  expect(Number.isFinite(due)).toBe(true);
+  expect(due).toBeGreaterThan(now + 30 * 86_400_000);
+  expect(auctionRetryAt(1, now, "120")).toBe(now + 120_000);
 });
 
 it("a rejected invocation keeps one durable next-UTC-day wake without resetting consumption", async () => {
