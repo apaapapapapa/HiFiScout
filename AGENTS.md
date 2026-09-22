@@ -20,6 +20,35 @@ and their disposable fixtures may run, fail, be fixed and rerun without confirma
 authorize production mutations. If a real decision/access blocker remains, complete useful work,
 then name its source and concrete effect. Do not bypass enforced denials by changing tools/settings.
 
+## Mandatory harness use for chat implementation
+
+Every chat request to develop, modify or fix a feature must use the existing
+[development harness](.github/harness/README.md), even when the user does not mention it or the
+change is small. Reading a guide or selecting a skill alone is not harness execution.
+
+Before editing, identify the baseline SHA, affected boundary, acceptance criteria and applicable
+harness commands/evidence. In ChatGPT Work, complete the [Work setup](docs/work-development.md)
+first. Use the existing runners and collectors rather than creating a parallel validation workflow.
+
+- For eligible bounded iterative repairs, follow [hifiscout-loop](.agents/skills/hifiscout-loop/SKILL.md)
+  and execute the controller's `init` / `prepare` / `begin` / `apply` / `evaluate` flow; inspect
+  `status` and `nextAction`, and preserve its fixed scope, budgets and journal when resuming.
+- New features, ordinary small edits, and protected harness/CI/agent/toolchain/migration changes
+  use the normal engineering PR workflow with applicable harness runners/collectors and the
+  validation matrix below. Being outside the repair loop does not exempt work from harness use.
+- Execute the relevant source checks and replay, cost, UI or AI evidence collection for the changed
+  boundary as defined in the harness guide and domain skill. Reuse valid CI-produced evidence;
+  do not duplicate suites or run unrelated collectors merely to claim harness use.
+- Follow [hifiscout-delivery](.agents/skills/hifiscout-delivery/SKILL.md) for PR/review/merge and
+  resulting pipelines. Use its delivery collector; when shell authentication is unavailable, use
+  the documented native GitHub evidence path. Retain actual commands, results and evidence bound to the
+  evaluated SHA, and report any unavailable checks as incomplete rather than passed.
+
+This requirement stays within the authorized task and the validation matrix: explanation/audit-only
+requests remain read-only, contributor-instruction edits use the wording-only checks, and the CI
+documentation generator retains its candidate-only contract. Harness use grants no additional
+production authority and does not enable intentionally paused audits.
+
 ## Find the relevant guidance
 
 Inspect current code/configuration and the affected diff; historical issues and snapshots describe
