@@ -4,6 +4,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { initialAuctionRuntime } from "../src/auctions/runtime-policy.js";
 import { auctionSnapshot } from "./helpers/auction-snapshot.js";
 import { emptyAuctionLiveFacts } from "../src/auctions/observations.js";
+import { parseYahooAuctionHtml } from "../src/auctions/yahoo/parser.js";
 let mf: Miniflare;
 beforeAll(async () => {
   const bundle = await build({
@@ -50,6 +51,7 @@ it("sparse confirmation keeps static facts and performs no FTS/catalog rewrite",
   };
   await call({ op: "apply", observations: [original] });
   const sparse = structuredClone(original);
+  sparse.observedItemFields = ["title"];
   sparse.stamp.sequence++;
   sparse.item = {
     title: original.item.title,
@@ -75,6 +77,19 @@ it("sparse confirmation keeps static facts and performs no FTS/catalog rewrite",
     (await call({ op: "apply", observations: [revised], id: original.auctionId })).item.snapshot
       .item.saleSubject,
   ).toBe("empty_box");
+  const explicit = parseYahooAuctionHtml(
+    `<li class="Product"><a class="Product__titleLink" href="${original.sourceUrl}">${original.item.title}</a><dl><dt>販売対象</dt><dd>不明</dd><dt>販売単位</dt><dd>不明</dd></dl></li>`,
+    { categoryId: "2084037425", ...original.stamp, sequence: original.stamp.sequence + 3 },
+  );
+  expect(explicit.observations).toHaveLength(1);
+  const unknown = await call({
+    op: "apply",
+    observations: explicit.observations,
+    id: original.auctionId,
+  });
+  expect(unknown.item.snapshot.item.saleSubject).toBe("unknown");
+  expect(unknown.item.snapshot.item.saleUnit).toBe("unknown");
+  expect(unknown.usage.item.rowsWritten).toBeGreaterThan(0);
 });
 it("admits durable stop controls after normal public/admin admission is exhausted", async () => {
   await mf.dispatchFetch("https://test.invalid/seed");

@@ -177,6 +177,18 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
       source: YAHOO_AUCTION_SOURCE,
       ...identity,
       stamp,
+      observedItemFields: [
+        "title",
+        "sourceCategoryId",
+        "sourceCategoryPath",
+        "rawCategory",
+        "categoryHint",
+        ...(fields.has("メーカー") ? ["rawManufacturer" as const] : []),
+        ...(fields.has("型番") ? ["rawModel" as const] : []),
+        ...(fields.has("商品の状態") ? ["conditionText" as const] : []),
+        ...(fields.has("販売単位") ? ["saleUnit" as const] : []),
+        ...(fields.has("販売対象") ? ["saleSubject" as const] : []),
+      ],
       item: {
         title,
         rawManufacturer: text("メーカー") || null,
