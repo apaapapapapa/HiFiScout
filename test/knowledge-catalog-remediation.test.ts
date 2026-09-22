@@ -14,6 +14,10 @@ import {
 import type { KnowledgeCatalogListingRow } from "../src/catalog/types.js";
 import { captureDatabase } from "./helpers/d1.js";
 
+function isCatalogListingSelector(sql: string): boolean {
+  return /FROM products INDEXED BY idx_products_exact_identity/.test(sql);
+}
+
 function listing(overrides: Partial<KnowledgeCatalogListingRow> = {}): KnowledgeCatalogListingRow {
   return {
     shop_key: "hifido",
@@ -219,8 +223,47 @@ test("catalog replay selects listings in bounded cursor order", async () => {
 
   assert.equal(selected.rows.length, 1);
   assert.equal(selected.hasMore, true);
-  assert.deepEqual(db.calls[0].binds, [10, "esoteric", "K01XD", 2]);
+  assert.deepEqual(db.calls[0].binds, [
+    "esoteric",
+    "K01XD",
+    "resolved",
+    10,
+    2,
+    "esoteric",
+    "K01XD",
+    "candidate",
+    10,
+    2,
+    "esoteric",
+    "K01XD",
+    "unresolved",
+    10,
+    2,
+    2,
+  ]);
   assert.match(db.calls[0].sql, /ORDER BY id/);
+});
+
+test("catalog replay chunks identity models below the D1 binding limit", async () => {
+  const db = captureDatabase([]);
+
+  await selectListingsForCatalogRemediation(
+    db,
+    {
+      catalogProductId: 7,
+      manufacturerId: "esoteric",
+      canonicalModel: "K-01XD",
+      identityModels: Array.from({ length: 7 }, (_, index) => `MODEL-${index + 1}`),
+    },
+    { afterId: 10, limit: 1 },
+  );
+
+  assert.equal(db.calls.length, 2);
+  assert.deepEqual(
+    db.calls.map((statement) => statement.binds.length),
+    [91, 16],
+  );
+  assert.ok(db.calls.every((statement) => isCatalogListingSelector(statement.sql)));
 });
 
 test("catalog replay records the identity transition it caused", async () => {
@@ -230,7 +273,7 @@ test("catalog replay records the identity transition it caused", async () => {
       return [{ id: 7, manufacturer_id: "esoteric", canonical_model: "K-01XD" }];
     }
     if (/FROM knowledge_catalog_aliases/.test(statement.sql)) return [];
-    if (/normalized_model IN \(/.test(statement.sql)) {
+    if (isCatalogListingSelector(statement.sql)) {
       return [{ id: 11, shop_key: "hifido", source_id: "listing-11" }];
     }
     if (/SELECT listing_product_id, catalog_product_id, status, match_method/.test(statement.sql)) {
@@ -301,7 +344,7 @@ test("a replay that changes no identity writes no provenance", async () => {
     if (/FROM knowledge_catalog_products/.test(statement.sql)) {
       return [{ id: 7, manufacturer_id: "esoteric", canonical_model: "K-01XD" }];
     }
-    if (/normalized_model IN \(/.test(statement.sql)) {
+    if (isCatalogListingSelector(statement.sql)) {
       return [{ id: 11, shop_key: "hifido", source_id: "listing-11" }];
     }
     if (/SELECT listing_product_id, catalog_product_id, status, match_method/.test(statement.sql)) {
@@ -342,7 +385,7 @@ function pendingSweepDatabase(
     if (/FROM knowledge_catalog_products/.test(statement.sql)) {
       return [{ id: 7, manufacturer_id: "esoteric", canonical_model: "K-01XD" }];
     }
-    if (/normalized_model IN \(/.test(statement.sql)) return listings;
+    if (isCatalogListingSelector(statement.sql)) return listings;
     return [];
   });
 }
@@ -405,11 +448,9 @@ test("a partially replayed product keeps its watermark so the next run resumes i
     limit: 1,
     evaluatedAt: "2026-08-15T01:01:00.000Z",
   });
-  const listingPage = resumed.calls.find((statement) =>
-    /normalized_model IN \(/.test(statement.sql),
-  );
+  const listingPage = resumed.calls.find((statement) => isCatalogListingSelector(statement.sql));
   assert.ok(listingPage);
-  assert.equal(listingPage.binds[0], 11);
+  assert.equal(listingPage.binds[3], 11);
   assert.ok(
     resumed.batched.some(
       (statement) =>
@@ -441,7 +482,7 @@ test("product-axis overflow is explicit when 21 verified products exceed a limit
         },
       ];
     }
-    if (/normalized_model IN \(/.test(statement.sql)) {
+    if (isCatalogListingSelector(statement.sql)) {
       return [
         {
           id: 1000 + currentProductId,

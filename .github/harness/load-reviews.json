@@ -396,6 +396,50 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "36aaf69d3f7a61195af4e85a468514dfbb1ecc80",
+      "beforeDigest": "59c15f08e75b5c9ad23d903b1fe7842fdb42944f2506e9a8892d37c344d4ffb5",
+      "afterDigest": "71c71a6c3cf0c0d208d007c63fa11130fcbfb2b199c2c0db98b00fc3115ab29e",
+      "reason": "Register the verified Knowledge Catalog remediation selector as its own load boundary with query-plan, behavior and real workerd growth coverage. The three new deterministic samples read 46 rows, write zero rows and execute one statement at 100, 1,000 and 10,000 matching identities plus equal unrelated growth. Existing contracts, samples and ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/752",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35743798194"
+      ]
+    },
+    {
+      "id": "catalog-remediation-100",
+      "baseSha": "36aaf69d3f7a61195af4e85a468514dfbb1ecc80",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "ddfaa6d35dcd9d1b8563372d9a936fcf85d2bf6531b0360f88ea39ca9bad11a6",
+      "reason": "Reviewed initial real-workerd remediation selector baseline: 46 reads, zero writes and one statement for a 10-row page with 100 matching identities and 100 unrelated listings. The 60-read ceiling preserves bounded headroom without inventing a historical measurement or waiving any existing budget.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/752",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35743798194"
+      ]
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "baseSha": "36aaf69d3f7a61195af4e85a468514dfbb1ecc80",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "a5d7fd8d1db5b30054cdb5cc476a6728628e2795e8632b4d83cb3618a64b4a11",
+      "reason": "Reviewed initial real-workerd remediation selector baseline: 46 reads, zero writes and one statement for a 10-row page with 1,000 matching identities and 1,000 unrelated listings. The unchanged cost confirms the page bound while the 60-read ceiling rejects scan growth.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/752",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35743798194"
+      ]
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "baseSha": "36aaf69d3f7a61195af4e85a468514dfbb1ecc80",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "9fdaa8785327c3ad3285c67a72d8d41df80fb5ea08a7a348b7091360c36e84c4",
+      "reason": "Reviewed initial real-workerd remediation selector baseline: 46 reads, zero writes and one statement for a 10-row page with 10,000 matching identities and 10,000 unrelated listings. This largest fixture proves both matching and unrelated growth stay bounded under the 60-read absolute ceiling.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/752",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35743798194"
+      ]
     }
   ]
 }
