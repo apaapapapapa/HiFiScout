@@ -1,4 +1,275 @@
 {
   "schemaVersion": 1,
-  "reviews": []
+  "reviews": [
+    {
+      "id": "load-contracts",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "7348267630a36dad2fe5730e1786c32933076d0598a7ffea20a99c74449b1fd1",
+      "afterDigest": "f0d8736ac184ff66c80b3dc33e15be3ab8115d597519681299a2cc39530ac445",
+      "reason": "Add the real SQLite DO replay and live-price workloads. Existing ceilings are unchanged; measured replay is 2 reads/0 writes/1 statement and price-only update amid 2,000 items is 3 reads/5 writes/2 statements. This is a reviewed initial baseline, not a claimed improvement.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "auction-price-change",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "5aa44c4cede43998b4b24571039b01d4fe982b2c9369540faacf5b64dfa52467",
+      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "auction-replay",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "b2977f3e8a75da61a201546a8c25b5fa610bce58619295c3727056c9bb998b37",
+      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "catalog-rows-100",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "5cf5582900f6fbc85057e9c3c07af08478f778b002b17cd2acd6c677d90f22f7",
+      "afterDigest": "7280e77e838869890fd4ed673ce258f120efbcea3ecd9e22741185e8af415f3e",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "catalog-rows-1000",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "f5829a4d0095035504ac0576c9282ac07505c7446fcd4be1f50cd0619764c5e5",
+      "afterDigest": "3a5a866beb6d19f9f322c785718a2d4c3477fa5ecd35be45fa2156db4de45d81",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "catalog-rows-10000",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "810f5a7d36668712847e37969b502a3687f4c1690f95592ccd09819627ff46f9",
+      "afterDigest": "f97ac77512263c7b9412acd15e44d5ac944a30c10ec04927786a702c6fe283f1",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "category-prune",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "775b26da74171d2d995287a8a9d4ffe7117f2a6ce5db21fae6aae21f7d690950",
+      "afterDigest": "041cf97c337102dde21edb922f3de4f0d1ccb95b2b305cbfee9396615673b74f",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "715cf9cc2313103efc8a09ecd1549291417fd8c699ab490940ee89e4106e8086",
+      "afterDigest": "3a9cad6f5c4febe57a960060f4bdeaac4760c3f8fa21cc8fb28093ec78702232",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "935ed73e208dbb6fd718df2a67500606b410df7e3879f75009d7a4ffa8787c17",
+      "afterDigest": "5690cc1adabd3cc9881ebc340ea22f43877905c96eb188971af35921c3543b9e",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "crawl-do-retry",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "0078c4b7c91fd36a157d7c9e1c2924065b1e2836f33ae6dac1fcf89b4e7b25e9",
+      "afterDigest": "599373410b1c9c2b10cec68447e7b6959830e079568217ee9c9954847ebdf575",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "eb5b293a6bbec4da6a42e638905d7a55eacdec85bc274b2dd9bb2a99a66b3612",
+      "afterDigest": "39678a1d023fbbc9ab5ef5c52b9feab3aeecafe87522727199371e588e11df68",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "maintenance-continuation",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "916ecb630bd60408656026a8e4642c9e028889ffbc0d85212df4388ac63f68ea",
+      "afterDigest": "505cd4ecbfcf1916af6a720e3af86bca1dcebc4ad8a13e84c9776d8842f6aa36",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "828d4689d4ad768193197d8b336f2bd69efc107607b9e27c114b35b1e45523b6",
+      "afterDigest": "509a1b490a9600991898f7e0662c3d777b2248a31636a537fa8466c48b4ac695",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "queue-export-redelivery",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "3bc4f69315d93bbbe42ca0608ce9bf39d2c30bb10efc76da5aff03376bde0c9f",
+      "afterDigest": "a3440c41e4260bc08a71c86e11ec1da2ecf1337b270532df93ae73f95a3e6251",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "retention-history-100",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "5067d7843d6ee9bb41749f4ee8b8516ed635ff749bd51f99e0c4cf72f85b8736",
+      "afterDigest": "5e71f5344cdfb616055927cdf3eb36b9862a06f49f4fc20878cfd251409e3deb",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "retention-history-1000",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "65be417dd6ca37f115f087695be7a9e73559a14db9be35708e75d6f087a68263",
+      "afterDigest": "1bec86b133a28b2be166ea01dfc9f207fb888ec45e5f8d8adf272c53befdde0b",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "retention-history-10000",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "a51a60b5a89d08916be5cf8dc24f7b7b95b18e4ab4c37336f3cfcd2db45280f1",
+      "afterDigest": "c9a39c2df624c055b946f6a74e7361765d845ed55207f157737ea4f9f2e37b8b",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "search-new-total",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "376a370a9daece58ea276b2b80dc1612bfdb8df2afec2339138138ce5dec6caf",
+      "afterDigest": "d7ac16b96b2afa080207bd057493219332520ad737001e4b3b64b0b1d735e0e9",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "search-price-drop-total",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "32ea8dca133caa170d6a50a5b55ee77297b8e1329ccfe8d063cf2217b86e3250",
+      "afterDigest": "c8ec05848b0a37c23b4fbdd24ad16380343bba20eec6610dee2173c5defbac6d",
+      "reason": "The new offline auction Worker fixture changes the shared fixture digest. Reviewed deterministic measurements are identical to the passing exact baseline; this case and its ceiling are unchanged. The fixture makes no seller or production calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "ef92b48c4a5ca712e0978d96584cc679c931b019fc8de55d110298a65537d741",
+      "afterDigest": "9e820143b9b3f1124efe63d35331476bde77ffd0c962e6336867c5fa35acc13e",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "6f2a0ef6a95ef0afb4e065107c2ae7a1ef21e48ac169f352583173e720b99f7d",
+      "afterDigest": "7fcec3912411bc3e942ee83e345b670a77b9d4a3543afa4f74052c75223c98fc",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "be8b874bb422531794cec2d7b1b3648a4f8fb319512963af906826b4ed6a8401",
+      "afterDigest": "49d5fca5d2afb97319a71ded8db312cc129aefebeee4e21a466daa7d970b5a6c",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "c7bbf8a02ceb6a0791c0c128452de39b022cc80bf00a4845076910ae27e495f2",
+      "afterDigest": "45f4e59d3ff039bf07f225bd62ae8f64d39e0af16e5b0c61513755b45358580a",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "528fbfdf3b5f81d52dcd35651790e780b35c75dd0ce9613710fe49c59af452ba",
+      "afterDigest": "f4c54fd79e9f4e14457190a4ba75964222bee7b7d8c21f998440ba26fc1e579a",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "b181006f52bd36a0352b1e61feed59dcd2ddcc2e4973770a20ae9b2c32a2ef80",
+      "afterDigest": "63b000609bde5a1f0f123247cd24db8fdfc7e0941351d13a85dc364ecdf893ff",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "2befe2a31f650f48659e57d112efc6daf0b3682d36a6c65a8925cd97440ee34b",
+      "afterDigest": "c76b6b12f61d3ea7375de03b8c59aa3236c39cfd92b6406c8910a880dc8b5664",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+      "beforeDigest": "a8bf7184bbdfe770285996521f52d5b31385449e091031854457443e97f51105",
+      "afterDigest": "f79092857785b429f7488c7ea28b82841d687c1630ac5c73cd04bd8b8212a677",
+      "reason": "Reviewed fixture-only profile change: adding the offline auction Worker fixture changes the shared corpus hash, while the existing shop parsers, CPU reference and ceilings are unchanged. All six alternating sessions succeeded; retained medians vary by -14% to +15%. The mechanical comparison remains unknown, not an improvement or production CPU claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/715"
+      ]
+    }
+  ]
 }

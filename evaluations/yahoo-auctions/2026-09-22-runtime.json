@@ -1,0 +1,318 @@
+{
+  "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
+  "candidateSha": "d8256e18f4a2392a8062554d996e5badc7a0627c",
+  "treeEquivalentRemoteSha": "fc90231676c6e98998169db81a70f1a8ec25704b",
+  "cpuComparison": [
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 6.074,
+      "candidateCpuUs": 5.635,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 1540.522,
+      "candidateCpuUs": 1535.9,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 181.129,
+      "candidateCpuUs": 168.419,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 2222.286,
+      "candidateCpuUs": 2508.125,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 366.714,
+      "candidateCpuUs": 418.417,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 16.842,
+      "candidateCpuUs": 19.315,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 9892.2,
+      "candidateCpuUs": 8849.571,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "metric": "cpuUsageRatio",
+      "unit": "ratio",
+      "baselineCpuUs": 626.706,
+      "candidateCpuUs": 543.934,
+      "ratio": null,
+      "maximumRatio": null,
+      "status": "unknown",
+      "reason": "same_runner_medians_with_common_baseline_reference"
+    }
+  ],
+  "measurements": [
+    {
+      "id": "auction-price-change",
+      "before": null,
+      "after": {
+        "rowsRead": 3,
+        "rowsWritten": 5,
+        "sqlStatements": 2
+      }
+    },
+    {
+      "id": "auction-replay",
+      "before": null,
+      "after": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      }
+    },
+    {
+      "id": "catalog-rows-100",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      }
+    },
+    {
+      "id": "catalog-rows-1000",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      }
+    },
+    {
+      "id": "catalog-rows-10000",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      }
+    },
+    {
+      "id": "category-prune",
+      "before": {
+        "rowsRead": 241,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 241,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      }
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "before": {
+        "rowsRead": 196,
+        "rowsWritten": 176,
+        "sqlStatements": 59
+      },
+      "after": {
+        "rowsRead": 196,
+        "rowsWritten": 176,
+        "sqlStatements": 59
+      }
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "before": {
+        "rowsRead": 316,
+        "rowsWritten": 256,
+        "sqlStatements": 99
+      },
+      "after": {
+        "rowsRead": 316,
+        "rowsWritten": 256,
+        "sqlStatements": 99
+      }
+    },
+    {
+      "id": "crawl-do-retry",
+      "before": {
+        "doAlarms": 3,
+        "doStorageWrites": 2
+      },
+      "after": {
+        "doAlarms": 3,
+        "doStorageWrites": 2
+      }
+    },
+    {
+      "id": "daily-schedule",
+      "before": {
+        "scheduledInvocations": 391,
+        "crawlDispatches": 61,
+        "plannedPages": 1619
+      },
+      "after": {
+        "scheduledInvocations": 391,
+        "crawlDispatches": 61,
+        "plannedPages": 1619
+      }
+    },
+    {
+      "id": "maintenance-continuation",
+      "before": {
+        "d1Calls": 49,
+        "sqlStatements": 49
+      },
+      "after": {
+        "d1Calls": 49,
+        "sqlStatements": 49
+      }
+    },
+    {
+      "id": "projection-unchanged",
+      "before": {
+        "rowsRead": 109,
+        "rowsWritten": 0,
+        "sqlStatements": 34
+      },
+      "after": {
+        "rowsRead": 109,
+        "rowsWritten": 0,
+        "sqlStatements": 34
+      }
+    },
+    {
+      "id": "queue-export-redelivery",
+      "before": {
+        "queueSends": 0,
+        "queueRetries": 0
+      },
+      "after": {
+        "queueSends": 0,
+        "queueRetries": 0
+      }
+    },
+    {
+      "id": "retention-history-100",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      }
+    },
+    {
+      "id": "retention-history-1000",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      }
+    },
+    {
+      "id": "retention-history-10000",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      }
+    },
+    {
+      "id": "search-new-total",
+      "before": {
+        "rowsRead": 145,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "after": {
+        "rowsRead": 145,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      }
+    },
+    {
+      "id": "search-price-drop-total",
+      "before": {
+        "rowsRead": 181,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "after": {
+        "rowsRead": 181,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      }
+    }
+  ],
+  "profileReview": "A new offline Worker fixture changes the shared fixture digest for existing samples. Existing deterministic observations and limits are identical; CPU comparisons remain unknown with reviewed fixture-only changes. These are local measurements, not production/account billing."
+}
