@@ -136,7 +136,7 @@ test("a hidden favorite can be refreshed without clearing its budget", async ({ 
 
 test("detail Back and Forward preserve a later page, focus and scroll", async ({ page, mount }) => {
   const later = Array.from({ length: 18 }, (_, index) =>
-    product({ key: `c-${300 + index}`, model: `Page three ${index}` }),
+    product({ key: `c-${300 + index}`, model: `Page three ${index}`, offer_count: 2 }),
   );
   const seen = await catalog(page, {
     search: (url) => ({
@@ -305,7 +305,7 @@ test("refreshing a vanished last page returns to the remaining page", async ({ p
   await mount("frontend/public-app/Default");
   await page.getByRole("button", { name: "2ページ目", exact: true }).click();
   await expect(page.locator("#products")).toContainText("Second");
-  await page.locator("[data-key='c-2'] .product-title-link").click();
+  await page.locator("[data-key='c-2'] .offers-button[data-offers]").click();
   await expect(page.locator("#offers-dialog")).toBeVisible();
   await page.clock.install();
   await page.clock.fastForward(31_000);

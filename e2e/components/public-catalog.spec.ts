@@ -638,13 +638,77 @@ test("mobile drafts apply once, cancel safely, validate prices and trap keyboard
   await expect(page.locator("#shop")).toBeVisible();
 });
 
+test("single-offer names and unconfigured shop links navigate without loading detail", async ({
+  page,
+  context,
+  mount,
+}) => {
+  const shopUrl = new URL(page.url()).origin + "/";
+  const sourceUrl = new URL("/seller/products/1?stock=used", shopUrl).href;
+  const single = product({ representative_offer: offer({ source_url: sourceUrl }) });
+  const seen = await mockCatalog(page, { results: { ...results, items: [single] } });
+  await mount("frontend/public-app/Default");
+  await context.route(
+    (url) => url.href === sourceUrl || url.href === shopUrl,
+    (route) => route.fulfill({ contentType: "text/html", body: "<h1>Seller fixture</h1>" }),
+  );
+  const title = page.locator(".card .product-title-link");
+  const shop = page.locator(".card .shop");
+  for (const [link, expectedUrl] of [
+    [title, sourceUrl],
+    [shop, shopUrl],
+  ] as const) {
+    await expect(link).toHaveAttribute("href", expectedUrl);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    const popupPromise = context.waitForEvent("page");
+    // Both keyboard activation and the normal shop-name click follow the native link.
+    if (link === title) {
+      await link.focus();
+      await link.press("Enter");
+    } else await link.click();
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(expectedUrl);
+    await expect(popup.getByRole("heading")).toHaveText("Seller fixture");
+    expect(await popup.evaluate(() => window.opener)).toBeNull();
+    await popup.close();
+  }
+  expect(seen.detail).toBe(0);
+  await expect(page.locator("#offers-dialog")).not.toBeVisible();
+  await page.locator(".offers-button[data-offers]").click();
+  await expect(page.locator("#offers-dialog")).toBeVisible();
+  expect(seen.detail).toBe(1);
+});
+
+for (const shopCount of [1, 2]) {
+  test(`multiple-offer names keep opening comparison with ${shopCount} shops`, async ({
+    page,
+    mount,
+  }) => {
+    const offers = [
+      offer(),
+      offer({ listing_product_id: 2, shop_key: shopCount === 1 ? "shop-a" : "shop-b" }),
+    ];
+    const grouped = product({ offer_count: 2, shop_count: shopCount });
+    await mockCatalog(page, { results: { ...results, items: [grouped] } });
+    await page.route("**/api/product-search/c-1", (route) =>
+      route.fulfill({ json: { product: grouped, offers } }),
+    );
+    await mount("frontend/public-app/Default");
+    await page.locator(".card .product-title-link").click();
+    await expect(page.locator("#offers-dialog")).toBeVisible();
+    await expect(page.locator("#offers-dialog .offer-item")).toHaveCount(2);
+    await expect(page).toHaveURL(/\/p\/c-1$/);
+  });
+}
+
 test("single-offer detail and history keep their targets when retrying failures", async ({
   page,
   mount,
 }) => {
   const seen = await mockCatalog(page);
   await mount("frontend/public-app/Default");
-  await page.locator(".product-title-link").click();
+  await page.locator(".offers-button[data-offers]").click();
   await page.getByRole("button", { name: "在庫情報を再読み込み" }).click();
   await expect(page.locator(".offer")).toHaveCount(1);
   await expect(page.locator(".offer-facts dl > div").filter({ hasText: "元箱" })).toContainText(

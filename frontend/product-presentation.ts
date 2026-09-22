@@ -179,3 +179,14 @@ export const SHOP_LISTING_URLS: Readonly<Record<string, string>> = Object.freeze
   formusic: "https://shop.formusic.jp/",
   "u-audio": "https://www.u-audio.com/",
 });
+
+/** Keep curated listing pages; other shops link to the actual offer's website. */
+export function shopListingUrl(offer: DisplayProduct["representative_offer"]): string | null {
+  if (!offer) return null;
+  const listingUrl = Object.hasOwn(SHOP_LISTING_URLS, offer.shop_key)
+    ? SHOP_LISTING_URLS[offer.shop_key]
+    : null;
+  if (listingUrl) return listingUrl;
+  const sourceUrl = safeExternalUrl(offer.source_url);
+  return sourceUrl === "#" ? null : new URL(sourceUrl).origin + "/";
+}

@@ -9,6 +9,7 @@ import { activityData, priceDropped } from "../frontend/product-activity.js";
 import {
   categoryOptionModel,
   safeExternalUrl,
+  shopListingUrl,
   syncStatusSummary,
 } from "../frontend/product-presentation.js";
 import {
@@ -210,15 +211,59 @@ test("React escapes retailer text and rejects unsafe external URLs", () => {
   assert.equal(escapeHtml(`<>&"'`), "&lt;&gt;&amp;&quot;&#39;");
 });
 
-test("a single-offer title opens detail and the seller action stays explicit", () => {
+test("a single-offer title links to its seller while detail stays available", () => {
   const markup = renderCard(product(), true);
 
   assert.match(markup, /aria-pressed="true"/u);
   assert.match(markup, /お気に入りから削除/u);
   assert.match(markup, /class="shop shop-hifido shop-new-arrivals-link"/u);
-  assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
+  assert.match(
+    markup,
+    /<a class="product-title-link" href="https:\/\/example\.test\/p1" target="_blank" rel="noopener noreferrer"/u,
+  );
+  assert.match(markup, /class="offers-button" data-offers="c-1"/u);
   assert.match(markup, /class="shop-link" href="https:\/\/example\.test\/p1"/u);
   assert.match(markup, /data-fav="c-1"/u);
+});
+
+test("multiple offers at one shop still open the product comparison", () => {
+  const markup = renderCard(product({ offer_count: 2, shop_count: 1 }));
+  assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
+  assert.match(markup, /2件の出品を比較/u);
+});
+
+test("missing or unsafe seller URLs keep server detail reachable", () => {
+  for (const representative_offer of [null, offer({ source_url: "javascript:alert(1)" })]) {
+    const markup = renderCard(product({ representative_offer }));
+    assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
+    assert.doesNotMatch(markup, /href="javascript:/u);
+  }
+  assert.match(
+    renderCard(product({ offer_count: 0, representative_offer: null })),
+    /class="product-title-link" data-offers="c-1"/u,
+  );
+});
+
+test("shop links preserve listing pages and cover shops without a curated URL", () => {
+  assert.equal(shopListingUrl(offer()), "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0");
+  const shimamusen = offer({
+    shop_key: "shimamusen",
+    source_url: "https://www.shimamusen.co.jp/shopdetail/000000123/?ref=used#item",
+  });
+  assert.equal(shopListingUrl(shimamusen), "https://www.shimamusen.co.jp/");
+  assert.match(
+    renderCard(product({ representative_offer: shimamusen })),
+    /class="shop shop-shimamusen shop-new-arrivals-link" href="https:\/\/www\.shimamusen\.co\.jp\/"/u,
+  );
+  for (const source_url of ["", "not a URL", "javascript:alert(1)", "data:text/html,hello"]) {
+    const invalid = offer({ shop_key: "new-shop", source_url });
+    assert.equal(shopListingUrl(invalid), null);
+    assert.doesNotMatch(
+      renderCard(product({ representative_offer: invalid })),
+      /shop-new-arrivals-link/u,
+    );
+  }
+  assert.equal(shopListingUrl(null), null);
 });
 
 test("a multi-shop card leads to the comparison instead of one arbitrary shop", () => {
