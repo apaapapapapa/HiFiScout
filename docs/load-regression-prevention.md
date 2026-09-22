@@ -24,7 +24,9 @@ Use identical profiles for `compare-cost`; changing a test or runtime cannot est
 CI's `changes` job pins the tested SHA and resolves the PR merge commit's first parent (or the
 previous main push). This avoids a stale event `pull_request.base.sha` when main advances.
 The `load-baseline` job checks out that exact baseline, installs that
-revision's pinned dependencies and executes `load-capture`. The candidate reuses D1/DO/Queue samples
+revision's pinned dependencies and executes the candidate's `load-capture` controller against it.
+The measured revision owns its suites, cost policy and benchmark implementation; the controller
+captures raw CPU without invoking a historical single-session veto. The candidate reuses D1/DO/Queue samples
 and real Vitest outcomes from the existing four shards; there is no second candidate unit-test run. The required
 `product-replay` job runs `load-gate`, and `fan-out` requires both jobs to succeed. Markdown-only
 changes retain the existing lightweight path.

@@ -1,10 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { readCheckout } from "./checkpoint.js";
 import { repositoryArtifact } from "./artifacts.js";
-import { costReport, REQUIRED_COST_SAMPLES } from "./cost.js";
-import { LOAD_CAPTURE_SUITES, LOAD_CONTRACTS } from "./load-contracts.js";
 import { reportExitCode } from "./report.js";
 
 /** Fresh local fixtures only. No production credentials or seller calls are needed. */
@@ -12,6 +11,14 @@ export async function captureLoad(directory: string): Promise<number> {
   repositoryArtifact(join(directory, "capture.json"));
   const checkout = readCheckout();
   if (checkout.dirty) throw new Error("load_capture_requires_clean_checkout");
+  // The candidate owns orchestration, including removal of legacy single-session CPU vetoes.
+  // The measured checkout still owns its suites, policy, samples and pinned dependencies.
+  const { costReport, REQUIRED_COST_SAMPLES } = (await import(
+    pathToFileURL(resolve("scripts/harness/cost.ts")).href
+  )) as typeof import("./cost.js");
+  const { LOAD_CAPTURE_SUITES, LOAD_CONTRACTS } = (await import(
+    pathToFileURL(resolve("scripts/harness/load-contracts.ts")).href
+  )) as typeof import("./load-contracts.js");
   await mkdir(dirname(directory), { recursive: true });
   await mkdir(directory); // Never merge samples from an earlier execution.
   const samples = join(directory, "samples");

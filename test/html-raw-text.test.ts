@@ -41,6 +41,24 @@ test("a quoted attribute value may contain the character that ends the start tag
   );
 });
 
+test("tag scanning preserves quoted delimiters, mixed case and incomplete attributes", () => {
+  for (const tag of ["ScRiPt", "StYlE", "NoScRiPt"]) {
+    assert.equal(
+      stripRawTextElements(
+        `<div data-x='" > <${tag}>'>kept</div><${tag} data-x="' >">hidden</${tag} data-x='>'><p>X</p>`,
+        ["script", "style", "noscript"],
+      ),
+      `<div data-x='" > <${tag}>'>kept</div> <p>X</p>`,
+    );
+  }
+  assert.equal(
+    stripRawTextElements(`<div data-x="<script>hidden</script>`),
+    `<div data-x="<script>hidden</script>`,
+  );
+  assert.equal(stripRawTextElements(`<script data-x='>hidden`), `<script data-x='>hidden`);
+  assert.equal(stripRawTextElements(`<script>hidden</script data-x='>`), " ");
+});
+
 test("a `<` that starts no tag is text, wherever it appears", () => {
   // Quoted attribute values and comments hold text, not markup. Opening an element on one of
   // these swallows the rest of the page, because nothing later closes it.

@@ -13,6 +13,7 @@ const RAW_TEXT_TAGS = ["script", "style", "noscript"] as const;
 export type RawTextTag = (typeof RAW_TEXT_TAGS)[number];
 
 const DEFAULT_TAGS: readonly RawTextTag[] = ["script", "style"];
+const TAG_BOUNDARY = /["'>]/g;
 
 /**
  * HTML ends a tag name on ASCII whitespace only. JavaScript's `\s` also matches NBSP and the
@@ -37,16 +38,12 @@ function isTagNameStart(char: string | undefined): boolean {
 
 /** Index of the `>` closing a tag, skipping quoted attribute values so `data-x="a>b"` survives. */
 function tagEnd(html: string, start: number): number {
-  let quote: '"' | "'" | null = null;
-  for (let index = start; index < html.length; index += 1) {
-    const char = html[index];
-    if (quote) {
-      if (char === quote) quote = null;
-    } else if (char === '"' || char === "'") {
-      quote = char;
-    } else if (char === ">") {
-      return index;
-    }
+  TAG_BOUNDARY.lastIndex = start;
+  for (let token = TAG_BOUNDARY.exec(html); token; token = TAG_BOUNDARY.exec(html)) {
+    if (token[0] === ">") return token.index;
+    const closingQuote = html.indexOf(token[0], token.index + 1);
+    if (closingQuote < 0) return -1;
+    TAG_BOUNDARY.lastIndex = closingQuote + 1;
   }
   return -1;
 }
@@ -116,7 +113,10 @@ function hiddenSpans(html: string, tags: readonly RawTextTag[]): HiddenSpan[] {
       continue;
     }
 
-    const tag = tags.find((candidate) => matchesTagName(html, open + 1, candidate));
+    const tag =
+      after === "s" || after === "S" || after === "n" || after === "N"
+        ? tags.find((candidate) => matchesTagName(html, open + 1, candidate))
+        : undefined;
     if (!tag) {
       // Another element's start or end tag: step over the whole tag, quoted attributes included.
       if (isTagNameStart(after) || (after === "/" && isTagNameStart(html[open + 2]))) {
