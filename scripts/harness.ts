@@ -4,6 +4,14 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "load-cpu" && args.length === 3) {
+    const { capturePairedCpu } = await import("./harness/load-cpu.js");
+    return capturePairedCpu(args[1], args[2]);
+  }
+  if (args[0] === "load-gate" && args.length >= 7) {
+    const { runLoadGate } = await import("./harness/load-gate.js");
+    return runLoadGate(args[1], args[2], args[3], args[4], args[5], args.slice(6));
+  }
   if (args[0] === "load-capture" && args.length === 2) {
     const { captureLoad } = await import("./harness/load-capture.js");
     return captureLoad(args[1]);
@@ -81,7 +89,7 @@ export async function runHarness(args: string[]): Promise<number> {
   }
   if (args[0] !== "report" || args.length !== 2) {
     throw new Error(
-      "usage: vp run harness load-capture <new-output-dir> | report <report.json> | delivery <owner/repo> <PR> <output-dir> | checkpoint <task.json> <report.json> <state.json> <revision> | resume <state.json> | replay <output-dir> [vitest-reports...] | compare-replay <before.json> <after.json> | cost-report <samples-dir> <report.json> | compare-cost <before-dir> <after-dir> | ui <new-output-dir> | ai-template <new-recording.json> | ai <recording.json> <new-output-dir>",
+      "usage: vp run harness load-capture <new-output-dir> | load-cpu <baseline-checkout> <new-output-dir> | load-gate <base-sha> <baseline-dir> <candidate-samples> <paired-cpu-dir> <report.json> <vitest-reports...> | report <report.json> | delivery <owner/repo> <PR> <output-dir> | checkpoint <task.json> <report.json> <state.json> <revision> | resume <state.json> | replay <output-dir> [vitest-reports...] | compare-replay <before.json> <after.json> | cost-report <samples-dir> <report.json> | compare-cost <before-dir> <after-dir> | ui <new-output-dir> | ai-template <new-recording.json> | ai <recording.json> <new-output-dir>",
     );
   }
   const input: unknown = JSON.parse(await readFile(args[1], "utf8"));

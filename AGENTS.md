@@ -110,6 +110,9 @@ use [testing strategy](docs/testing-strategy.md) when choosing that boundary.
   `scripts/harness/load-contracts.ts`. Preserve zero-write replay, unrelated-data growth and recovery
   evidence. Explain budget/fixture changes with before/after measurements; never relax a ceiling merely
   to pass. Follow [load regression prevention](docs/load-regression-prevention.md).
+  The required CI load gate compares the exact base with the candidate and checks registered test
+  outcomes. Missing evidence fails. Intentional policy/profile changes require a reason and sealed
+  before/after evidence in `.github/harness/load-reviews.json`; never auto-approve a failing baseline.
 - Keep verified catalog matching distinct from guarded exact-identity fallback. Fuzzy/candidate
   matches never authorize merging products; preserve revision, accessory and bundle evidence.
 - Taxonomy v3 separates category leaves, facets and capabilities. `unclassified` is unresolved;

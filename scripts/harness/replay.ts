@@ -57,7 +57,10 @@ export async function replayCorpusHash(): Promise<string> {
   return hash.digest("hex");
 }
 
-export function collectReplayCases(reports: unknown[]) {
+export function collectReplayCases(
+  reports: unknown[],
+  suites: Record<string, string> = REPLAY_SUITES,
+) {
   const cases: ReplayCase[] = [];
   const seenSuites = new Set<string>();
   for (const report of reports) {
@@ -66,7 +69,7 @@ export function collectReplayCases(reports: unknown[]) {
     for (const suite of report.testResults) {
       if (!isRecord(suite) || typeof suite.name !== "string") throw new Error("invalid_test_suite");
       const normalized = suite.name.replaceAll("\\", "/");
-      const file = Object.keys(REPLAY_SUITES).find(
+      const file = Object.keys(suites).find(
         (path) => normalized === path || normalized.endsWith(`/${path}`),
       );
       if (!file) continue;
@@ -76,7 +79,7 @@ export function collectReplayCases(reports: unknown[]) {
       // Suite setup/teardown can fail after every assertion passed. Keep that outcome too.
       cases.push({
         id: `${file}::<suite>`,
-        stage: REPLAY_SUITES[file],
+        stage: suites[file],
         status: suite.status === "failed" ? "fail" : suite.status === "passed" ? "pass" : "unknown",
         failures: typeof suite.message === "string" && suite.message ? [suite.message] : [],
       });
@@ -91,7 +94,7 @@ export function collectReplayCases(reports: unknown[]) {
               : "unknown";
         cases.push({
           id: `${file}::${requireText(assertion.fullName, "case_name")}`,
-          stage: REPLAY_SUITES[file],
+          stage: suites[file],
           status,
           failures: assertion.failureMessages.map((message) =>
             requireText(message, "failure_message"),
@@ -104,7 +107,7 @@ export function collectReplayCases(reports: unknown[]) {
     throw new Error("duplicate_replay_case");
   return {
     cases: cases.sort((a, b) => a.id.localeCompare(b.id)),
-    missingSuites: Object.keys(REPLAY_SUITES).filter((file) => !seenSuites.has(file)),
+    missingSuites: Object.keys(suites).filter((file) => !seenSuites.has(file)),
   };
 }
 
