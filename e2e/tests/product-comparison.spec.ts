@@ -20,6 +20,8 @@ test("a shared comparison survives the real public bootstrap and metadata initia
       });
     if (path === "/api/product-search")
       return route.fulfill({ json: { items: [], hasMore: false, nextCursor: null } });
+    // Bootstrap APIs are independent of the comparison's product-detail requests.
+    if (!path.startsWith("/api/product-search/")) return route.fallback();
     const key = path.split("/").at(-1)!;
     details.push(key);
     return route.fulfill({
