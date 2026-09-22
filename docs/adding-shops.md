@@ -181,6 +181,13 @@ Declare deployed values in `wrangler.jsonc`. The prefix is always derived from t
 custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
 discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
 
+Setting `<PREFIX>_ENABLED=false` prevents both new dispatches and DO start commands, including forced
+or replayed commands. Existing DO Alarms park the exact execution/cursor and delete the Alarm before
+seller preparation, detail/inventory requests, or D1 work. No listings, history, or catalog data are
+deleted. Re-enabling requires an explicit configuration change; parked work may then be woken or
+re-delivered through the normal control path. A request already in flight in the old deployment
+cannot be recalled by this setting.
+
 Shops without `scheduleCron` join the shared 11:00/17:00 JST passes. The generator defaults their
 nominal interval to 720 minutes; changing the interval alone does not change Cron frequency. See
 [Crawl orchestration](./crawl-orchestration.md#daily-shop-schedules) for selection and overnight rules.
@@ -285,11 +292,13 @@ Sale prices take
 precedence over crossed-out prices. Only recognized trailing store names and the leading used marker
 are removed from the model, preserving revisions, bracketed SKUs, bundles and missing-accessory notes.
 
-The project operator confirmed seller consent on 2026-09-22, and production enables collection with
-`E_EARPHONE_ENABLED=true`. The registry retains `defaultEnabled: false` so other deployments require
-explicit opt-in after obtaining the consent required by
+At the project operator's request on 2026-09-22, production excludes this shop with
+`E_EARPHONE_ENABLED=false`. This supersedes the earlier enablement decision; the registry also retains
+`defaultEnabled: false`. The adapter, parser fixtures, existing listings, price history, and catalog
+remain intact, but retaining them does not authorize or enable further collection. Do not re-enable
+without a new explicit operator instruction and confirmation of the consent required by
 [the seller's terms, Article 15](https://www.e-earphone.jp/policies/terms-of-service).
-Revalidate the current markup, collection IDs and robots policy when enabling another deployment.
+Revalidate the current markup, collection IDs and robots policy before any future enablement.
 The observed robots policy
 allows the feed and ordinary `?page=` pagination but disallows collection `sort_by` URLs; the
 adapter follows only the immediate next page and keeps the platform's robots/redirect/body guards.

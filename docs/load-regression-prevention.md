@@ -21,7 +21,9 @@ Use identical profiles for `compare-cost`; changing a test or runtime cannot est
 
 ## Required PR and main comparison
 
-CI's `load-baseline` job checks out the exact PR base (or previous main push), installs that
+CI's `changes` job pins the tested SHA and resolves the PR merge commit's first parent (or the
+previous main push). This avoids a stale event `pull_request.base.sha` when main advances.
+The `load-baseline` job checks out that exact baseline, installs that
 revision's pinned dependencies and executes `load-capture`. The candidate reuses D1/DO/Queue samples
 and real Vitest outcomes from the existing four shards; there is no second candidate unit-test run. The required
 `product-replay` job runs `load-gate`, and `fan-out` requires both jobs to succeed. Markdown-only
@@ -45,10 +47,15 @@ failed, stale, dirty, skipped and incomparable observations fail the gate. Never
 baseline run with a fabricated observation or a different source SHA.
 
 For a local CPU pair, prepare a clean baseline worktree and install its frozen dependencies, then
-run `vp run harness load-cpu <baseline-checkout> .generated/load-cpu`. To assemble the complete gate,
-use `vp run harness load-gate <base-sha> <baseline-capture-dir> <candidate-samples-dir>
-<paired-cpu-dir> <output.json> <vitest-reports...>`. Reports must include the registered contract and
-harness guard suites. `cost-evidence` preserves all six raw CPU sessions, logs and the paired capture;
+run `vp run harness load-cpu <baseline-checkout> .generated/load-cpu`. To assemble the complete gate:
+
+```bash
+vp run harness load-gate <base-sha> <baseline-capture-dir> <candidate-samples-dir> \
+  <paired-cpu-dir> <output.json> <vitest-reports...>
+```
+
+Reports must include the registered contract and harness guard suites.
+`cost-evidence` preserves all six raw CPU sessions, logs and the paired capture;
 the gate never rewrites the original per-job cost samples.
 
 ### Intentional workload or baseline changes

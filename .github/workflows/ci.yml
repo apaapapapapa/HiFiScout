@@ -23,8 +23,30 @@ jobs:
     outputs:
       application: ${{ steps.scope.outputs.application }}
       markdown-only: ${{ steps.scope.outputs.markdown-only }}
+      load-base-sha: ${{ steps.load-base.outputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Resolve the baseline of the tested source
+        id: load-base
+        env:
+          LOAD_EVENT_NAME: ${{ github.event_name }}
+          LOAD_EVENT_BEFORE: ${{ github.event.before }}
+          LOAD_CANDIDATE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$LOAD_CANDIDATE_SHA" ]] || exit 1
+          if [[ "$LOAD_EVENT_NAME" == "pull_request" ]]; then
+            read -r base second extra <<< "$(git show -s --format=%P HEAD)"
+            [[ -n "$second" && -z "$extra" ]] || exit 1
+          else
+            base="$LOAD_EVENT_BEFORE"
+          fi
+          [[ "$base" =~ ^[a-f0-9]{40}$ && "$base" != 0000000000000000000000000000000000000000 ]] || exit 1
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/change-scope
         id: scope
 
@@ -118,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+          ref: ${{ needs.changes.outputs.load-base-sha }}
       - uses: ./.github/actions/setup-node-deps
       - name: Measure the exact baseline with its frozen toolchain
         run: vp run harness load-capture .generated/load-baseline
@@ -171,7 +193,7 @@ jobs:
       - name: Measure paired CPU on the same runner
         if: always()
         env:
-          LOAD_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          LOAD_BASE_SHA: ${{ needs.changes.outputs.load-base-sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -181,7 +203,7 @@ jobs:
       - name: Block load regressions, missing coverage and unreviewed budget changes
         if: always()
         env:
-          LOAD_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          LOAD_BASE_SHA: ${{ needs.changes.outputs.load-base-sha }}
         shell: bash
         run: |
           set -euo pipefail

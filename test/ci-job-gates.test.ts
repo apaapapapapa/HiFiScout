@@ -6,6 +6,64 @@ import { join } from "node:path";
 import { test } from "vite-plus/test";
 
 const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const resolveLoadBase = ci
+  .split("      - name: Resolve the baseline of the tested source\n")[1]
+  .split("        run: |\n")[1]
+  .split("      - uses:")[0]
+  .split("\n")
+  .map((line) => line.replace(/^          /u, ""))
+  .join("\n");
+
+test("load baseline follows the tested merge parent when main advances and rejects unbound sources", () => {
+  const root = mkdtempSync(join(tmpdir(), "load-base-"));
+  const output = join(root, "output");
+  const git = (...args: string[]) => {
+    const r = spawnSync(
+      "git",
+      ["-c", "user.name=Load gate test", "-c", "user.email=load-test@example.invalid", ...args],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trim();
+  };
+  try {
+    git("init", "--initial-branch=main");
+    git("commit", "--allow-empty", "-m", "old base");
+    const oldBase = git("rev-parse", "HEAD");
+    git("switch", "-c", "candidate");
+    git("commit", "--allow-empty", "-m", "candidate");
+    const candidate = git("rev-parse", "HEAD");
+    git("switch", "main");
+    git("commit", "--allow-empty", "-m", "concurrent main update");
+    const currentBase = git("rev-parse", "HEAD");
+    git("merge", "--no-ff", "candidate", "-m", "tested merge");
+    const tested = git("rev-parse", "HEAD");
+    const check = (event: string, before = oldBase, sha = tested) => {
+      writeFileSync(output, "");
+      const r = spawnSync("bash", ["-c", resolveLoadBase], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: output,
+          LOAD_EVENT_NAME: event,
+          LOAD_EVENT_BEFORE: before,
+          LOAD_CANDIDATE_SHA: sha,
+        },
+      });
+      return { status: r.status, output: readFileSync(output, "utf8") };
+    };
+    assert.deepEqual(check("pull_request"), { status: 0, output: `sha=${currentBase}\n` });
+    assert.deepEqual(check("push"), { status: 0, output: `sha=${oldBase}\n` });
+    assert.notEqual(check("pull_request", oldBase, candidate).status, 0);
+    assert.notEqual(check("push", "0".repeat(40)).status, 0);
+    git("switch", "--detach", candidate);
+    assert.notEqual(check("pull_request", oldBase, candidate).status, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const fanOut = ci
   .split("      - name: Verify CI fan-out\n")[1]
   .split("        run: |\n")[1]
