@@ -21,6 +21,7 @@ import {
   yahooAuctionSaleUnit,
   yahooAuctionShipping,
 } from "./values.js";
+import { stripYahooHiddenSubtrees } from "./visible-markup.js";
 
 const LABELS = new Set([
   "現在",
@@ -43,21 +44,11 @@ function unsupported(reason: string): AuctionParseResult {
   return { status: "unsupported", coverage: "unknown", observations: [], issues: [reason] };
 }
 
-/** Reject visibly hidden facts conservatively; this is not a CSS renderer. */
-function hiddenMarkup(html: string): boolean {
-  return (
-    /<[^>]*\shidden(?:\s|=|>)/iu.test(html) ||
-    /<[^>]*\saria-hidden\s*=\s*["']true["']/iu.test(html) ||
-    /<[^>]*\sstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)/iu.test(html)
-  );
-}
-
 /** One labelled value per card. Duplicate labels are ambiguous rather than last-value-wins. */
 function labelledFields(card: string): Map<string, string> | null {
   const fields = new Map<string, string>();
   const pairs = card.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt\s*>\s*<dd\b[^>]*>([\s\S]*?)<\/dd\s*>/giu);
   for (const pair of pairs) {
-    if (hiddenMarkup(pair[0])) continue;
     const label = cleanText(pair[1])
       .normalize("NFKC")
       .replace(/[:：]\s*$/u, "")
@@ -94,7 +85,10 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
     new TextEncoder().encode(input).length > YAHOO_AUCTION_PILOT_LIMITS.maxResponseBytes
   )
     return unsupported("response_limit");
-  const html = stripRawTextElements(input, ["script", "style", "noscript"]);
+  const html = stripYahooHiddenSubtrees(
+    stripRawTextElements(input, ["script", "style", "noscript"]),
+  );
+  if (html === null) return unsupported("ambiguous_hidden_markup");
   // Inert templates are not visible seller cards; an unrecognized template-containing layout
   // requires a fixture review, not a guessed extraction from its contents.
   if (/<template\b/iu.test(html)) return unsupported("inert_template_layout");
@@ -108,10 +102,6 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
     const issue = (reason: string) => {
       issues.push(`card:${index}:${reason}`);
     };
-    if (hiddenMarkup(card.slice(0, card.indexOf(">") + 1))) {
-      issue("hidden_card");
-      continue;
-    }
     const links = [...card.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/giu)].filter((link) =>
       listingAttribute(link[1], "class").split(/\s+/u).includes("Product__titleLink"),
     );
