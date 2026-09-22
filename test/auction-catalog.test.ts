@@ -62,6 +62,14 @@ describe("auction catalog identity", () => {
         .catalogProductId,
     ).toBeNull();
   });
+  it("normalizes absent labels as absence, preserving title-derived manufacturer/model evidence", () => {
+    const missing = { ...item(), rawManufacturer: null, rawModel: null };
+    expect(auctionCatalogInput(missing).key).toBe(auctionCatalogInput(item()).key);
+    expect(auctionCatalogIdentity(missing, entry()).catalogProductId).toBe(900001);
+    expect(
+      auctionCatalogIdentity({ ...missing, saleSubject: "empty_box" }, entry()).catalogProductId,
+    ).toBeNull();
+  });
   it("deduplicates candidate reads and detects edits, additions, deletion and verification withdrawal", async () => {
     const { db, dispose } = await localD1();
     try {

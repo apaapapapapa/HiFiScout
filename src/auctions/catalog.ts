@@ -49,12 +49,12 @@ export interface AuctionCatalogReader {
 /** Shared candidate key only; title, subject, edition and unit remain on the individual listing. */
 export function auctionCatalogInput(item: AuctionItemFacts): AuctionCatalogInput {
   const manufacturer = resolveManufacturer({
-    rawManufacturer: item.rawManufacturer,
+    rawManufacturer: item.rawManufacturer ?? "",
     title: item.title,
   });
   const model = resolveModel({
-    rawManufacturer: item.rawManufacturer,
-    rawModel: item.rawModel,
+    rawManufacturer: item.rawManufacturer ?? "",
+    rawModel: item.rawModel ?? "",
     manufacturerId: manufacturer.canonicalManufacturerId,
     title: item.title,
   });
@@ -73,8 +73,8 @@ export function auctionCatalogIdentity(
 ): AuctionPublicIdentity {
   const manufacturer = entry.manufacturerId;
   const model = resolveModel({
-    rawManufacturer: item.rawManufacturer,
-    rawModel: item.rawModel,
+    rawManufacturer: item.rawManufacturer ?? "",
+    rawModel: item.rawModel ?? "",
     manufacturerId: manufacturer,
     title: item.title,
   });
@@ -180,13 +180,17 @@ export class AuctionCatalogMaintenance {
         ).length ||
         this.store.sql(
           "catalog",
-          `SELECT r.key FROM auction_catalog_replays r JOIN catalog_match_cache c USING(key) WHERE c.expires>? LIMIT 1`,
+          `SELECT r.key FROM auction_catalog_replays r JOIN catalog_match_cache c USING(key) WHERE c.expires>? AND EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) LIMIT 1`,
           now,
         ).length;
       const expiry = this.store.sql<{ expires: number }>(
         "catalog",
-        "SELECT expires FROM catalog_match_cache ORDER BY expires,key LIMIT 1",
+        "SELECT c.expires FROM catalog_match_cache c WHERE EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) ORDER BY c.expires,c.key LIMIT 1",
       )[0]?.expires;
+      if (!work && expiry === undefined) {
+        this.store.sql("catalog", "DELETE FROM auction_catalog_schedule WHERE id=1");
+        return;
+      }
       this.schedule(
         work ? now + 60_000 : Math.max(now + 60_000, (expiry ?? now + 15 * 60_000) - 60_000),
         null,
@@ -257,7 +261,7 @@ export class AuctionCatalogMaintenance {
     });
     const due = this.store.sql<{ key: string; value: string }>(
       "catalog",
-      "SELECT key,value FROM catalog_match_cache WHERE expires<=? ORDER BY expires,key LIMIT 20",
+      "SELECT c.key,c.value FROM catalog_match_cache c WHERE c.expires<=? AND EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) ORDER BY c.expires,c.key LIMIT 20",
       now + 60_000,
     );
     if (due.length) {
@@ -323,7 +327,7 @@ export class AuctionCatalogMaintenance {
     // One durable affected-key cursor per turn. No periodic inventory sweep or per-price D1 query.
     const pending = this.store.sql<{ key: string; cursor: string }>(
       "catalog",
-      "SELECT r.key,r.cursor FROM auction_catalog_replays r JOIN catalog_match_cache c USING(key) WHERE c.expires>? ORDER BY r.rowid LIMIT 1",
+      "SELECT r.key,r.cursor FROM auction_catalog_replays r JOIN catalog_match_cache c USING(key) WHERE c.expires>? AND EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) ORDER BY r.rowid LIMIT 1",
       now,
     )[0];
     if (!pending) return;

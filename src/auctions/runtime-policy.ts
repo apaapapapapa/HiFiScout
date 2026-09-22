@@ -109,6 +109,8 @@ export function auctionFetchDue(state: AuctionRuntimeState, due: number, now: nu
 }
 export function auctionRetryAt(attempts: number, now: number, retryAfter: string | null): number {
   const seconds = retryAfter && /^\d+$/u.test(retryAfter) ? Number(retryAfter) * 1000 : 0;
+  // Preserve an unsupported large delay as a finite review halt; never ignore overflow.
+  if (!Number.isFinite(seconds)) return nextCrawlAllowedAt(now + 31 * 86_400_000);
   const date = retryAfter && !/^\d+$/u.test(retryAfter) ? Date.parse(retryAfter) : NaN;
   return nextCrawlAllowedAt(
     Math.max(

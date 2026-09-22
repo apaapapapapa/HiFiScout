@@ -285,6 +285,11 @@ export class AuctionStore {
       );
       this.sql(
         "retention",
+        `DELETE FROM auction_catalog_replays WHERE key IN (SELECT r.key FROM auction_catalog_replays r
+          WHERE NOT EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=r.key) LIMIT 20)`,
+      );
+      this.sql(
+        "retention",
         `DELETE FROM catalog_match_cache WHERE key IN (SELECT c.key FROM catalog_match_cache c WHERE c.expires<?
           AND NOT EXISTS(SELECT 1 FROM auction_items i WHERE i.match_key=c.key) ORDER BY c.expires,c.key LIMIT 20)`,
         now - 86_400_000,

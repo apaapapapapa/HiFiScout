@@ -179,3 +179,24 @@ it("fences a delayed catalog reply after pause and leaves a durable retry deadli
   expect(result.cache[0].expires).toBe(0);
   expect(result.nextDue).toBe(now + 5 * 60_000);
 });
+
+it("retired candidate keys stop D1 renewal and disappear through bounded retention", async () => {
+  const rows = Array.from({ length: 20 }, (_, i) => observation(`c${String(i).padStart(6, "0")}`));
+  await call("retired", { op: "apply", observations: rows });
+  const populated = await call("retired", { op: "refresh", entries: [entry()] });
+  expect(populated.pending).toHaveLength(1);
+  const retired = await call("retired", { op: "retain" });
+  expect(retired.items).toHaveLength(0);
+  expect(retired.pending).toHaveLength(0);
+  const expires = retired.cache[0].expires;
+  const refreshed = await call("retired", {
+    op: "run",
+    now: now + AUCTION_CATALOG_TTL,
+    entries: [entry()],
+  });
+  expect(refreshed.calls).toEqual([]);
+  expect(refreshed.cache[0].expires).toBe(expires);
+  expect(refreshed.nextDue).toBeNull();
+  const deleted = await call("retired", { op: "retain", now: now + 2 * 86_400_000 });
+  expect(deleted.cache).toHaveLength(0);
+});

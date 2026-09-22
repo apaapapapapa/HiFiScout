@@ -31,6 +31,7 @@ export class TestCatalog extends DurableObject {
       this.ctx.storage.transactionSync(() => {
         for (const observation of input.observations ?? []) store.apply(observation);
       });
+    if (input.op === "retain") store.retain(input.now);
     if (input.op === "refresh") await maintenance.refresh(input.now);
     if (input.op === "run") {
       const state = store.runtime(input.now);
