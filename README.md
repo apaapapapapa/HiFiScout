@@ -1,10 +1,70 @@
 # HiFiScout
 
-HiFiScout is a non-official cross-shop search application for used audio equipment. It collects
-factual seller listings, resolves product identity, and presents product-oriented search and offer
-comparison through a React UI on Cloudflare Workers + D1.
+[![HiFiScout — 中古オーディオを、ショップをまたいで探す。](docs/assets/readme/hero.svg)](https://hifiscout.tokyojp.workers.dev/)
 
-> Broad public release should wait until each collector and the applicable site terms have been re-checked.
+**欲しかった一台に、出会うために。**
+
+HiFiScoutは、中古オーディオの情報を複数の販売店からまとめて探せる非公式の検索アプリです。
+アンプ、スピーカー、DAC、ヘッドホン、アナログ機器まで。気になる製品の出品を見比べて、販売店の商品ページへ進めます。
+
+**[中古オーディオを探す →](https://hifiscout.tokyojp.workers.dev/)** ·
+[画面を見る](#screenshots) · [使い方](#quick-start) · [開発者向け](#developers)
+
+## 探す時間を減らして、聴きたい一台へ
+
+| 🔎 ショップをまたいで探す | ⇄ 同じ製品の出品を比べる | ☆ 気になる一台を追いかける |
+| --- | --- | --- |
+| メーカー・型番で検索し、カテゴリや予算、在庫などで絞り込み。店舗ごとの検索をまとめられます。 | 同じ製品の出品をまとめ、販売店ごとの価格・在庫・記録された状態を確認できます。 | お気に入り、保存した検索、新着・値下げの絞り込みで、次に探すときも続きから。 |
+
+<a id="screenshots"></a>
+
+## 画面で見るHiFiScout
+
+### 01 — 条件を絞って、候補を見つける
+
+キーワード検索と絞り込みをひとつの画面に。リスト表示とカード表示を切り替えながら探せます。
+
+[![LUXMANの検索結果。左にカテゴリ・予算の絞り込み、右に製品名・価格・販売店を示すカードが並ぶ。](docs/assets/readme/search.jpg)](https://hifiscout.tokyojp.workers.dev/)
+
+### 02 — 店舗ごとの出品を確認する
+
+複数の出品がある製品は、詳細画面で見比べられます。
+価格だけでなく、記録されている状態・付属品・保証なども確認してから、販売店の商品ページへ。
+
+![LUXMAN D-10Xの商品詳細。複数店舗の出品価格・在庫・状態を並べた比較表と、出品詳細・販売店へのリンクを表示。](docs/assets/readme/offers.jpg)
+
+<sub>画面は2026年9月22日の公開サイトを撮影したものです。表示価格・在庫・件数は撮影時点の情報で、現在の販売状況を保証するものではありません。画面の構成は更新される場合があります。</sub>
+
+<a id="quick-start"></a>
+
+## 使い方
+
+1. **探す** — メーカー名や型番を入力。まだ機種を決めていないときは、機器・カテゴリや予算から絞り込めます。
+2. **比べる** — 複数出品の製品は「出品を比較」から店舗ごとの情報を確認。気になる製品は☆でお気に入りに保存できます。
+3. **販売店で確認する** — 出品が1件なら商品名から、複数なら詳細画面の出品リンクから販売店へ。最新の価格・在庫・商品状態、購入手続きは販売店で確認してください。
+
+**[HiFiScoutで、次の一台を探す →](https://hifiscout.tokyojp.workers.dev/)**
+
+### ご利用にあたって
+
+- 各販売店とは関係のない非公式ツールです。情報の更新には時間差があり、すべての商品・店舗を網羅するものではありません。
+- お気に入りと保存した検索は、お使いのブラウザーに保存されます。
+- 販売店の商品画像・説明文・スタッフコメント・ロゴは転載しません。製品の参考写真を表示する場合は、出典付きのメーカー写真を使用します。
+- 広い一般公開・告知に進む前に、各収集先の規約と収集方法を改めて確認する方針です。
+
+不具合や改善のご提案は[Issues](https://github.com/apaapapapapa/HiFiScout/issues)へ。
+継続して開発を見たい方は、リポジトリのStarもぜひ。
+
+<a id="developers"></a>
+
+## 開発者向け
+
+HiFiScout collects factual seller listings, resolves product identity, and presents product-oriented
+search and offer comparison through a React UI on Cloudflare Workers + D1.
+
+[Developer guide](docs/index.md) · [Local development](#local-development) ·
+[Architecture](#architecture) · [API and administration](#public-api-and-administration) ·
+[Contributor guidance](AGENTS.md)
 
 ## Design principles
 
