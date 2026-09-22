@@ -31,6 +31,11 @@ export const ADMIN_VIEWS = [
       "カタログ・判定ルール・出品条件の再処理を開始し、CSVを含む各処理の進捗確認や停止・再開を行います。",
   },
   {
+    id: "auctions",
+    label: "Yahoo!オークション",
+    description: "収集・公開の停止、予算、対象カテゴリと確認待ちを管理します。",
+  },
+  {
     id: "crawls",
     label: "ショップ別クロール",
     description: "ショップごとの収集状況・予定停止を確認し、停止・再開・再実行します。",
@@ -77,7 +82,7 @@ export const ADMIN_WORKSPACES = [
   { id: "listings", label: "商品管理", views: ["listings", "extraction"] },
   { id: "quality", label: "品質管理", views: ["quality", "reports"] },
   { id: "bulk", label: "一括処理", views: ["jobs", "csv"] },
-  { id: "operations", label: "稼働管理", views: ["operations", "crawls"] },
+  { id: "operations", label: "稼働管理", views: ["operations", "crawls", "auctions"] },
 ] as const satisfies readonly { id: string; label: string; views: readonly AdminView[] }[];
 
 export function adminWorkspace(view: AdminView) {

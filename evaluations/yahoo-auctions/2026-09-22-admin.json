@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "issue": 703,
+  "baseSha": "899c42d4f21f92295aa6d4fbcee2518a316bc606",
+  "sourceSha": "7c61f9e4f09586e4a1f71c2a2cb8c02361dcd601",
+  "treeSha": "bdba68da09fa65a14f6a24f9b581ee000f744a94",
+  "command": "HARNESS_COST_OUTPUT=.generated/admin-cost-pinned-final vp test run test/auction-admin-runtime.test.ts",
+  "toolchain": {
+    "node": "22.23.2",
+    "npm": "12.0.2",
+    "vitePlus": "0.2.9"
+  },
+  "result": {
+    "files": 1,
+    "tests": 1,
+    "status": "pass"
+  },
+  "samples": [
+    {
+      "schemaVersion": 1,
+      "kind": "cost-sample",
+      "id": "auction-admin-status",
+      "sourceSha": "7c61f9e4f09586e4a1f71c2a2cb8c02361dcd601",
+      "checkoutClean": true,
+      "recordedAt": "2026-09-22T06:14:42.045Z",
+      "profileHash": "398d9952631f2f818d0e6a4781cc3c6497051b793e68586c43c7911befc49620",
+      "environment": "local-workerd",
+      "metrics": {
+        "rowsRead": 8002,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "notes": [
+        "2,000 retained items, tasks and replay keys; one getAlarm, no D1, seller or data writes. Production class admission reserves 10,100 reads/100 writes and one Alarm operation separately."
+      ],
+      "queryPlans": []
+    }
+  ],
+  "productionUsage": null,
+  "activation": "disabled_pending_permission_source_contract_and_account_headroom",
+  "notes": [
+    "Local lint/format/architecture/tsc/CPU and 427-file unit suite were executed during implementation; changed runtime/clear-halt regressions passed. Final head CI owns browser, generated Worker types and docs build.",
+    "Local Wrangler generation was rejected by automatic approval review, browser download timed out and docs build encountered an IPC-listener restriction; these local aggregate checks are not represented as complete. Existing CI supplies the required evidence.",
+    "A diagnostic measurement under the restored environment default Node 24 was not sealed; this artifact contains the remeasurement using the repository-pinned Node runtime.",
+    "SQL cursor counters, Alarm/KV attempts, Worker version and stored bytes are observations. Actual account requests/duration, caller Workers/D1/R2 and quality/latency window are unmeasured.",
+    "Base advanced through unrelated PR719 contributor tooling. Search and cost fixtures/policy are identical to the measured baseline; the admin-only reviews are rebound to the actual main SHA.",
+    "Concurrent PR720 isolates bootstrap APIs in the comparison E2E mock. Its two-line E2E-only change is preserved; cost fixtures and policy remain identical. Final CI is evaluated on this current main baseline."
+  ]
+}

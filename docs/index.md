@@ -13,6 +13,7 @@ This site combines curated architecture documentation with references generated 
 
 - [Data platform architecture](./data-platform-architecture.md) documents D1/FTS5 search, Product Identity Resolution, the R2 Evidence Archive, observability, and the PostgreSQL exit boundary.
 - [Crawl orchestration](./crawl-orchestration.md) documents per-shop Durable Object execution, dispatch recovery, Alarm pacing, and bounded staged work.
+- [Yahoo auction pilot](./yahoo-auctions.md) documents the disabled SQLite DO boundary, search, permission gates, resource criteria and recovery procedure.
 - [Architecture graph](./architecture/dependencies.md) shows the current source-level dependency structure and explains the architecture boundaries enforced in CI.
 
 ## Data and operations

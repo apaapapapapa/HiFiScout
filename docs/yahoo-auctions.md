@@ -1,8 +1,9 @@
 # Yahoo! Auctions: gated audio pilot
 
-Status: offline foundation only; collection and public serving are **not approved or enabled**.
-Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). The offline contracts and disabled
-SQLite storage/scheduler are implemented. Catalog integration and UI are subsequent changes.
+Status: offline implementation; collection and public serving are **not approved or enabled**.
+Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). The parser, SQLite scheduler,
+catalog integration, listing search, independent product-detail section and Access-protected
+management controls are implemented. Live acquisition, capacity and quality acceptance remain open.
 
 ## Review recorded 2026-09-22
 
@@ -15,8 +16,11 @@ or the existing retail price/history projections.
 
 During this implementation, [#706](https://github.com/apaapapapapa/HiFiScout/pull/706) advanced main
 to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that seller's consent was
-confirmed. That independent authorization does **not** satisfy any Yahoo acquisition/redistribution
-gate. Preserve the concurrent shop change; Yahoo remains disabled and unverified.
+confirmed. The operator then excluded e-earphone collection in
+[#713](https://github.com/apaapapapapa/HiFiScout/pull/713), merged as
+`ea3d0fbe121625bc9fd157e84b3ef95a4b9e0845`; its production flag is again disabled.
+Preserve that current exclusion. Neither shop decision satisfies any Yahoo
+acquisition/redistribution gate; Yahoo remains disabled and unverified.
 
 ### Acquisition and redistribution gate
 
@@ -57,7 +61,7 @@ paths and `/jp/auction/<id>` detail paths. Arbitrary redirects, alternate origin
 credentials and nonstandard ports are outside the candidate contract. Revalidate every redirect.
 Use an honest user agent identifying `HiFiScout` and the project; do not spoof a browser or rotate
 identity/IP to circumvent restrictions. Actual User-Agent and approved pacing must be recorded
-with the grant before transport is wired. Existing global user-agent/pacing/robots infrastructure
+with the grant before transport is enabled. Existing global user-agent/pacing/robots infrastructure
 must be reused rather than bypassed.
 
 ## Provisional resource ceilings, not measured entitlement
@@ -72,9 +76,12 @@ See also [DO limits](https://developers.cloudflare.com/durable-objects/platform/
 
 `YAHOO_AUCTION_PILOT_LIMITS` is the single code definition of proposed ceilings: 2,000 retained
 items, 500 new items and 500 seller requests per UTC day (including retries/robots/redirects),
-100 listing pages/day, at least 60 seconds between seller requests, 1 MiB responses and 100 items
-per page. It proposes 5,000 DO requests, 250,000 rows read, 10,000 rows written, 1,000 GB-s/day and
-100 MB stored. These are conservative planning choices, not measurements or permission to fetch.
+100 listing pages/day, at least 60 seconds between seller requests and 1 MiB responses. The parser
+rejects more than 100 items; the scheduler requests only 20 per page and overlaps three pages.
+Proposals also include 5,000 DO requests, 500 public requests, 5,000 Alarm operations, 250,000 rows
+read, 10,000 rows written, 1,000 GB-s/day and 100 MB stored. These are conservative planning choices,
+not measurements or permission to fetch. The shared read allowance binds public traffic much earlier
+than the independent request allowance; see the search reservation below.
 
 Reserve 20% of the allocated request/read/write/duration budget for recovery, stopping and bounded
 retention. Stop ordinary admissions before that reserve; no operation may exceed the hard ceiling.
@@ -82,8 +89,8 @@ Before launch, replace/reduce the proposed allocation using the account's actual
 complete usage intervals, leaving explicit headroom for existing crawl DOs. Record UTC interval,
 namespace/account scope, observation age, missing dimensions and the accepted allocation. Missing,
 sampled, quota-deferred or stale evidence is not zero. If usable headroom is unknown, admission
-remains disabled. Stage 3 owns persistence, metering and enforcement; these constants alone do not
-implement a runtime quota limiter or prove free-tier compliance.
+remains disabled. The runtime persists conservative reservations and enforces admission, but neither
+those reservations nor the local SQL/Alarm counters prove actual account billing or free-tier fit.
 
 ## Independent switches and failure policy
 
@@ -94,9 +101,9 @@ source contract. Collection requires its acquisition/robots/budget/contract gate
 redistribution/budget/contract gates. Stopping collection does not inherently disable serving
 already authorized stored facts. All three are off with the committed evidence.
 
-These controls are wired to the dedicated DO with disabled deployment defaults. Stage 3 must wire every
-scheduled/manual/recovery entry through collection admission, the shared 23:00–08:00 JST quiet
-window and durable manual pause. Stage 5 must gate both API and UI independently. No public request
+These controls are wired to the dedicated DO with disabled deployment defaults. Every
+scheduled/manual/recovery entry uses collection admission, the shared 23:00–08:00 JST quiet
+window and durable manual pause. API and UI are independently gated. No public request
 may fetch Yahoo. Unknown source layouts and responses beyond bounds stop parsing, not report an
 empty successful inventory. No successful HTML, images, full descriptions, seller profiles or bid
 histories should be retained/re-published by this pilot.
@@ -104,14 +111,14 @@ histories should be retained/re-published by this pilot.
 401/403/authentication challenges halt for review. 429 backs off and respects `Retry-After`;
 repeated throttling halts. Network/5xx errors get bounded exponential retries after normal pacing.
 404/410 means unavailable-unconfirmed, not sold or ended. Time expiry means end-check-pending,
-not a completed sale. Stage 3 persists attempt caps and backoff state; the offline classification
+not a completed sale. The scheduler persists attempt caps and backoff state; the offline classification
 helper performs no retry itself.
 
 ## Required evidence before advancing to live collection
 
 Obtain acquisition/redistribution scope and actual robots policy; validate an authorized current
-source fixture; measure account headroom; implement stage-3 bounded storage, pacing and budget
-admission; run offline regression/CI and review. Keep unresolved prerequisites unchecked in #703.
+source fixture; measure account headroom; approve the numeric allocation and acceptance plan below;
+run offline regression/CI and review. Keep unresolved prerequisites unchecked in #703.
 A merged foundation or a green source/deployment run is not authorization to start collecting.
 
 ## Offline observation contract (step 2)
@@ -172,8 +179,8 @@ The canonical observation, reducer and parser above remain the only internal mod
 `AuctionOffer` in `src/api/auction-contracts.ts` does not inherit observations or retained item facts.
 `src/auctions/public-offer.ts` copies approved public fields and normalized catalog identity at each
 nesting level; seller titles, raw manufacturer/model/category/condition text, internal stamps and
-extra runtime properties do not enter public responses. Future routes must use this mapper after
-source validation and the existing serving admission gates. No route is activated by this contract.
+extra runtime properties do not enter public responses. The search route uses this mapper after
+source validation and the existing serving admission gates. Committed gates keep it disabled.
 
 The public buy-now union preserves all three existing source meanings: `set` carries the price,
 tax evidence and its observation time; `none` carries the explicit absence's observation time;
@@ -191,8 +198,8 @@ confirmed-ending and relisting rules continue to use the canonical reducer/prese
 The `YahooAuctions` SQLite DO uses the stable name `yahoo-auctions-v1`; the existing crawl/admin
 namespaces are unchanged. Its version table rejects a newer schema rather than mutating it on an
 older Worker. New deploy vars for collection, search and display are all `false`. The reviewed
-source/robots/permission/account gates remain unverified. No scheduled dispatch or public route
-is introduced by the storage PR; there is no production acquisition during this rollout.
+source/robots/permission/account gates remain unverified. Collection uses its own Alarm and public
+routes read stored data only; there is no production acquisition during this disabled rollout.
 
 `auction_items` and its trigram FTS index change only for changed item facts. Live prices/state
 have a separate table and indexes; an identical observation stamp performs zero SQL writes.
@@ -212,7 +219,9 @@ resetting the shared budget or source halt. `wake` repairs missing Alarms withou
 Discovery's soft-budget exhaustion defers that task to the next UTC day, preserving confirmation
 work in the recovery reserve. Normal status/resume controls stop at the soft ceiling; bounded
 `pause` and `public_pause` controls may use the reserve. Hard exhaustion still requires the
-deployment switches, and a rejected Alarm retains its single next-day recovery wake.
+deployment switches. A rejected Alarm reserves a smaller recovery charge before scheduling its
+single next-day wake; if even that charge is unavailable it performs no Alarm operations. Use the
+admin wake after the UTC reset, subject to its ordinary admission and all other stops.
 
 Robots is its own paced/charged request with a maximum 64 KiB body. One external HTTP request uses
 one permit; redirects and authentication challenges stop for review. Existing robots parsing and
@@ -233,8 +242,10 @@ not mislabeled as a Git SHA. SQL writes include index/FTS effects reported by wo
 budgets are conservative reservations, not actual account billing. Invocation admission reserves the
 DO request; seller permits separately reserve HTTP requests, commit/retention rows and wall-duration
 headroom. Failed reservations do not restore earlier consumption. CPU and billed duration remain
-null until platform telemetry is available. KV/Alarm billing and account-wide headroom still require
-platform reconciliation before collection is approved. The 100 MB database ceiling includes indexes.
+null until platform telemetry is available. Alarm get/set/delete attempts are counted separately;
+this runtime has no KV get/put/delete calls. These operation counters are not a billing conversion.
+Actual Alarm/KV billing and account-wide headroom require platform reconciliation before collection
+is approved. The 100 MB database ceiling includes indexes.
 
 The executable `auction-storage` harness contract runs `test/auction-runtime.test.ts` in real
 workerd SQLite, covering rollback, replays, 2,000-item capacity/unrelated growth, live-only writes,
@@ -321,3 +332,66 @@ well before the independent public request ceiling. Do not treat that ceiling as
 forecast. The mixed-load regression proves confirmation/stopping can still use the reserved headroom.
 Before live enablement, measure actual sorted/filtered workloads, invocation/Alarm/storage costs and
 account headroom, then review a sustainable traffic allocation and numeric freshness/p95 criteria.
+
+## Management and recovery
+
+Open **稼働管理 → Yahoo!オークション** (`/#auctions`) in the existing Access-protected admin
+Worker. `GET /api/admin/auctions` and bounded JSON `POST /api/admin/auctions/control` use the named
+`CatalogAdminService.adminAuctions` RPC. Existing Access, same-origin and body-size guards apply;
+the public Worker still returns 404 for `/api/admin/*`. There is no SQL/URL ingestion control.
+
+State loads on first visit and explicit refresh, with no interval polling. The page separates
+manual collection pause, public pause, deployment/permission blockers, the nightly window, source
+halt, pacing/backoff and daily reservations. Unknown status or platform usage is explicitly unknown,
+never a zero. Counts cover the bounded retained database, not the seller's entire inventory.
+At 2,000 retained listings, one status request reserves 10,100 reads and one Alarm operation;
+refreshing the page repeatedly consumes the same daily read allocation as search and collection.
+
+| Action | Effect and preserved boundary |
+| --- | --- |
+| Pause collection | Persists pause and advances generation; late fetch/D1 responses cannot commit. Public pause is separate. |
+| Pause public serving | Rejects subsequent API reads; already rendered responses expire within 60 seconds. Collection is separate. |
+| Save categories | Accepts only the two reviewed buckets; changing the set fences in-flight responses. It does not approve or discover related categories. |
+| Resume | Keeps source halt, next-fetch time, Retry-After, UTC charges and the nightly window. It does not override deployment/permission gates. |
+| Restore scheduled wake | Re-arms the one saved Alarm when eligible; it does not fetch in the admin HTTP request. |
+| Retry exhausted work | Resets at most 20 exhausted task cursors/attempts; shared budget, backoff and source halt remain. |
+| Clear reviewed source halt | Requires collection to be paused, collection gates to be approved and an explicit review acknowledgment. Clears halt/throttle streak, advances generation and keeps pause, budgets and backoff; resume is a separate action. A saved robots denial is invalidated so the next eligible turn rechecks robots with normal pacing and admission. |
+
+After every control attempt, including a lost response, reload the persisted state before another
+change. If a stop write is rejected by quota/storage failure, disable all three deployment switches
+through the normal reviewed deployment flow. Do not retry the failing write indefinitely. Retain
+the `YahooAuctions` export, `yahoo-auctions-v1` identity and schema-2-aware code. Roll back exposure
+with switches, then forward-fix the implementation; never wipe the namespace or run schema-1 code
+against schema 2. Keep the last deployment identity and its public/admin receipts with the incident.
+
+## Numeric pilot evaluation and release sequence
+
+These are **provisional evaluation criteria**, not measured live results or approved capacity.
+Before a limited pilot, its owner must record the allowed fields/paths, actual source fixture,
+robots review, account plan and headroom, expected public demand and accepted numeric allocation
+in a reviewed change. The present 13-search-reservation ceiling is insufficient evidence of useful
+public capacity. Do not raise a ceiling merely to meet traffic expectations or pass a test.
+
+| Boundary | Initial criterion and evidence |
+| --- | --- |
+| Scope | Only the two reviewed buckets; at most 2,000 retained items, 500 new items/day and three overlapping 20-item discovery pages. Coverage remains partial. Record observed discovered/retained/dropped counts and unknown coverage separately. |
+| Freshness | Public `open` requires source-state evidence no older than 2 hours; wall time includes the nightly pause. General confirmation interval is 60 minutes and near/past-end interval is 30 minutes. Target p95 successful confirmation age ≤60 minutes during eligible collection time; measure overdue work separately. This is not a 10-minute ending guarantee. |
+| End/extension correctness | Every checked extension replaces the scheduled end; time expiry alone produces pending, never sold/ended. Zero false completed-sale claims and zero resurrection from missing pages/errors in the reviewed sample. Record sample size and all unresolved cases. |
+| Identity/price correctness | Zero known false product links, retail minimum/history contamination, tax guesses or pair-to-unit conversions in the reviewed sample. Include revisions, compatible accessories, sets, junk, no instant-buy value and zero bids. Unmatched/unknown counts remain visible. |
+| Catalog change | Candidate evidence expires within 15 wall-clock minutes, even during outage/backlog. Changed revision excludes the old link immediately; bounded replays must recover within the measured capacity. |
+| Public latency/failure | Initial target p95 ≤1 second for the stored-data API at the approved request rate and 2,000-item cap; internal deadline is 2 seconds. Record sample/window, cold starts, p50/p95, timeout/error/quota rates and every configured sort/filter. Quota failure remains unavailable, not an empty successful result. |
+| Runtime cost | Preserve executable local ceilings, replay/retention recovery and unrelated-growth checks. Reconcile SQL/index/FTS, requests, Alarm/KV operations, stored bytes, CPU/duration, Workers and D1 totals against actual telemetry. Maintain the accepted ordinary ceiling and 20% recovery reserve in every measured UTC interval. Missing dimensions block a free-tier/capacity claim. |
+
+Deploy the disabled implementation first and verify source CI, the owning `deployment-identity`
+and corresponding public/admin `post-deploy-receipt` contents. After the above approvals, separately
+review collection enablement for the allowlisted scope. Keep public serving paused while comparing
+authorized source observations, task backlog, catalog correctness and account telemetry. The
+observation window must cover representative activity, a nightly pause/resume and a UTC budget reset;
+record its actual start/end, deployed version and missing coverage rather than inventing a fixed
+duration or declaring a short green run conclusive. Stop on authorization/robots/source-contract
+failure or exhausted budget and use the recovery procedure above.
+
+Only after those measured criteria and redistribution scope are accepted may a separate reviewed
+change enable search/display and release public pause. Re-measure mixed public/collection load at the
+approved rate before expanding categories. Preserve the small scope if freshness, load or quality
+is unproven. #703 remains open/blocked for live acceptance while these prerequisites are unresolved.

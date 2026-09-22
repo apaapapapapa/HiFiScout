@@ -1,3 +1,4 @@
+import { administerAuctions } from "./auctions/admin.js";
 import { parseAdminQualityCommand } from "./http/admin-quality.js";
 import { readAdminQuality } from "./admin/quality.js";
 import { administerManufacturerRegistry } from "./admin/manufacturer-registry.js";
@@ -127,6 +128,9 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
   }
   async adminJobs(input: unknown, actor?: string) {
     return requestAdminJobs(this.env, input, trustedActor(actor));
+  }
+  async adminAuctions(input: unknown) {
+    return administerAuctions(this.env, input);
   }
   async getCrawlOverview() {
     return readAdminCrawls(this.env);

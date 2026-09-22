@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { isRecord } from "../types.js";
+import { parseAuctionAdminCommand } from "../api/admin-auction-contracts.js";
+import { readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
+import { auctionAdminStatus } from "./status.js";
 import { emptyAuctionCharge, reserveAuctionBudget } from "./runtime-policy.js";
 import { AuctionStore } from "./storage.js";
 import { AuctionScheduler } from "./scheduler.js";
@@ -12,7 +14,7 @@ import { yahooAuctionHtmlSource } from "./yahoo/parser.js";
 import {
   yahooAuctionAccess,
   YAHOO_AUCTION_PILOT_LIMITS,
-  YAHOO_AUCTION_CATEGORIES,
+  yahooAuctionCategory,
 } from "./yahoo/policy.js";
 
 /** One stable namespace/name. No method exposes fixture ingestion or arbitrary SQL/URLs. */
@@ -65,60 +67,41 @@ export class YahooAuctions extends DurableObject<Env> {
         });
       }
       if (url.pathname === "/admin/control" && request.method === "POST") {
-        const body: unknown = await request.json();
+        const body = await readJsonBody(request, 1024);
+        if (body === REQUEST_BODY_TOO_LARGE)
+          return Response.json({ error: "request_body_too_large" }, { status: 413 });
+        const command = parseAuctionAdminCommand(body);
         if (
-          !isRecord(body) ||
-          !["pause", "resume", "wake", "public_pause", "public_resume", "retry_failed"].includes(
-            String(body.action),
-          ) ||
-          (body.categories !== undefined &&
-            (!Array.isArray(body.categories) ||
-              body.categories.some((id) => typeof id !== "string")))
+          !command ||
+          command.action === "status" ||
+          command.categories?.some((id) => !yahooAuctionCategory(id))
         )
           return Response.json({ error: "invalid_auction_control" }, { status: 400 });
         if (
-          !this.reserve(store, 100, 50, body.action === "pause" || body.action === "public_pause")
+          command.action === "clear_halt" &&
+          (!yahooAuctionAccess(this.env).collect || !store.runtime(Date.now()).paused)
+        )
+          return Response.json({ error: "auction_halt_review_required" }, { status: 409 });
+        if (
+          !this.reserve(
+            store,
+            100,
+            50,
+            command.action === "pause" || command.action === "public_pause",
+            false,
+            4,
+          )
         )
           return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
-        await scheduler.control(
-          body.action as
-            | "pause"
-            | "resume"
-            | "wake"
-            | "public_pause"
-            | "public_resume"
-            | "retry_failed",
-          body.categories as string[] | undefined,
-        );
+        await scheduler.control(command.action, command.categories);
         return Response.json({ ok: true });
       }
       if (url.pathname === "/admin/status" && request.method === "GET") {
-        if (!this.reserve(store, 6_100, 100))
+        if (!this.reserve(store, 10_100, 100, false, false, 1))
           return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
-        const { robots: _robots, ...state } = store.runtime(Date.now());
-        return Response.json({
-          state,
-          access: yahooAuctionAccess(this.env),
-          limits: YAHOO_AUCTION_PILOT_LIMITS,
-          categories: YAHOO_AUCTION_CATEGORIES,
-          nextAlarm: await this.ctx.storage.getAlarm(),
-          retainedItems: store.sql<{ n: number }>(
-            "control",
-            "SELECT count(*) n FROM auction_items",
-          )[0].n,
-          pendingTasks: store.sql<{ n: number }>(
-            "control",
-            "SELECT count(*) n FROM auction_tasks",
-          )[0].n,
-          exhaustedTasks: store.sql<{ n: number }>(
-            "control",
-            "SELECT count(*) n FROM auction_tasks WHERE due=?",
-            Number.MAX_SAFE_INTEGER,
-          )[0].n,
-          productionUsage: null,
-          reservationKind: "conservative_upper_bound",
-        });
+        return Response.json(await auctionAdminStatus(store, this.env, Date.now()));
       }
+
       return new Response("not found", { status: 404 });
     } finally {
       this.logUsage(store, "request");
@@ -127,8 +110,8 @@ export class YahooAuctions extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const { store, scheduler } = this.engine();
     try {
-      if (this.reserve(store, 50, 20, true)) await scheduler.alarm();
-      else await scheduler.deferForBudget();
+      if (this.reserve(store, 50, 20, true, false, 6)) await scheduler.alarm();
+      else if (this.reserve(store, 50, 20, true, false, 2)) await scheduler.deferForBudget();
     } finally {
       this.logUsage(store, "alarm");
     }
@@ -139,6 +122,7 @@ export class YahooAuctions extends DurableObject<Env> {
     writes: number,
     recovery = false,
     publicRead = false,
+    alarmOperations = 0,
   ): boolean {
     const next = reserveAuctionBudget(
       store.runtime(Date.now()),
@@ -146,6 +130,7 @@ export class YahooAuctions extends DurableObject<Env> {
         ...emptyAuctionCharge(),
         requests: 1,
         publicRequests: publicRead ? 1 : 0,
+        alarmOperations,
         reads,
         writes,
         durationGbSeconds: 0.25,
@@ -164,6 +149,9 @@ export class YahooAuctions extends DurableObject<Env> {
         event: "auction_sql_usage",
         operation: event,
         families: store.usage,
+        alarmOperations: store.alarmOperations,
+        kvOperations: { get: 0, put: 0, delete: 0 },
+        observationKind: "local_runtime_counters_not_billing",
         workerVersionId: this.env.CF_VERSION_METADATA?.id ?? null,
         cpuMs: null,
         billedDurationGbSeconds: null,

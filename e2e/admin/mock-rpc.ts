@@ -1,3 +1,13 @@
+import {
+  parseAuctionAdminCommand,
+  type AuctionAdminStatus,
+} from "../../src/api/admin-auction-contracts.js";
+import { initialAuctionRuntime } from "../../src/auctions/runtime-policy.js";
+import {
+  YAHOO_AUCTION_CATEGORIES,
+  YAHOO_AUCTION_PILOT_LIMITS,
+  yahooAuctionAccess,
+} from "../../src/auctions/yahoo/policy.js";
 import type { AdminChangeHistoryItem } from "../../src/api/admin-listing-contracts.js";
 import type { AdminBackgroundJob, AdminJobCommand } from "../../src/api/admin-csv-contracts.js";
 import { parseAdminJobCommand } from "../../src/http/admin-jobs.js";
@@ -55,6 +65,13 @@ export function createMockAdminRpc() {
     jobs: new Map<string, AdminBackgroundJob>(),
     jobCommands: [] as AdminJobCommand[],
     manufacturerCommands: [] as unknown[],
+    auctions: {
+      paused: false,
+      publicPaused: false,
+      categories: ["2084037425"],
+      reads: 0,
+      actions: [] as unknown[],
+    },
     crawls: {
       pausedShops: new Set<string>(),
       reads: 0,
@@ -149,6 +166,46 @@ export function createMockAdminRpc() {
       else if (command.action === "pause") job.status = "paused";
       else if (command.action === "cancel") job.status = "cancelled";
       return { job };
+    },
+    async adminAuctions(input) {
+      const command = parseAuctionAdminCommand(input);
+      if (!command) return { status: 400, data: { error: "invalid_auction_control" } };
+      if (command.action === "status") {
+        state.auctions.reads++;
+        const now = Date.parse("2026-09-22T15:00:00Z");
+        const data: AuctionAdminStatus = {
+          observedAt: new Date(now).toISOString(),
+          state: {
+            ...initialAuctionRuntime(now),
+            paused: state.auctions.paused,
+            publicPaused: state.auctions.publicPaused,
+            categories: state.auctions.categories,
+          },
+          access: yahooAuctionAccess({}),
+          limits: YAHOO_AUCTION_PILOT_LIMITS,
+          categories: YAHOO_AUCTION_CATEGORIES,
+          nextAlarm: null,
+          retainedItems: 42,
+          pendingTasks: 12,
+          exhaustedTasks: 2,
+          endCheckPending: 5,
+          confirmationTasks: 10,
+          catalogPendingKeys: 1,
+          catalogNext: null,
+          catalogError: "catalog_unavailable",
+          storageBytes: 8192,
+          quietHours: true,
+          quietEndsAt: "2026-09-22T23:00:00Z",
+          productionUsage: null,
+          reservationKind: "conservative_upper_bound",
+        };
+        return { status: 200, data };
+      }
+      state.auctions.actions.push(command);
+      if (command.categories) state.auctions.categories = command.categories;
+      if (command.action === "pause") state.auctions.paused = true;
+      if (command.action === "public_pause") state.auctions.publicPaused = true;
+      return { status: 200, data: { ok: true } };
     },
     async getCrawlOverview() {
       state.crawls.reads++;

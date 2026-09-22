@@ -793,3 +793,15 @@ button,
     font-size: 16px;
   }
 }
+
+.auction-admin-status { display: grid; gap: 12px; margin-block: 20px; }
+.auction-admin-status > div { display: grid; grid-template-columns: minmax(160px, 1fr) 3fr; gap: 16px; padding-block: 8px; border-bottom: 1px solid var(--line, #ddd); }
+.auction-admin-status dt { font-weight: 600; }
+.auction-admin-status dd { margin: 0; overflow-wrap: anywhere; }
+.auction-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
+.auction-admin-fieldset { display: grid; gap: 12px; min-width: 0; margin-block: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.auction-admin-fieldset legend { padding-inline: 6px; font-weight: 600; }
+.auction-admin-fieldset label { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.auction-admin-fieldset input[type="checkbox"] { flex: 0 0 20px; width: 20px; height: 20px; min-height: 0; margin: 0; padding: 0; accent-color: var(--accent); }
+.auction-admin-fieldset button { justify-self: start; }
+@media (max-width: 600px) { .auction-admin-status > div { grid-template-columns: 1fr; gap: 4px; } }

@@ -32,12 +32,26 @@ export class AuctionScheduler {
   ) {}
 
   async control(
-    action: "pause" | "resume" | "wake" | "public_pause" | "public_resume" | "retry_failed",
+    action:
+      | "pause"
+      | "resume"
+      | "wake"
+      | "public_pause"
+      | "public_resume"
+      | "retry_failed"
+      | "clear_halt",
     categories?: string[],
   ): Promise<void> {
     const now = this.clock();
     this.store.storage.transactionSync(() => {
       const state = this.store.runtime(now);
+      if (action === "clear_halt") {
+        if (!state.paused || !this.allowed()) throw new Error("auction_halt_review_required");
+        if (state.halt === "robots_disallowed") state.robots = null;
+        state.halt = null;
+        state.throttleCount = 0;
+        state.generation++;
+      }
       if (action === "pause") {
         state.paused = true;
         state.generation++;
@@ -95,7 +109,7 @@ export class AuctionScheduler {
     const now = this.clock();
     const state = this.store.runtime(now);
     if (!this.allowed() || state.paused || state.halt) {
-      await this.store.storage.deleteAlarm();
+      await this.store.deleteAlarm();
       return;
     }
     const next = this.store.nextTask(state.lastKind, now);
@@ -104,7 +118,7 @@ export class AuctionScheduler {
       (!next || next.due === Number.MAX_SAFE_INTEGER) &&
       maintenanceAt === Number.MAX_SAFE_INTEGER
     ) {
-      await this.store.storage.deleteAlarm();
+      await this.store.deleteAlarm();
       return;
     }
     const target = Math.max(
@@ -114,7 +128,7 @@ export class AuctionScheduler {
         maintenanceAt,
       ),
     );
-    if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
+    if ((await this.store.getAlarm()) !== target) await this.store.setAlarm(target);
   }
 
   /** Admission refusal still preserves a single durable UTC wake; it never refunds charges. */
@@ -124,7 +138,7 @@ export class AuctionScheduler {
     if (!this.allowed() || state.paused || state.halt) return;
     const reset = (Math.max(state.utcDay, Math.floor(now / 86_400_000)) + 1) * 86_400_000;
     const target = auctionFetchDue(state, reset, now);
-    if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
+    if ((await this.store.getAlarm()) !== target) await this.store.setAlarm(target);
   }
 
   async alarm(): Promise<void> {
