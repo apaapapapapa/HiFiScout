@@ -59,5 +59,6 @@ export function yahooAuctionSaleSubject(value: string): AuctionSaleSubject {
     空箱のみ: "empty_box",
     複数製品セット: "bundle",
   };
-  return subjects[value.normalize("NFKC").trim()] ?? "unknown";
+  const subject = value.normalize("NFKC").trim();
+  return Object.hasOwn(subjects, subject) ? subjects[subject] : "unknown";
 }
