@@ -83,6 +83,12 @@ the next registry-derived schedule slot, last success, prior-success inventory d
 watermark, failure/backoff information and explicit manual/overnight pause states. No listing counts
 or crawl-history aggregation run on navigation; the view refreshes only on entry or user action.
 
+The per-shop **収集** on/off switch maps to the existing `resume`/`pause` commands. Off remains
+saved until explicitly switched on, including across deployments; the nightly pause does not change
+the flag. The UI reconciles saved state even after a failed command response and blocks controls
+when the current state cannot be confirmed. Deployment configuration and transport requirements
+remain prerequisites for turning collection on.
+
 Manual pause first persists the owning DO's local alarm gate, then D1 scheduling intent. New
 reservations and watchdog recovery skip paused shops. Alarms check the local gate without D1 or
 seller I/O, preserving the exact execution, cursor, token and prepared permit. Resume persists

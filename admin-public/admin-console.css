@@ -260,6 +260,32 @@ button,
 .table-wrap {
   max-height: none;
 }
+.crawl-collection-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.crawl-switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.crawl-switch-track::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+}
+.crawl-collection-switch[aria-checked="true"] .crawl-switch-track {
+  justify-content: flex-end;
+  background: var(--accent);
+}
 .table-wrap table,
 .listing-table {
   min-width: 0;
