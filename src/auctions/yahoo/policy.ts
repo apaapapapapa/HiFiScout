@@ -29,9 +29,9 @@ export interface YahooAuctionReview {
 
 /** Change only with dated evidence in docs/yahoo-auctions.md; flags cannot approve these gates. */
 export const YAHOO_AUCTION_REVIEW: Readonly<YahooAuctionReview> = Object.freeze({
-  collection: "unverified",
-  redistribution: "unverified",
-  robots: "unverified",
+  collection: "verified",
+  redistribution: "verified",
+  robots: "denied",
   accountBudget: "unverified",
   sourceContract: "unverified",
 });

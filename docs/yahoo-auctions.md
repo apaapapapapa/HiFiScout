@@ -1,6 +1,7 @@
 # Yahoo! Auctions: gated audio pilot
 
-Status: offline implementation; collection and public serving are **not approved or enabled**.
+Status: the operator has confirmed acquisition/redistribution permission; collection and public
+serving remain **disabled pending source-contract and account-budget verification**.
 Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). The parser, SQLite scheduler,
 catalog integration, listing search, independent product-detail section and Access-protected
 management controls are implemented. Live acquisition, capacity and quality acceptance remain open.
@@ -19,8 +20,8 @@ to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that 
 confirmed. The operator then excluded e-earphone collection in
 [#713](https://github.com/apaapapapapa/HiFiScout/pull/713), merged as
 `ea3d0fbe121625bc9fd157e84b3ef95a4b9e0845`; its production flag is again disabled.
-Preserve that current exclusion. Neither shop decision satisfies any Yahoo
-acquisition/redistribution gate; Yahoo remains disabled and unverified.
+Preserve that current exclusion. The separate Yahoo operator confirmation below satisfies only
+Yahoo's acquisition/redistribution gates; Yahoo remains disabled.
 
 ### Acquisition and redistribution gate
 
@@ -31,15 +32,25 @@ of the current raw HTML contract or a grant of access. No seller inventory was c
 | --- | --- |
 | [Old API retirement](https://developer.yahoo.co.jp/changelog/2018-02-20-auction160.html) | The old public Auction Web API ended on 2018-02-22. Do not use the obsolete endpoint or assume a replacement. No contract/feed usable by HiFiScout was established in this review. |
 | [LINE Yahoo common terms](https://www.lycorp.co.jp/ja/company/terms/) | Sections 8.3 and 14 restrict uses beyond the intended service purpose. Public visibility is not permission for collection/redistribution. |
-| [Auction guidelines](https://auctions.yahoo.co.jp/special/html/guidelines.html) | Section 6(2) restricts collecting/using other users' posted content beyond transaction needs. Section 1 mentions partner publication; it does not establish HiFiScout as an authorized partner. Obtain and record an applicable permission/contract before enabling. |
+| [Auction guidelines](https://auctions.yahoo.co.jp/special/html/guidelines.html) | Section 6(2) restricts collecting/using other users' posted content beyond transaction needs. Section 1 mentions partner publication; it does not establish HiFiScout as an authorized partner. The operator confirmation below is the acquisition/redistribution evidence for this pilot. |
+| [Operator confirmation, 2026-09-22](https://github.com/apaapapapapa/HiFiScout/issues/703#issuecomment-5773381002) | In the development conversation, the operator confirmed that Yahoo permission has been obtained and instructed continuation. Accept this as confirmation of automatic acquisition, storage and redistribution within #703's agreed pilot scope. The review owner is the HiFiScout operator; no separate legal review or inspected private agreement is claimed. |
 | [robots.txt](https://auctions.yahoo.co.jp/robots.txt) | A bounded follow-up GET on 2026-09-22 returned HTTP 200 with `HiFiScoutBot/1.0 (+https://github.com/apaapapapapa/HiFiScout)`. The `User-agent: *` rule `Disallow: /category/list/*?*n=` rejects all six current pilot discovery URLs because they contain `n=20`. The runtime robots check confirms denial; discovery stays blocked. Permission and the actual pagination/source contract must be reviewed before changing URLs or enabling collection. |
-| Account telemetry | The follow-up on 2026-09-22 found a connected Cloudflare reader, but its read-only account-subscription request failed with API error `10000: Authentication error`. Account plan, DO usage and remaining shared headroom remain unmeasured. Restore the connector's authorized access before collecting telemetry; do not substitute another credential path or treat an unavailable metric as zero. |
-| Raw source contract | Current seller HTML/authorized feed fixture has not been established. Synthetic regressions cannot satisfy this launch gate. |
+| Account telemetry | The same read-only account-subscription request was checked once again after the operator confirmation and still returned `10000: Authentication error`. Account plan, DO usage and remaining shared headroom remain unmeasured. Restore the connector's authorized access before collecting telemetry; do not substitute another credential path or treat an unavailable metric as zero. |
+| Raw source contract | The authorized bounded checks below obtained a 50-card category page and a separate detail-page layout. The current parser rejects the category page, and the scheduler only reserves/adopts 20 observations per request. Pagination overlap, the second category and a compatible adapter/budget have not been verified. Synthetic regressions cannot satisfy this launch gate. |
 
-The gates in `src/auctions/yahoo/policy.ts` stay `unverified`. Approval needs dated evidence,
-authorization scope, allowed fields/paths, review owner and recheck conditions recorded here and
-reviewed in a PR. Do not put private contracts, seller personal data or credentials in this public file.
-No permission request, agreement, paid-plan change or production mutation was made by this review.
+The dated operator confirmation changes `collection` and `redistribution` in
+`src/auctions/yahoo/policy.ts` to `verified`. The committed discovery URLs are demonstrably rejected,
+so `robots` is `denied`; `accountBudget` and `sourceContract` remain `unverified`. Neither permission
+nor deployment flags override these independent gates. Do not request the same permission again.
+
+The confirmed scope is #703's two candidate audio buckets and minimal listing facts: title, source
+link/ID/category, condition/sale-unit evidence, observed current and instant-buy prices, tax/shipping
+qualifiers, bid count, scheduled end and observation times. Images, full descriptions, seller
+profiles and bid histories remain excluded. Recheck permission on scope expansion, withdrawal or
+changed source conditions. Technical paths, pacing and capacity still need their own evidence;
+the operator confirmation is not an exception to robots or a new resource allocation. Do not put
+private contracts, seller personal data or credentials in this public file. This work records the
+confirmation; it did not send a permission request, sign an agreement or change a paid plan.
 
 The retrieved robots body has SHA-256
 `4c6cb4296e26809d74226ffa597046ced06f50f222ba01862c1a281341aa342d`.
@@ -47,7 +58,28 @@ Its response Date was `2026-09-22T07:11:25Z`; retrieval was observed at
 `2026-09-22T07:28:39Z`. This records that response, not an immutable origin policy.
 The 60-second interval is a conservative implementation floor, not an interval granted by Yahoo.
 Dropping the blocked page-size parameter would leave page size, offsets, overlap and workload
-unverified, so this review does not substitute a different URL to claim a working source contract.
+unverified, so a different URL alone does not establish a working source contract.
+
+### Authorized source checks after confirmation
+
+The follow-up used the same identifying User-Agent, manual redirects, a 20-second request bound
+and at most 1 MiB per HTML response. These were bounded development diagnostics, not DO collection,
+a pilot release or an account-usage measurement. No inventory was written to production.
+
+| Observation | Evidence / implication |
+| --- | --- |
+| Robots recheck | HTTP 200, 3,258 bytes, same SHA-256 as above; origin response Date `2026-09-22T07:41:21Z`, observation `2026-09-22T08:22:38Z`. `auctionRobotsPermit` allows the two parameter-free category entry URLs with a 60,000 ms floor, but rejects the current `?b=1&n=20` form. |
+| Amplifier entry page | `https://auctions.yahoo.co.jp/category/list/2084037425/` first returned HTTP 200 but timed out with an incomplete 86,873-byte body. A compressed request completed HTTP 200 with 73,498 transferred bytes / 813,117 decoded bytes, origin Date `2026-09-22T08:24:50Z`, SHA-256 `7abf1e0c11831db8a86105a22fb26b56b2d83d3a42d79911e39a2b52b948531d`. The complete document has 50 `li.Product` cards and an explicit next link `?b=51`. |
+| Listing grammar | Current price uses `Product__price` / `Product__label` / `Product__priceValue`; bid count uses `Product__bid` with an empty `dt`. The current labelled `dt`/`dd` parser returned `unsupported`, unknown coverage and zero observations for that complete page (`invalid_identity_or_fields`, `no_usable_cards`). This is a reproduced adapter mismatch, not empty inventory. Relative countdown text is not an exact end timestamp. |
+| Next page | The observed `?b=51` link timed out after 20 seconds without HTTP status/body (`curl` exit 28). Offset behavior, overlap and page-size stability therefore remain unverified. Do not reuse the old 20-item offsets or infer successful pagination from the link alone. |
+| Detail layout | One linked, robots-allowed `/jp/auction/<id>` page completed HTTP 200, 51,106 transferred / 233,117 decoded bytes; origin Date `2026-09-22T08:27:29Z`, SHA-256 `ad34220c9cc39e5331b670130391953481c16789a0b890acc449eccd5064836a`. It has no `li.Product` cards. Its public `__NEXT_DATA__` contains item facts including explicit-zone start/end times and status; the existing listing adapter does not implement this detail contract. Do not retain/re-publish the whole embedded state, descriptions or seller/bidder data. |
+
+Before transport can be enabled, implement and validate both actual layouts using minimal sanitized
+fixtures, confirm pagination and the CD bucket, and size the scheduler's reservation for the chosen
+page workload. A 50-card page exceeds its current 20-observation contract; merely dropping `n=20`,
+truncating accepted items or marking the gate verified would hide that mismatch. The account
+allocation must be measured before approving a larger per-page workload. Keep the existing URLs,
+request/row ceilings and all three deployment flags unchanged until that review is complete.
 
 ## Initial discovery scope
 
@@ -124,8 +156,8 @@ helper performs no retry itself.
 
 ## Required evidence before advancing to live collection
 
-Obtain acquisition/redistribution scope and actual robots policy; validate an authorized current
-source fixture; measure account headroom; approve the numeric allocation and acceptance plan below;
+Use the recorded operator permission; establish a compatible robots-admitted source contract and
+minimal current fixtures; measure account headroom; approve the numeric allocation and acceptance plan below;
 run offline regression/CI and review. Keep unresolved prerequisites unchecked in #703.
 A merged foundation or a green source/deployment run is not authorization to start collecting.
 
@@ -206,7 +238,8 @@ confirmed-ending and relisting rules continue to use the canonical reducer/prese
 The `YahooAuctions` SQLite DO uses the stable name `yahoo-auctions-v1`; the existing crawl/admin
 namespaces are unchanged. Its version table rejects a newer schema rather than mutating it on an
 older Worker. New deploy vars for collection, search and display are all `false`. The reviewed
-source/robots/permission/account gates remain unverified. Collection uses its own Alarm and public
+source/account gates remain unverified and current discovery URLs are robots-denied; the operator
+has confirmed acquisition/redistribution permission. Collection uses its own Alarm and public
 routes read stored data only; there is no production acquisition during this disabled rollout.
 
 `auction_items` and its trigram FTS index change only for changed item facts. Live prices/state
