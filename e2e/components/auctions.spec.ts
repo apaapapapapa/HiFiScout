@@ -184,7 +184,10 @@ test("public product cards never fan out auction reads and one-yen bids do not r
   ).toBeVisible();
   expect(auctionReads).toBe(1);
   await expect(
-    page.locator("#offers-dialog").getByText("¥698,000", { exact: false }).first(),
+    page
+      .locator("#offers-dialog")
+      .getByText(/[¥￥]698,000/)
+      .first(),
   ).toBeVisible();
   await expect(page.locator("#offers-dialog").getByText("¥1", { exact: true })).toBeVisible();
 });
