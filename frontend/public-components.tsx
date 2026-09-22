@@ -421,7 +421,7 @@ function OfferRow({
             <span className="offer-shop">{name}</span>
           )}
           <div className="offer-condition">
-            {offer.condition_text || "状態の記載なし"}
+            <span className="condition">{offer.condition_text || "状態の記載なし"}</span>
             {offer.presentation_color ? (
               <span className="product-color">{offer.presentation_color}</span>
             ) : null}

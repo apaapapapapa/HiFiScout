@@ -334,7 +334,7 @@ test("detail separates stock states and discloses capped unfiltered offers", () 
   assert.match(markup, /在庫あり 12件・売り切れ 6件・未確認 1件/u);
   assert.match(markup, /全19件のうち2件を表示/u);
   assert.match(markup, /検索条件にかかわらず/u);
-  assert.match(markup, /class="offer-condition">ジャンク/u);
+  assert.match(markup, /class="condition">ジャンク<\/span>/u);
   assert.equal((markup.match(/aria-expanded="false"/g) || []).length, 2);
 });
 
