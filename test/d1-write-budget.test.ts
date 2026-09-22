@@ -112,6 +112,8 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
     const replay = accountReads(boundary.db);
     await upsertProducts(replay.db, "hifido", second, NEXT);
     await syncProductMetadata(replay.db, "hifido", second, NEXT);
+    await syncProductSearchProjections(replay.db, "hifido", ["one"]);
+    await syncProductIdentityResolutions(replay.db, "hifido", ["one"]);
     await syncProductSearchEntities(replay.db, "hifido", ["one"]);
     await recordCostSample(
       "projection-unchanged",
@@ -119,7 +121,7 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
       boundary.metrics(),
       ["test/d1-write-budget.test.ts"],
       [
-        "Unchanged listing, metadata and search replay, including physical index/trigger/sequence cost.",
+        "Unchanged listing, metadata, search projection, identity resolution and search entity replay, including physical index/trigger/sequence cost.",
       ],
     );
     const candidatesBefore = await db.prepare("SELECT * FROM knowledge_catalog_candidates").all();

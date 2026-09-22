@@ -73,7 +73,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "category-prune": d1(300, 0, 1),
       "search-new-total": d1(250, 0, 8),
       "search-price-drop-total": d1(250, 0, 8),
-      "projection-unchanged": d1(200, 0, 32),
+      // All five projection stages issue 34 statements; omitted stages are not a cheaper replay.
+      "projection-unchanged": d1(200, 0, 34),
     },
     reason:
       "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences.",

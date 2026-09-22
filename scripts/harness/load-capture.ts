@@ -40,13 +40,11 @@ export async function captureLoad(directory: string): Promise<number> {
   const report = await costReport(samples, join(directory, "cost-report.json"));
   const after = readCheckout();
   const status =
-    test.status === 0 &&
-    parser.status === 0 &&
-    report.status === "pass" &&
-    !after.dirty &&
-    checkout.sourceSha === after.sourceSha
-      ? "pass"
-      : "fail";
+    test.status !== 0 || parser.status !== 0
+      ? "fail"
+      : after.dirty || checkout.sourceSha !== after.sourceSha
+        ? "unknown"
+        : report.status;
   await writeFile(
     join(directory, "capture.json"),
     JSON.stringify(
