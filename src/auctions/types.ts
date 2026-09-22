@@ -4,7 +4,13 @@ export type AuctionOutcome = "winner_reported" | "no_winner_reported" | "unknown
 export type AuctionTax = "inclusive" | "exclusive" | "exempt" | "unknown";
 export type AuctionShipping = "free" | "separate" | "collect" | "unknown";
 export type AuctionSaleUnit = "single" | "pair" | "set" | "unknown";
-export type AuctionSaleSubject = "main_unit" | "accessory" | "parts" | "empty_box" | "bundle" | "unknown";
+export type AuctionSaleSubject =
+  | "main_unit"
+  | "accessory"
+  | "parts"
+  | "empty_box"
+  | "bundle"
+  | "unknown";
 
 export interface AuctionPrice {
   amountYen: number;

@@ -2,13 +2,42 @@ import { listingAttribute, listingBlocks } from "../../crawler/listing-fields.js
 import { cleanText } from "../../crawler/normalize.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { auctionInstant, auctionObservationStamp, emptyAuctionLiveFacts } from "../observations.js";
-import type { AuctionObservation, AuctionParseResult, AuctionObservedFact, YahooAuctionSource } from "../types.js";
+import type {
+  AuctionObservation,
+  AuctionParseResult,
+  AuctionObservedFact,
+  YahooAuctionSource,
+} from "../types.js";
 import {
-  YAHOO_AUCTION_PILOT_LIMITS, YAHOO_AUCTION_SOURCE, yahooAuctionCategory, yahooAuctionIdentity,
+  YAHOO_AUCTION_PILOT_LIMITS,
+  YAHOO_AUCTION_SOURCE,
+  yahooAuctionCategory,
+  yahooAuctionIdentity,
 } from "./policy.js";
-import { yahooAuctionBidCount, yahooAuctionPrice, yahooAuctionSaleSubject, yahooAuctionSaleUnit, yahooAuctionShipping } from "./values.js";
+import {
+  yahooAuctionBidCount,
+  yahooAuctionPrice,
+  yahooAuctionSaleSubject,
+  yahooAuctionSaleUnit,
+  yahooAuctionShipping,
+} from "./values.js";
 
-const LABELS = new Set(["現在", "即決", "入札", "入札件数", "終了日時", "開始日時", "状態", "終了結果", "送料", "メーカー", "型番", "商品の状態", "販売単位", "販売対象"]);
+const LABELS = new Set([
+  "現在",
+  "即決",
+  "入札",
+  "入札件数",
+  "終了日時",
+  "開始日時",
+  "状態",
+  "終了結果",
+  "送料",
+  "メーカー",
+  "型番",
+  "商品の状態",
+  "販売単位",
+  "販売対象",
+]);
 
 function unsupported(reason: string): AuctionParseResult {
   return { status: "unsupported", coverage: "unknown", observations: [], issues: [reason] };
@@ -16,9 +45,11 @@ function unsupported(reason: string): AuctionParseResult {
 
 /** Reject visibly hidden facts conservatively; this is not a CSS renderer. */
 function hiddenMarkup(html: string): boolean {
-  return /<[^>]*\shidden(?:\s|=|>)/iu.test(html) ||
+  return (
+    /<[^>]*\shidden(?:\s|=|>)/iu.test(html) ||
     /<[^>]*\saria-hidden\s*=\s*["']true["']/iu.test(html) ||
-    /<[^>]*\sstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)/iu.test(html);
+    /<[^>]*\sstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)/iu.test(html)
+  );
 }
 
 /** One labelled value per card. Duplicate labels are ambiguous rather than last-value-wins. */
@@ -27,7 +58,10 @@ function labelledFields(card: string): Map<string, string> | null {
   const pairs = card.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt\s*>\s*<dd\b[^>]*>([\s\S]*?)<\/dd\s*>/giu);
   for (const pair of pairs) {
     if (hiddenMarkup(pair[0])) continue;
-    const label = cleanText(pair[1]).normalize("NFKC").replace(/[:：]\s*$/u, "").trim();
+    const label = cleanText(pair[1])
+      .normalize("NFKC")
+      .replace(/[:：]\s*$/u, "")
+      .trim();
     if (!LABELS.has(label)) continue;
     if (fields.has(label) || pair[2].length > 4_096) return null;
     fields.set(label, pair[2]);
@@ -49,12 +83,17 @@ function fieldInstant(html: string): string | null {
  */
 export function parseYahooAuctionHtml(input: unknown, context: unknown): AuctionParseResult {
   const stamp = auctionObservationStamp(context);
-  if (!stamp || typeof context !== "object" || context === null || Array.isArray(context)) return unsupported("invalid_context");
+  if (!stamp || typeof context !== "object" || context === null || Array.isArray(context))
+    return unsupported("invalid_context");
   const categoryId = (context as Record<string, unknown>).categoryId;
   const category = typeof categoryId === "string" ? yahooAuctionCategory(categoryId) : null;
   if (!category) return unsupported("category_not_admitted");
   if (typeof input !== "string") return unsupported("invalid_input");
-  if (input.length > YAHOO_AUCTION_PILOT_LIMITS.maxResponseBytes || new TextEncoder().encode(input).length > YAHOO_AUCTION_PILOT_LIMITS.maxResponseBytes) return unsupported("response_limit");
+  if (
+    input.length > YAHOO_AUCTION_PILOT_LIMITS.maxResponseBytes ||
+    new TextEncoder().encode(input).length > YAHOO_AUCTION_PILOT_LIMITS.maxResponseBytes
+  )
+    return unsupported("response_limit");
   const html = stripRawTextElements(input, ["script", "style", "noscript"]);
   // Inert templates are not visible seller cards; an unrecognized template-containing layout
   // requires a fixture review, not a guessed extraction from its contents.
@@ -66,23 +105,36 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
   const issues: string[] = [];
   const seen = new Set<string>();
   for (const [index, card] of cards.entries()) {
-    const issue = (reason: string) => { issues.push(`card:${index}:${reason}`); };
-    if (hiddenMarkup(card.slice(0, card.indexOf(">") + 1))) { issue("hidden_card"); continue; }
-    const links = [...card.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/giu)].filter(
-      (link) => listingAttribute(link[1], "class").split(/\s+/u).includes("Product__titleLink"),
+    const issue = (reason: string) => {
+      issues.push(`card:${index}:${reason}`);
+    };
+    if (hiddenMarkup(card.slice(0, card.indexOf(">") + 1))) {
+      issue("hidden_card");
+      continue;
+    }
+    const links = [...card.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/giu)].filter((link) =>
+      listingAttribute(link[1], "class").split(/\s+/u).includes("Product__titleLink"),
     );
-    const identity = links.length === 1 ? yahooAuctionIdentity(listingAttribute(links[0][1], "href")) : null;
+    const identity =
+      links.length === 1 ? yahooAuctionIdentity(listingAttribute(links[0][1], "href")) : null;
     const title = links.length === 1 ? cleanText(links[0][2]) : "";
     const fields = labelledFields(card);
-    if (!identity || !title || title.length > 1_000 || !fields || !fields.size) { issue("invalid_identity_or_fields"); continue; }
+    if (!identity || !title || title.length > 1_000 || !fields || !fields.size) {
+      issue("invalid_identity_or_fields");
+      continue;
+    }
     if (seen.has(identity.auctionId)) return unsupported("duplicate_identity");
     seen.add(identity.auctionId);
     const text = (label: string) => cleanText(fields.get(label) ?? "");
-    const observed = <T>(value: T): AuctionObservedFact<T> => ({ value, observedAt: stamp.observedAt });
+    const observed = <T>(value: T): AuctionObservedFact<T> => ({
+      value,
+      observedAt: stamp.observedAt,
+    });
     const live = emptyAuctionLiveFacts();
     if (fields.has("現在")) {
       const value = yahooAuctionPrice(text("現在"));
-      if (value) live.currentPrice = observed(value); else issue("current_price_unknown");
+      if (value) live.currentPrice = observed(value);
+      else issue("current_price_unknown");
     }
     if (fields.has("即決")) {
       const raw = text("即決").normalize("NFKC");
@@ -93,9 +145,13 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
     const bidLabel = fields.has("入札件数") ? "入札件数" : "入札";
     if (fields.has(bidLabel)) {
       const value = yahooAuctionBidCount(text(bidLabel));
-      if (value !== null) live.bidCount = observed(value); else issue("bid_count_unknown");
+      if (value !== null) live.bidCount = observed(value);
+      else issue("bid_count_unknown");
     }
-    for (const [label, key] of [["開始日時", "startedAt"], ["終了日時", "scheduledEndAt"]] as const) {
+    for (const [label, key] of [
+      ["開始日時", "startedAt"],
+      ["終了日時", "scheduledEndAt"],
+    ] as const) {
       if (!fields.has(label)) continue;
       const value = fieldInstant(fields.get(label) ?? "");
       if (value && (key !== "startedAt" || value <= stamp.observedAt)) live[key] = observed(value);
@@ -128,16 +184,31 @@ export function parseYahooAuctionHtml(input: unknown, context: unknown): Auction
       ...identity,
       stamp,
       item: {
-        title, rawManufacturer: text("メーカー") || null, rawModel: text("型番") || null,
-        sourceCategoryId: category.id, sourceCategoryPath: [...category.path], rawCategory: category.label,
-        categoryHint: category.categoryHint, conditionText: conditionText || null,
-        saleUnit: yahooAuctionSaleUnit(text("販売単位")), saleSubject: yahooAuctionSaleSubject(text("販売対象")),
+        title,
+        rawManufacturer: text("メーカー") || null,
+        rawModel: text("型番") || null,
+        sourceCategoryId: category.id,
+        sourceCategoryPath: [...category.path],
+        rawCategory: category.label,
+        categoryHint: category.categoryHint,
+        conditionText: conditionText || null,
+        saleUnit: yahooAuctionSaleUnit(text("販売単位")),
+        saleSubject: yahooAuctionSaleSubject(text("販売対象")),
       },
       live,
     });
   }
-  if (!observations.length) return { ...unsupported("no_usable_cards"), issues: [...issues, "no_usable_cards"] };
-  return { status: issues.length ? "partial" : "parsed", coverage: "partial", observations, issues };
+  if (!observations.length)
+    return { ...unsupported("no_usable_cards"), issues: [...issues, "no_usable_cards"] };
+  return {
+    status: issues.length ? "partial" : "parsed",
+    coverage: "partial",
+    observations,
+    issues,
+  };
 }
 
-export const yahooAuctionHtmlSource: YahooAuctionSource = { key: YAHOO_AUCTION_SOURCE, parse: parseYahooAuctionHtml };
+export const yahooAuctionHtmlSource: YahooAuctionSource = {
+  key: YAHOO_AUCTION_SOURCE,
+  parse: parseYahooAuctionHtml,
+};

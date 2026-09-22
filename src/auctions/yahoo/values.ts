@@ -1,14 +1,28 @@
-import type { AuctionPrice, AuctionSaleSubject, AuctionSaleUnit, AuctionShipping } from "../types.js";
+import type {
+  AuctionPrice,
+  AuctionSaleSubject,
+  AuctionSaleUnit,
+  AuctionShipping,
+} from "../types.js";
 
 /** Strict money reader for ONE labelled price; multiple prices/tax amounts remain unresolved. */
 export function yahooAuctionPrice(value: string): AuctionPrice | null {
   const normalized = value.normalize("NFKC").trim();
-  const match = normalized.match(/^(?:[¥￥]\s*)?((?:0|[1-9]\d*)|(?:[1-9]\d{0,2}(?:,\d{3})+))\s*(?:円)?\s*(?:(?:\((税込|税別|非課税)\))|(税込|税別|非課税))?$/u);
+  const match = normalized.match(
+    /^(?:[¥￥]\s*)?((?:0|[1-9]\d*)|(?:[1-9]\d{0,2}(?:,\d{3})+))\s*(?:円)?\s*(?:(?:\((税込|税別|非課税)\))|(税込|税別|非課税))?$/u,
+  );
   if (!match) return null;
   const amountYen = Number(match[1].replaceAll(",", ""));
   if (!Number.isSafeInteger(amountYen) || amountYen > 1_000_000_000_000) return null;
   const taxText = match[2] ?? match[3];
-  const tax = taxText === "税込" ? "inclusive" : taxText === "税別" ? "exclusive" : taxText === "非課税" ? "exempt" : "unknown";
+  const tax =
+    taxText === "税込"
+      ? "inclusive"
+      : taxText === "税別"
+        ? "exclusive"
+        : taxText === "非課税"
+          ? "exempt"
+          : "unknown";
   return { amountYen, tax };
 }
 
@@ -38,8 +52,12 @@ export function yahooAuctionSaleUnit(value: string): AuctionSaleUnit {
 /** Only explicit sold-subject labels. Titles remain evidence for the existing catalog resolver. */
 export function yahooAuctionSaleSubject(value: string): AuctionSaleSubject {
   const subjects: Readonly<Record<string, AuctionSaleSubject>> = {
-    "本体": "main_unit", "本体のみ": "main_unit", "アクセサリー": "accessory",
-    "部品のみ": "parts", "空箱のみ": "empty_box", "複数製品セット": "bundle",
+    本体: "main_unit",
+    本体のみ: "main_unit",
+    アクセサリー: "accessory",
+    部品のみ: "parts",
+    空箱のみ: "empty_box",
+    複数製品セット: "bundle",
   };
   return subjects[value.normalize("NFKC").trim()] ?? "unknown";
 }
