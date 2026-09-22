@@ -18,8 +18,10 @@ import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 const DEFAULT_REPLAY_LIMIT = 100;
 const MAX_REPLAY_LIMIT = 250;
 const MAX_IDENTITY_MODELS = 20;
+const MAX_IDENTITY_MODELS_PER_QUERY = 6;
 const LOOKUP_CHUNK_SIZE = 50;
 const WRITE_BATCH_SIZE = 50;
+const MODEL_RESOLUTION_STATUSES = ["resolved", "candidate", "unresolved"] as const;
 
 export interface CatalogRemediationTarget {
   catalogProductId: number;
@@ -204,24 +206,54 @@ export async function selectListingsForCatalogRemediation(
   { afterId = 0, limit }: CatalogRemediationOptions = {},
 ): Promise<{ rows: RemediationListingRow[]; hasMore: boolean }> {
   const take = boundedLimit(limit);
-  const placeholders = target.identityModels.map(() => "?").join(",");
-  const result = await db
-    .prepare(`
-      SELECT id, shop_key, source_id
-      FROM products INDEXED BY idx_products_exact_identity
-      WHERE is_active = 1 AND id > ? AND canonical_manufacturer_id = ?
-        AND normalized_model IN (${placeholders})
-        -- The catalog target guarantees non-empty identity values. Repeating the predicates here
-        -- makes SQLite's partial exact-identity index eligible instead of walking every active id
-        -- before applying the manufacturer/model filter.
-        AND COALESCE(canonical_manufacturer_id, '') <> ''
-        AND COALESCE(normalized_model, '') <> ''
-      ORDER BY id
-      LIMIT ?
-    `)
-    .bind(afterId, target.manufacturerId, ...target.identityModels, take + 1)
-    .all<RemediationListingRow>();
-  const rows = result.results || [];
+  const identityModels = [...new Set(target.identityModels)].slice(0, MAX_IDENTITY_MODELS);
+  if (!identityModels.length) return { rows: [], hasMore: false };
+
+  const mergedRows: RemediationListingRow[] = [];
+  for (let index = 0; index < identityModels.length; index += MAX_IDENTITY_MODELS_PER_QUERY) {
+    // One bounded stream per complete index prefix keeps both dimensions bounded: unrelated
+    // identities are skipped by the prefix, while a large matching identity stops at the page
+    // size. Six models use 91 bindings, below D1's per-query binding ceiling.
+    const streams = identityModels
+      .slice(index, index + MAX_IDENTITY_MODELS_PER_QUERY)
+      .flatMap((identityModel) =>
+        MODEL_RESOLUTION_STATUSES.map((status) => ({ identityModel, status })),
+      );
+    const candidates = streams
+      .map(
+        () => `SELECT * FROM (
+          SELECT id, shop_key, source_id
+          FROM products INDEXED BY idx_products_exact_identity
+          WHERE canonical_manufacturer_id = ? AND normalized_model = ?
+            AND is_active = 1 AND model_resolution_status = ? AND id > ?
+            AND COALESCE(canonical_manufacturer_id, '') <> ''
+            AND COALESCE(normalized_model, '') <> ''
+          ORDER BY id
+          LIMIT ?
+        )`,
+      )
+      .join(" UNION ALL ");
+    const bindings = streams.flatMap(({ identityModel, status }) => [
+      target.manufacturerId,
+      identityModel,
+      status,
+      afterId,
+      take + 1,
+    ]);
+    const result = await db
+      .prepare(`
+        SELECT id, shop_key, source_id
+        FROM (${candidates})
+        ORDER BY id
+        LIMIT ?
+      `)
+      .bind(...bindings, take + 1)
+      .all<RemediationListingRow>();
+    mergedRows.push(...(result.results || []));
+  }
+  const rows = mergedRows
+    .sort((left, right) => Number(left.id) - Number(right.id))
+    .slice(0, take + 1);
   return { rows: rows.slice(0, take), hasMore: rows.length > take };
 }
 

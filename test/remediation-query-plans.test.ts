@@ -215,12 +215,10 @@ test("catalog remediation listing selection seeks the verified identity before i
   const [statement] = selects(executed);
   assert.ok(statement, "catalog remediation should issue a listing selector");
   const plan = queryPlan(sqlite, statement);
-  assert.ok(
-    readsThroughIndex(plan, "products", "idx_products_exact_identity"),
-    `catalog remediation must seek the verified identity before applying its cursor, got:\n${plan
-      .map((step) => step.detail)
-      .join("\n")}`,
-  );
+  const productAccesses = plan.filter((step) => /(?:SEARCH|SCAN) products\b/.test(step.detail));
+  assert.equal(productAccesses.length, 3, JSON.stringify(plan));
+  assert.ok(productAccesses.every((step) => /idx_products_exact_identity/.test(step.detail)));
+  assert.ok(productAccesses.every((step) => /model_resolution_status=\?/.test(step.detail)));
 });
 
 test("targeted replay priority seeding stays on the migration request index", async () => {
