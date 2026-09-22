@@ -32,7 +32,9 @@ function explicitlyHidden(attributes: string): boolean {
     if (value.includes("\\")) return true;
     const css = value.replace(/\/\*[\s\S]*?(?:\*\/|$)/gu, "");
     if (
-      /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/u.test(css)
+      /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/u.test(
+        css,
+      )
     )
       return true;
   }

@@ -55,7 +55,7 @@ test("unclosed hidden ancestry or quoted markup is unsupported, never empty succ
 });
 
 test("removing a hidden label does not join unrelated neighboring facts", () => {
-  const fields = '<dt>現在</dt><dt hidden>即決</dt><dd>1円</dd>';
+  const fields = "<dt>現在</dt><dt hidden>即決</dt><dd>1円</dd>";
   const result = parse(card(fields + "<dl><dt>状態</dt><dd>開催中</dd></dl>"));
   assert.equal(result.observations[0].live.currentPrice, null);
   assert.equal(result.observations[0].live.buyNowPrice, null);
