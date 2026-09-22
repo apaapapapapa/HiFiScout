@@ -71,6 +71,7 @@ export function isCompleteExportTable(name: string): boolean {
     (/^(?:products$|product_|knowledge_catalog_|data_quality_remediation_)/u.test(name) ||
       [
         "catalog_product_specifications",
+        "catalog_product_photos",
         "price_history",
         "evidence_archive",
         "listing_projection_pending",

@@ -240,3 +240,72 @@ test("specification mutations validate source, units and same-origin before serv
   );
   assert.deepEqual(writes, [{ id: 11, input }]);
 });
+
+test("manufacturer photo routes validate inputs and origins, preserve conflicts and keep preview read-only", async () => {
+  const env = adminEnv([]);
+  const writes: unknown[] = [];
+  const previews: unknown[] = [];
+  const photo = {
+    imageUrl: "https://www.luxman.co.jp/p.jpg",
+    sourceUrl: "https://www.luxman.co.jp/product/",
+    credit: "LUXMAN",
+  };
+  env.CATALOG_ADMIN.getPhoto = async () => ({ productId: 11, photo: null, revision: 0 });
+  env.CATALOG_ADMIN.updatePhoto = async (id, input) => {
+    if (input.expectedRevision !== 0) throw new Error("catalog_photo_conflict");
+    writes.push({ id, input });
+    return { productId: id, photo: input.photo, revision: 1 };
+  };
+  env.CATALOG_ADMIN.photoCandidates = async (id, sourceUrl) => {
+    previews.push({ id, sourceUrl });
+    return { sourceUrl, imageUrls: [photo.imageUrl] };
+  };
+  const url = "https://admin.example.test/api/admin/knowledge-catalog/products/11/photo";
+  const request = (
+    body: unknown,
+    method: "PATCH" | "POST" = "PATCH",
+    origin = "https://admin.example.test",
+    path = url,
+  ) =>
+    handleAuthenticatedCatalogAdminRequest(
+      new Request(path, {
+        method,
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify(body),
+      }),
+      env,
+      TEST_ADMIN_PRINCIPAL,
+    );
+  assert.equal(
+    (await handleAuthenticatedCatalogAdminRequest(new Request(url), env, TEST_ADMIN_PRINCIPAL))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await request({ photo, expectedRevision: 0 }, "PATCH", "https://foreign.example.com")).status,
+    403,
+  );
+  assert.equal(
+    (await request({ photo: { ...photo, imageUrl: "javascript:alert(1)" }, expectedRevision: 0 }))
+      .status,
+    400,
+  );
+  assert.equal((await request({ photo, expectedRevision: -1 })).status, 400);
+  assert.equal(writes.length, 0);
+  assert.equal(
+    (
+      await request(
+        { sourceUrl: photo.sourceUrl },
+        "POST",
+        "https://admin.example.test",
+        `${url}/candidates`,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(previews.length, 1);
+  assert.equal(writes.length, 0);
+  assert.equal((await request({ photo, expectedRevision: 0 })).status, 200);
+  assert.equal((await request({ photo: null, expectedRevision: 1 })).status, 409);
+  assert.equal(writes.length, 1);
+});

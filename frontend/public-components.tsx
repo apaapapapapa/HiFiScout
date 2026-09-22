@@ -13,6 +13,7 @@ import { WatchSummary } from "./watch-preferences-ui.js";
 import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
 import type { ProductFilterNavigation } from "./product-filter-links.js";
 import type { WatchPreference } from "./watch-preferences.js";
+import { CatalogPhoto } from "./catalog-photo.js";
 import {
   categoryOptionModel,
   offerAvailability,
@@ -168,6 +169,13 @@ export function ProductCard({
   return (
     <article className="card" data-key={product.key}>
       <div className="product-summary">
+        {product.identity_kind === "catalog" && (
+          <CatalogPhoto
+            photo={product.photo}
+            name={`${product.manufacturer} ${product.model}`}
+            compact
+          />
+        )}
         <div className="card-top">
           <ShopChip product={product} shopName={shopName} />
           <div className="badges">
@@ -502,6 +510,9 @@ export function OffersContent({
           </span>
         ) : null}
       </h2>
+      {product.identity_kind === "catalog" && (
+        <CatalogPhoto photo={product.photo} name={`${product.manufacturer} ${product.model}`} />
+      )}
       <div className="product-submeta">
         <ProductCategoryLinks product={product} navigation={filterNavigation} />
       </div>

@@ -154,7 +154,12 @@ Do not add gradients, glow effects, heavy shadows, or arbitrary accent colors.
 
 ### Imagery
 
-If reliable product imagery is introduced, isolate the product on a clean white, warm-neutral, or dark neutral surface. Do not make lifestyle photography or decorative imagery necessary for the catalog to function.
+Catalog models may carry one manufacturer reference photo. Show it with `object-fit: contain` on a
+white surface in search results, product details and comparison. Keep a visible manufacturer source
+link and credit; details distinguish the reference from the seller's actual finish, accessories and
+condition. Missing photos add no empty frame. Failed images retain readable product information and
+the source link. Load images lazily without sending a referrer. Unresolved listings never inherit a
+nearby model's photo.
 
 ## Conflict resolution
 

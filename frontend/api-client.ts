@@ -1,4 +1,5 @@
 import { isCatalogSpecificationRecord } from "../src/api/catalog-specification-contracts.js";
+import { parseCatalogPhoto } from "../src/api/catalog-photo-contracts.js";
 /**
  * `/api` access plus the guards that turn an untrusted JSON response into a typed payload.
  *
@@ -267,6 +268,12 @@ export function isProductOffer(value: unknown): value is ProductOffer {
  */
 export function isProductSearchItem(value: unknown): value is ProductSearchItem {
   if (!isRecord(value)) return false;
+  if (
+    value.photo !== undefined &&
+    value.photo !== null &&
+    (value.identity_kind !== "catalog" || !parseCatalogPhoto(value.photo))
+  )
+    return false;
   if (value.market_analysis !== undefined && !isProductMarketAnalysis(value.market_analysis))
     return false;
   if (value.model_relations !== undefined && !isProductModelRelations(value.model_relations))

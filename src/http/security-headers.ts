@@ -11,9 +11,9 @@
 /**
  * Enforced (not Report-Only) Content Security Policy for public responses.
  *
- * Every source is `'self'`: the application ships one first-party script bundle, four first-party
- * stylesheets, one first-party image, and talks only to its own `/api/` routes. There is no CDN,
- * no web font host and no analytics endpoint to allow.
+ * Scripts, styles, fonts and API requests stay same-origin. Images additionally allow HTTPS
+ * manufacturer/CDN sources registered by an administrator; DTOs validate their URLs and images
+ * suppress the referrer. This does not allow external scripts, frames or API connections.
  *
  * The one exception is inline `style` **attributes**. React writes them in
  * `frontend/public-app.tsx` and `frontend/search-suggestion-input.tsx`, and CSP Level 3 governs
@@ -37,7 +37,7 @@ export const PUBLIC_CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "style-src-elem 'self'",
   "style-src-attr 'unsafe-inline'",
-  "img-src 'self' data:",
+  "img-src 'self' data: https:",
   "font-src 'self'",
   "connect-src 'self'",
   "manifest-src 'self'",

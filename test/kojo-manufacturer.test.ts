@@ -72,6 +72,13 @@ test("KOJO brand and company spellings share identity and stale search IDs", () 
 test("KOJO migration and scheduled replay converge search without replacing catalog or seller evidence", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    // Current search also reads the photo schema; leave the historical data migration isolated.
+    sqlite.exec(
+      readFileSync(
+        new URL("../migrations/0135_catalog_product_photos.sql", import.meta.url),
+        "utf8",
+      ),
+    );
     const listings = [
       ["KOJO", "kojo"],
       ["KOJO TECHNOLOGY", "kojotechnology"],

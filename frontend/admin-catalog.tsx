@@ -1,6 +1,7 @@
 import { AdminChangeHistoryPanel } from "./admin-change-history.js";
 import type { CatalogView } from "./admin-navigation.js";
 import { AdminCatalogSpecifications } from "./admin-catalog-specifications.js";
+import { AdminCatalogPhoto } from "./admin-catalog-photo.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AdminCsvImport } from "./admin-csv-import.js";
@@ -444,6 +445,7 @@ export function CatalogAdmin({
   const [mergingGroupKey, setMergingGroupKey] = useState("");
 
   const [specificationProduct, setSpecificationProduct] = useState<CatalogProduct | null>(null);
+  const [photoProduct, setPhotoProduct] = useState<CatalogProduct | null>(null);
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [historyTarget, setHistoryTarget] = useState<number | null>(null);
   const [relationsProductId, setRelationsProductId] = useState<number | null>(null);
@@ -1265,6 +1267,14 @@ export function CatalogAdmin({
                           >
                             仕様
                           </button>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            aria-label={`${product.canonicalName} の写真を編集`}
+                            onClick={() => setPhotoProduct(product)}
+                          >
+                            写真
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1785,6 +1795,14 @@ export function CatalogAdmin({
             void loadCatalog(catalogApplied, catalogAfterId, catalogHistory);
             onDataChanged?.();
           }}
+        />
+      ) : null}
+      {photoProduct ? (
+        <AdminCatalogPhoto
+          key={photoProduct.id}
+          productId={photoProduct.id}
+          name={photoProduct.canonicalName}
+          onClose={() => setPhotoProduct(null)}
         />
       ) : null}
       {specificationProduct ? (

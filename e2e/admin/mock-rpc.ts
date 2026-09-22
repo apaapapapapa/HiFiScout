@@ -368,6 +368,9 @@ export function createMockAdminRpc() {
       return { items, hasMore, nextAfterId: hasMore ? items.at(-1)!.id : null };
     },
     getSpecifications: unsupported("getSpecifications"),
+    getPhoto: unsupported("getPhoto"),
+    updatePhoto: unsupported("updatePhoto"),
+    photoCandidates: unsupported("photoCandidates"),
     updateSpecifications: unsupported("updateSpecifications"),
     getOfferFacts: unsupported("getOfferFacts"),
     updateOfferFacts: unsupported("updateOfferFacts"),
