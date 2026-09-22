@@ -2,6 +2,8 @@ import { beforeAll, afterAll, it, expect } from "vite-plus/test";
 import { build } from "vite-plus";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { initialAuctionRuntime } from "../src/auctions/runtime-policy.js";
+import { auctionSnapshot } from "./helpers/auction-snapshot.js";
+import { emptyAuctionLiveFacts } from "../src/auctions/observations.js";
 let mf: Miniflare;
 beforeAll(async () => {
   const bundle = await build({
@@ -33,6 +35,47 @@ beforeAll(async () => {
   );
 }, 30_000);
 afterAll(async () => mf?.dispose());
+it("sparse confirmation keeps static facts and performs no FTS/catalog rewrite", async () => {
+  const now = Date.parse("2099-09-22T01:00:00Z");
+  const original = auctionSnapshot();
+  const call = async (input: Record<string, unknown>) => {
+    const response = await mf.dispatchFetch("https://test.invalid/fixture", {
+      method: "POST",
+      body: JSON.stringify({ now, ...input }),
+    });
+    return (await response.json()) as {
+      item: { snapshot: typeof original };
+      usage: Record<string, { rowsWritten: number }>;
+    };
+  };
+  await call({ op: "apply", observations: [original] });
+  const sparse = structuredClone(original);
+  sparse.stamp.sequence++;
+  sparse.item = {
+    title: original.item.title,
+    rawManufacturer: null,
+    rawModel: null,
+    conditionText: null,
+    saleUnit: "unknown",
+    saleSubject: "unknown",
+    sourceCategoryId: "",
+    sourceCategoryPath: [],
+    rawCategory: "",
+    categoryHint: "",
+  };
+  sparse.live = emptyAuctionLiveFacts();
+  const result = await call({ op: "apply", observations: [sparse], id: original.auctionId });
+  expect(result.item.snapshot.item).toEqual(original.item);
+  expect(result.usage.item.rowsWritten).toBe(0);
+  expect(result.usage.fts).toBeUndefined();
+  const revised = structuredClone(sparse);
+  revised.stamp.sequence++;
+  revised.item.saleSubject = "empty_box";
+  expect(
+    (await call({ op: "apply", observations: [revised], id: original.auctionId })).item.snapshot
+      .item.saleSubject,
+  ).toBe("empty_box");
+});
 it("admits durable stop controls after normal public/admin admission is exhausted", async () => {
   await mf.dispatchFetch("https://test.invalid/seed");
   expect((await mf.dispatchFetch("https://test.invalid/admin/status")).status).toBe(503);
