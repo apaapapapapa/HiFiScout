@@ -42,6 +42,10 @@ The dated operator confirmation changes `collection` and `redistribution` in
 `src/auctions/yahoo/policy.ts` to `verified`. The committed discovery URLs are demonstrably rejected,
 so `robots` is `denied`; `accountBudget` and `sourceContract` remain `unverified`. Neither permission
 nor deployment flags override these independent gates. Do not request the same permission again.
+The admin response retains `deniedBlockers` separately from the unresolved blocker list. Management
+shows the confirmed robots rejection and the need to review acquisition paths, rather than presenting
+it as a permission check that has not been performed. Older Worker responses without this optional
+detail remain unresolved; they do not become an approval during a rolling deployment.
 
 The confirmed scope is #703's two candidate audio buckets and minimal listing facts: title, source
 link/ID/category, condition/sale-unit evidence, observed current and instant-buy prices, tax/shipping

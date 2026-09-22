@@ -21,6 +21,7 @@ describe("Yahoo auction pilot admission", () => {
       collect: false,
       search: false,
       display: false,
+      deniedBlockers: [],
     });
     expect(
       yahooAuctionAccess({
@@ -30,6 +31,7 @@ describe("Yahoo auction pilot admission", () => {
       }),
     ).toMatchObject({ collect: false, search: false, display: false });
     expect(yahooAuctionAccess().blockers).toEqual(["robots", "accountBudget", "sourceContract"]);
+    expect(yahooAuctionAccess().deniedBlockers).toEqual(["robots"]);
   });
 
   it("keeps collection and both serving switches independent", () => {

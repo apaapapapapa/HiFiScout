@@ -117,9 +117,17 @@ export function AdminAuctions() {
               </dd>
             </div>
             <div>
-              <dt>未確認の前提</dt>
+              <dt>未解決の前提条件</dt>
               <dd>
-                {data.access.blockers.map((key) => blockers[key] || key).join("、") || "なし"}
+                {data.access.blockers
+                  .map((key) =>
+                    data.access.deniedBlockers?.includes(key)
+                      ? key === "robots"
+                        ? "robotsによる取得拒否（取得経路の見直しが必要）"
+                        : `${blockers[key] || key}：拒否`
+                      : blockers[key] || key,
+                  )
+                  .join("、") || "なし"}
               </dd>
             </div>
             <div>

@@ -45,8 +45,15 @@ export interface YahooAuctionControlEnv {
 export function yahooAuctionAccess(
   env: YahooAuctionControlEnv = {},
   review: Readonly<YahooAuctionReview> = YAHOO_AUCTION_REVIEW,
-): { collect: boolean; search: boolean; display: boolean; blockers: string[] } {
+): {
+  collect: boolean;
+  search: boolean;
+  display: boolean;
+  blockers: string[];
+  deniedBlockers: string[];
+} {
   const verified = (key: keyof YahooAuctionReview) => review[key] === "verified";
+  const gates = Object.keys(YAHOO_AUCTION_REVIEW) as (keyof YahooAuctionReview)[];
   const servingAllowed =
     verified("redistribution") && verified("sourceContract") && verified("accountBudget");
   return {
@@ -58,9 +65,8 @@ export function yahooAuctionAccess(
       verified("sourceContract"),
     search: env.YAHOO_AUCTIONS_SEARCH_ENABLED === "true" && servingAllowed,
     display: env.YAHOO_AUCTIONS_DISPLAY_ENABLED === "true" && servingAllowed,
-    blockers: (Object.keys(YAHOO_AUCTION_REVIEW) as (keyof YahooAuctionReview)[]).filter(
-      (key) => !verified(key),
-    ),
+    blockers: gates.filter((key) => !verified(key)),
+    deniedBlockers: gates.filter((key) => review[key] === "denied"),
   };
 }
 
