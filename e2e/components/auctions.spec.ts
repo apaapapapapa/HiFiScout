@@ -39,12 +39,17 @@ test("auction facts stay distinct, pagination deduplicates IDs and filters prese
   mount,
 }) => {
   const seen: URL[] = [];
+  let failedPage = false;
   await page.route("**/api/auction-features", (route) =>
     route.fulfill({ json: { search: true, display: true } }),
   );
   await page.route("**/api/auctions?*", (route) => {
     const url = new URL(route.request().url());
     seen.push(url);
+    if (url.searchParams.has("cursor") && !failedPage) {
+      failedPage = true;
+      return route.fulfill({ status: 503, json: { error: "temporarily_unavailable" } });
+    }
     return route.fulfill({
       json: url.searchParams.has("cursor")
         ? result([item(), item("a100002")])
@@ -58,7 +63,11 @@ test("auction facts stay distinct, pagination deduplicates IDs and filters prese
   await expect(page.getByText("送料未確認")).toBeVisible();
   await expect(page.getByText("0件の観測")).toBeVisible();
   await page.getByRole("button", { name: "次の出品を読み込む" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "PMA-1700NE", exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "次の出品を読み込む" }).click();
   await expect(page.getByRole("heading", { name: "PMA-1700NE", exact: true })).toHaveCount(2);
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByText("条件を絞り込む", { exact: true }).click();
   expect((await page.getByLabel("型番（短い型番も入力可）").boundingBox())!.width).toBeGreaterThan(
     200,

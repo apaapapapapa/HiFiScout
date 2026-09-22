@@ -412,7 +412,7 @@ export function AuctionSearchApp() {
       );
     } catch (reason) {
       if (!controller.signal.aborted) {
-        setResult(null);
+        if (!more) setResult(null);
         setError(reason instanceof Error ? reason.message : "検索できませんでした。");
       }
     } finally {
