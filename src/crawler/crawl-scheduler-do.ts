@@ -1,7 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { isCrawlQuietHours, nextCrawlAllowedAt } from "./crawl-window.js";
 
-import { getCrawlerSettings, getShopEnabled, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
+import {
+  getCrawlerSettings,
+  getShopEnabled,
+  getShopRequestDelayMs,
+  shopEnvVarName,
+} from "../config.js";
 import {
   hasCrawlFetchDetailPage,
   recordCrawlFetchDetailPage,

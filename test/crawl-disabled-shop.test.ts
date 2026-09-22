@@ -68,7 +68,9 @@ function memoryScheduler(env: Env, execution?: unknown) {
 }
 
 test("e-earphone stays excluded in production and in an unconfigured deployment", () => {
-  const config = JSON.parse(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8")) as {
+  const config = JSON.parse(
+    readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  ) as {
     vars: Record<string, string>;
   };
   const plugin = getShopPlugin("e-earphone");
