@@ -267,7 +267,7 @@
     },
     {
       "id": "load-contracts",
-      "baseSha": "3b0cc19cf52ade1a50b966b4cb31b75497a8ed94",
+      "baseSha": "899c42d4f21f92295aa6d4fbcee2518a316bc606",
       "beforeDigest": "e84d4e7631f467aaf77714197060121ac76f017814f9c62efff19837bbc5ef36",
       "afterDigest": "5de111175b3edd9a6289bef08655ab2d215ba97263a9fa918cd870af84e68edf",
       "reason": "Register the named Access-protected admin RPC and bounded SQLite status case, including its transport/command owners. With 2,000 items/tasks/replay keys the exact source observes 8002 reads, zero data writes, six SQL statements and one getAlarm. Initial status limit 10100/0/6 is below the separately charged full invocation allowance; existing ceilings remain unchanged. These local observations are not production billing or account capacity.",
@@ -275,7 +275,7 @@
     },
     {
       "id": "auction-admin-status",
-      "baseSha": "3b0cc19cf52ade1a50b966b4cb31b75497a8ed94",
+      "baseSha": "899c42d4f21f92295aa6d4fbcee2518a316bc606",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "80d24c36e5873fd9e00612454fb421eac652e1da13d7ae7de6018bf85b5a06c8",
       "reason": "Initial admin status baseline on pinned Node 22.23.2 with real workerd SQLite; retained counts, unknown production usage, separate stopping, recovery reserve, saturated Alarm budgets and malformed actions are covered. Admission/schema/receipt writes are reserved and logged separately. No prior measurement is fabricated and no existing ceiling is relaxed.",
