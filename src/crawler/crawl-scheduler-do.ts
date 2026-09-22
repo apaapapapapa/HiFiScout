@@ -1,7 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { isCrawlQuietHours, nextCrawlAllowedAt } from "./crawl-window.js";
 
-import { getCrawlerSettings, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
+import {
+  getCrawlerSettings,
+  getShopEnabled,
+  getShopRequestDelayMs,
+  shopEnvVarName,
+} from "../config.js";
 import {
   hasCrawlFetchDetailPage,
   recordCrawlFetchDetailPage,
@@ -234,8 +239,13 @@ export class CrawlScheduler extends DurableObject<Env> {
     }
     if (!command) return new Response("invalid command", { status: 400 });
     const message = command.message;
-    if (!isCrawlDoEligible(message.shopKey)) {
+    const plugin = getShopPlugin(message.shopKey);
+    if (!plugin || !isCrawlDoEligible(message.shopKey)) {
       return new Response("shop is not eligible for DO execution", { status: 400 });
+    }
+    // Stale deliveries and force=true must not bypass the deployment's collection kill switch.
+    if (!getShopEnabled(this.env, plugin.definition)) {
+      return new Response("shop collection is disabled", { status: 409 });
     }
 
     const existing = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
@@ -286,6 +296,20 @@ export class CrawlScheduler extends DurableObject<Env> {
     if ((await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY)) === true) return;
     const execution = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
     if (!execution) return;
+    const plugin = getShopPlugin(execution.message.shopKey);
+    if (plugin && !getShopEnabled(this.env, plugin.definition)) {
+      // Park pre-deployment work before PREPARE (including robots), detail or inventory I/O.
+      // Preserve the exact cursor and data, but never keep a disabled shop's Alarm alive.
+      await this.ctx.storage.deleteAlarm();
+      console.log(
+        JSON.stringify({
+          event: "crawl_do_disabled",
+          shopKey: execution.message.shopKey,
+          jobId: executionIdentity(execution.message),
+        }),
+      );
+      return;
+    }
     // Also covers Alarms armed before deployment and delayed/retried daytime Alarms. Keep the
     // exact execution, cursor and dispatch token; pausing performs no D1 or seller work.
     const now = Date.now();
