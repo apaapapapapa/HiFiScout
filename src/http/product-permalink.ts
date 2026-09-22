@@ -1,4 +1,5 @@
 import { offerTermGroups } from "../api/offer-terms-contracts.js";
+import { parseCatalogPhoto } from "../api/catalog-photo-contracts.js";
 import type {
   CatalogRelationProof,
   ProductModelRelations,
@@ -160,6 +161,14 @@ export function renderProductPermalinkHtml(
     .map((color) => `<span class="permalink-color">${escapeHtml(color)}</span>`)
     .join("");
   const offers = detail.offers.map(offerHtml).join("\n");
+  const photo =
+    detail.product.identity_kind === "catalog" ? parseCatalogPhoto(detail.product.photo) : null;
+  const photoHtml = photo
+    ? `<figure class="catalog-photo">
+    <img src="${escapeHtml(photo.imageUrl)}" alt="${escapeHtml(name)} のメーカー写真" width="480" height="320" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+    <figcaption><a href="${escapeHtml(photo.sourceUrl)}" target="_blank" rel="noopener noreferrer">メーカー写真${photo.credit ? `：${escapeHtml(photo.credit)}` : "（出典）"}</a>
+      <span>参考写真です。出品の色・付属品・状態は販売店でご確認ください。</span></figcaption></figure>`
+    : "";
 
   return `<!doctype html>
 <html lang="ja">
@@ -197,6 +206,7 @@ export function renderProductPermalinkHtml(
         </div>
         <button type="button" data-permalink-close aria-label="商品詳細を閉じる">×</button>
       </div>
+      ${photoHtml}
       <p><strong>${escapeHtml(priceSummary(detail))}</strong></p>
       <p>${detail.product.offer_count}件の出品 / ${detail.product.in_stock_offer_count}件が在庫あり</p>
       ${modelRelationsHtml(detail.product.model_relations)}

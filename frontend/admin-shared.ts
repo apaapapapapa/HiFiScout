@@ -77,6 +77,8 @@ export function genericErrorText(error: unknown): string {
       return "認証サービスに一時的に接続できません。少し待ってから再開してください。";
     if (error.message === "admin_invalid_response")
       return "サーバーから正しい応答を受け取れませんでした。ログイン状態を確認してください。";
+    if (error.message === "catalog_admin_merge_photos_conflict")
+      return "メーカー写真が異なるため統合できません。両方の写真を確認して整理してください。";
     if (error.message === "catalog_admin_merge_specifications_conflict")
       return "比較用仕様が異なるため統合できません。両方の出典・仕様を確認し、正しい内容に揃えてから統合してください。";
     if (error.message === "catalog_admin_model_facts_review_required")

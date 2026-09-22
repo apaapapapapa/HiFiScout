@@ -700,6 +700,14 @@ export async function mergeKnowledgeCatalogProductReferences(
   `)
       .bind(targetProductId, sourceProductId),
   ];
+  statements.push(
+    db
+      .prepare(`INSERT INTO catalog_product_photos (catalog_product_id, photo_json, revision, updated_at)
+    SELECT ?, photo_json, 1, ? FROM catalog_product_photos WHERE catalog_product_id = ? AND photo_json IS NOT NULL
+    ON CONFLICT(catalog_product_id) DO UPDATE SET revision = NULL
+    WHERE catalog_product_photos.photo_json IS NOT excluded.photo_json`)
+      .bind(targetProductId, mergedAt, sourceProductId),
+  );
   const canonicalModelAlias = modelAliasStatement(
     db,
     targetProductId,
@@ -780,6 +788,8 @@ export async function mergeKnowledgeCatalogProductReferences(
   } catch (error) {
     if (String(error).includes("catalog_product_specifications.specification_json"))
       throw new Error("catalog_admin_merge_specifications_conflict");
+    if (String(error).includes("catalog_product_photos.revision"))
+      throw new Error("catalog_admin_merge_photos_conflict");
     throw error;
   }
 }

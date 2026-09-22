@@ -118,6 +118,12 @@ export interface CatalogAdminRpc {
   createProduct(input: CatalogAdminCreateInput): Promise<unknown>;
   verifyCandidate(candidateId: number, input: CatalogAdminCreateInput): Promise<unknown>;
   getSpecifications(productId: number): Promise<unknown>;
+  getPhoto(productId: number): Promise<unknown>;
+  updatePhoto(
+    productId: number,
+    input: import("../api/catalog-photo-contracts.js").CatalogPhotoUpdate,
+  ): Promise<unknown>;
+  photoCandidates(productId: number, sourceUrl: string): Promise<unknown>;
   updateSpecifications(
     productId: number,
     input: import("../catalog/types.js").CatalogSpecifications,

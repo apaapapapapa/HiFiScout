@@ -1705,3 +1705,21 @@ export interface CatalogSpecifications {
 export interface CatalogSpecificationRecord extends CatalogSpecifications {
   updatedAt: string;
 }
+
+/** A model's manufacturer photo, never a seller's photograph of an individual offer. */
+export interface CatalogPhoto {
+  imageUrl: string;
+  sourceUrl: string;
+  credit: string;
+}
+
+export interface CatalogPhotoSnapshot {
+  productId: number;
+  photo: CatalogPhoto | null;
+  revision: number;
+}
+
+export interface CatalogPhotoUpdate {
+  photo: CatalogPhoto | null;
+  expectedRevision: number;
+}

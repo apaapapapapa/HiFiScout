@@ -1356,3 +1356,14 @@ dialog::backdrop {
 .specification-port { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .specification-editor input { min-width: 0; width: 100%; }
 @media (max-width: 600px) { .specification-editor .specification-fields, .specification-port { grid-template-columns: 1fr; } }
+
+/* Manufacturer reference photos preserve their aspect ratio and source attribution. */
+.catalog-photo { margin: 0 0 16px; max-width: 480px; min-width: 0; }
+.catalog-photo img { display: block; width: 100%; height: 240px; object-fit: contain; background: #fff; }
+.catalog-photo figcaption { font-size: 11px; line-height: 1.5; color: #555; overflow-wrap: anywhere; }
+.catalog-photo figcaption span { display: block; margin-top: 4px; }
+.catalog-photo-unavailable { padding: 16px; color: #555; font-size: 12px; }
+.catalog-photo-compact { max-width: 240px; }
+.catalog-photo-compact img { height: 128px; }
+
+.photo-candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }

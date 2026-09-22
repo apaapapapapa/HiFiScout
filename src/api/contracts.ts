@@ -182,6 +182,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Manufacturer reference photo for this exact catalog model; never an offer photo. */
+  photo?: import("../catalog/types.js").CatalogPhoto | null;
   /** Bounded canonical manufacturer/model vocabulary; optional for older favorite snapshots. */
   search_aliases?: string[];
   /** Persisted condition bands and monthly asking/activity observations, detail only. */

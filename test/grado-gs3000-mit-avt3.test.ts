@@ -541,6 +541,13 @@ test("scheduled sweeps prioritize migration-owned replay over an existing ordina
 test("replay converges GS3000 catalog identity and both corrected search categories", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    // Current search also reads the photo schema; leave the historical data migration isolated.
+    sqlite.exec(
+      readFileSync(
+        new URL("../migrations/0135_catalog_product_photos.sql", import.meta.url),
+        "utf8",
+      ),
+    );
     // Apply the migration while there are no matching listings. All four scan signals must still
     // survive for the replacement runtime because the previous Worker can create the first match
     // before deployment completes.

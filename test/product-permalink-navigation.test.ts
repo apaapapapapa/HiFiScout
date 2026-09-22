@@ -128,7 +128,7 @@ function navigationHarness() {
       querySelector(selector: string) {
         return selector === "#offers-dialog" ? dialog : null;
       },
-      querySelectorAll: () => triggers,
+      querySelectorAll: (selector: string) => (selector === "[data-offers]" ? triggers : []),
       addEventListener(type: string, listener: (event: NavigationEvent) => void) {
         documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]);
       },

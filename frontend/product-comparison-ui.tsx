@@ -9,6 +9,7 @@ import { productPermalinkPath } from "./product-permalink.js";
 import { ProductPriceIndexSummary, productPriceIndex } from "./price-index-ui.js";
 import { yen } from "./format.js";
 import { ModelRelations } from "./model-relations-ui.js";
+import { CatalogPhoto } from "./catalog-photo.js";
 import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
 import type { ProductFilterNavigation } from "./product-filter-links.js";
 
@@ -43,6 +44,16 @@ const rows: {
   cell: (product: DisplayProduct) => ReactNode;
   available?: (product: DisplayProduct) => boolean;
 }[] = [
+  {
+    label: "メーカー写真",
+    available: (p) => p.identity_kind === "catalog" && Boolean(p.photo),
+    cell: (p) =>
+      p.identity_kind === "catalog" && p.photo ? (
+        <CatalogPhoto photo={p.photo} name={`${p.manufacturer} ${p.model}`} compact />
+      ) : (
+        "未登録"
+      ),
+  },
   { label: "出品されている仕上げ", cell: (p) => p.presentation_colors?.join(" / ") || "—" },
   { label: "掲載中の価格帯", cell: priceRange },
   ...(

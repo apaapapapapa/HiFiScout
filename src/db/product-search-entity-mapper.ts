@@ -10,6 +10,7 @@
  * would be contradicting its own filter.
  */
 
+import { catalogPhotoColumn, decodeCatalogPhoto } from "./catalog-photo-repository.js";
 import {
   UNCLASSIFIED_CATEGORY_ID,
   categoryClosureIds,
@@ -73,7 +74,10 @@ const PRODUCT_OFFER_COLUMNS = [
 ] as const;
 
 export function entityColumns(alias: string): string {
-  return PRODUCT_SEARCH_ENTITY_COLUMNS.map((column) => `${alias}.${column}`).join(", ");
+  return [
+    ...PRODUCT_SEARCH_ENTITY_COLUMNS.map((column) => `${alias}.${column}`),
+    catalogPhotoColumn(`${alias}.catalog_product_id`),
+  ].join(", ");
 }
 
 export function offerColumns(alias: string): string {
@@ -141,7 +145,7 @@ function isNewOffer(newestListedAt: string | null, now: number): boolean {
 }
 
 export function toProductSearchItem(
-  row: ProductSearchEntityRow,
+  row: ProductSearchEntityRow & { catalog_photo_json?: string | null },
   {
     aggregate = null,
     representativeOffer = null,
@@ -173,6 +177,7 @@ export function toProductSearchItem(
     : row.manufacturer_id;
   return {
     key: row.entity_key,
+    photo: row.entity_kind === "catalog" ? decodeCatalogPhoto(row.catalog_photo_json) : null,
     identity_kind: row.entity_kind,
     catalog_product_id: nullableNumber(row.catalog_product_id),
     manufacturer: publicManufacturer,
