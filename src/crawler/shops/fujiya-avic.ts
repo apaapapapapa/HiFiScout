@@ -192,9 +192,15 @@ function breadcrumbCategoryEvidence(
         {
           categoryIds: [item.categoryId],
           source: "detail_breadcrumb",
-          strength: "strong" as const,
+          // This shop also files phono stages under "analog players". The bucket alone cannot
+          // establish a turntable, even when it is the terminal product-bound breadcrumb.
+          strength:
+            item.value === "アナログプレーヤー" ? ("supporting" as const) : ("strong" as const),
           value: item.value,
-          ruleId: "fujiya.product_breadcrumb.v3",
+          ruleId:
+            item.value === "アナログプレーヤー"
+              ? "fujiya.product_breadcrumb.v4"
+              : "fujiya.product_breadcrumb.v3",
         },
       ];
     });

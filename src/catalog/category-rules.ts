@@ -188,7 +188,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["ACC.TUBE", /vacuum\s+tube|replacement\s+tube|真空管/i],
   [
     "ACC.PART",
-    /replacement\s+(?:driver|terminal|knob|board)|diy\s+part|交換部品|補修部品|ドライバーユニット|ターミナル|ノブ/i,
+    /replacement\s+(?:driver|terminal|knob|board)|diy\s+part|交換部品|補修部品|ドライバーユニット|ターミナル|ノブ(?![ァ-ヶー])/i,
   ],
   ["SPK.SUBWOOFER", /sub[\s-]?woofer|スーパーウーファー|サブウーファー/i],
   ["SPK.SOUNDBAR", /\bsound\s*bars?\b|サウンドバー/i],

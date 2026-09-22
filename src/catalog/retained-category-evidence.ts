@@ -4,6 +4,18 @@ import { normalizeCategory } from "./categories.js";
 import type { CategoryEvidenceInput, CategoryNormalizationConfig } from "./types.js";
 
 function replaySellerEvidence(entry: CategoryEvidenceInput): CategoryEvidenceInput {
+  // Fujiya is the owner of detail_breadcrumb evidence. Its old cached summaries omitted ruleId;
+  // retain the raw label while applying the current reviewed authority of that breadcrumb.
+  if (
+    entry.source === "detail_breadcrumb" &&
+    (!entry.ruleId || /^fujiya\.product_breadcrumb\.v[34]$/.test(entry.ruleId)) &&
+    entry.value
+      ?.normalize("NFKC")
+      .replace(/\(中古\)$/, "")
+      .trim() === "アナログプレーヤー" &&
+    entry.categoryIds?.includes("ANA.TURNTABLE")
+  )
+    return { ...entry, strength: "supporting" };
   if (entry.source !== "seller_category" || !entry.value) return entry;
   const current = normalizeCategory({ rawCategory: entry.value });
   // Reinterpret retained vocabulary without escalating its shop-declared authority. Opaque

@@ -1,6 +1,6 @@
 import type { ClassifiableCategoryId } from "./types.js";
 
-export const SALE_SUBJECT_POLICY_VERSION = 2;
+export const SALE_SUBJECT_POLICY_VERSION = 3;
 
 export interface SaleSubjectEvidence {
   kind: "accessory" | "bundle" | "unspecified";
@@ -16,11 +16,34 @@ const ACCESSORIES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["ACC.CASE", /ダストカバー|ケース|カバー|cases?|covers?/i],
 ];
 
+// A complete included-item clause can contain several nouns before its one shared suffix.
+// Keep compatibility-bound sale objects ("CDプレーヤー用リモコン 元箱付属") intact.
+const INCLUDED_ITEM = String.raw`(?:リモコン|スパイク|元箱|取扱説明書|説明書|ケーブル|ケース|カバー|イヤー(?:フック|パッド|ピース)|(?:AC|DC)アダプタ(?:ー)?|(?:専用)?スタンド(?:\s*[A-Z]+[A-Z0-9.-]*\d[A-Z0-9.-]*)?)`;
+const INCLUDED_ITEM_CLAUSE = new RegExp(
+  String.raw`(?<!用)${INCLUDED_ITEM}(?:[\s・、,＆&]+${INCLUDED_ITEM})*\s*(?:[はをが]\s*)?(?:非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り|プレゼント)`,
+  "gi",
+);
+
+function withoutIncludedItemClauses(value: string): string {
+  return value.replace(INCLUDED_ITEM_CLAUSE, (clause: string, offset: number) => {
+    const items = clause.match(new RegExp(INCLUDED_ITEM, "gi")) || [];
+    if (items.length < 2) return " ";
+    // With no independently named main device, "純正リモコン 元箱付属" still sells a remote.
+    const prefix = value.slice(0, offset);
+    if (/(?:用|専用|対応|互換)(?:の)?\s*$/u.test(prefix) || clause.startsWith("専用スタンド"))
+      return clause;
+    return /\b(?:dac|cd\s*player|amplifier|headphones?|speakers?)\b|コンバータ|プレ[ーイ]ヤ|アンプ|スピーカー|ヘッドホン|イヤホン/i.test(
+      prefix,
+    )
+      ? " "
+      : clause;
+  });
+}
+
 /** Strip capabilities, power-source descriptions and included/missing items before sale inference. */
 export function saleSubjectText(value: string): string {
   return (
-    value
-      .normalize("NFKC")
+    withoutIncludedItemClauses(value.normalize("NFKC"))
       // Connector compatibility names the equipment an accessory fits, not the item for sale.
       // It alone cannot prove that the item is a cable either; keep that case unresolved.
       .replace(

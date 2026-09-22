@@ -1,5 +1,9 @@
 import { inferSaleSubject, saleSubjectText } from "./sale-subject.js";
-import type { CategoryEvidenceInput, ClassifiableCategoryId } from "./types.js";
+import type {
+  CategoryEvidenceInput,
+  CategoryEvidenceStrength,
+  ClassifiableCategoryId,
+} from "./types.js";
 
 interface ReviewedNoiseAccessory {
   id: string;
@@ -16,6 +20,7 @@ interface ReviewedProductType {
   categoryId: ClassifiableCategoryId;
   sourceUrl: string;
   excludeAccessorySubjects?: boolean;
+  strength?: CategoryEvidenceStrength;
 }
 
 const REVIEWED_PRODUCT_ACCESSORY =
@@ -27,6 +32,54 @@ function isReviewedProductAccessory(subject: string): boolean {
 
 /** Narrow product-type facts confirmed from manufacturer or specialist-retailer evidence. */
 const PRODUCT_TYPES: readonly ReviewedProductType[] = [
+  {
+    id: "nobunaga_reviewed_personal_cable_skus",
+    brand: /\bnobunaga\s+labs\b|ノブナガラボ/i,
+    // Exact manufacturer SKUs, reviewed against its product index. Other NOBUNAGA products
+    // include interconnects, earphones and plugs, so neither the brand nor a SKU prefix suffices.
+    model:
+      /[[【(]\s*(?:NLC-ECS|NLP-HCL-EVO|NLA-ZHU|NLS-EKD-OMG|NLC-KMG|NLS-MIO|NLA-SRE|NLI-VGA|NLS-TER-KWM|NLS-HYU-KWM|NLS-SUH|NLA-ZHU-HYT|NLA-KFI-GOU|NLV-AUK|NLH-SKI|NLC-HEI-GAI|NLV-GYT|NLV-CRS-OMG|NLV-KYK-KWM|NLS-GMS-OMG|NLV-FKI-KWM|NLC-HEI|NLV-KYN|NLS-SRK|NLI-TSN|NLS-GMS|NLC-KMG-GAI|NLS-DBL)\s*[\]】)]\s*$/i,
+    categoryId: "CAB.PERSONAL",
+    sourceUrl: "https://www.wisetech.co.jp/brand/nobunaga/",
+    excludeAccessorySubjects: true,
+    strength: "verified",
+  },
+  {
+    id: "nobunaga_reviewed_interconnect_skus",
+    brand: /\bnobunaga\s+labs\b|ノブナガラボ/i,
+    model: /[[【(]\s*(?:NLA-USU|NLV-SNU)\s*[\]】)]\s*$/i,
+    categoryId: "CAB.ANALOG",
+    sourceUrl: "https://www.wisetech.co.jp/brand/nobunaga/",
+    excludeAccessorySubjects: true,
+    strength: "verified",
+  },
+  {
+    id: "nobunaga_uguisu_black",
+    brand: /\bnobunaga\s+labs\b|ノブナガラボ/i,
+    model: /[[【(]\s*NLN-UGS-BK\s*[\]】)]\s*$/i,
+    categoryId: "PER.EARPHONE",
+    sourceUrl: "https://www.wisetechdirect.jp/items/69513888",
+    excludeAccessorySubjects: true,
+    strength: "verified",
+  },
+  {
+    id: "ifi_zen_phono_3",
+    brand: /\bifi\s+audio\b|アイファイオーディオ/i,
+    model: /\bzen\s+phono\s*3\b/i,
+    categoryId: "AMP.PHONO",
+    sourceUrl: "https://ifi-audio.com/products/zen-phono-3",
+    excludeAccessorySubjects: true,
+    strength: "verified",
+  },
+  {
+    id: "jbl_l82_classic",
+    brand: /\bjbl\b/i,
+    model: /\bl82\s+classic\b/i,
+    categoryId: "SPK.LOUDSPEAKER",
+    sourceUrl:
+      "https://www.jbl.com/news-and-reviews/jbl-introduces-l82-classic-bookshelf-loudspeakers-at-ces-2020.html",
+    excludeAccessorySubjects: true,
+  },
   {
     id: "sennheiser_hd_800_s",
     brand: /\bsennheiser\b|ゼンハイザー/i,
@@ -193,7 +246,7 @@ export function reviewedProductTypeEvidence(
         {
           categoryId: productType.categoryId,
           source: "reviewed_product_type",
-          strength: "strong",
+          strength: productType.strength || "strong",
           ruleId: `reviewed_product_type.${productType.id}.20260912`,
           value: productType.sourceUrl,
         },
