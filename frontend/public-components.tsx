@@ -168,13 +168,6 @@ export function ProductCard({
   return (
     <article className="card" data-key={product.key}>
       <div className="product-summary">
-        {product.identity_kind === "catalog" && (
-          <CatalogPhoto
-            photo={product.photo}
-            name={`${product.manufacturer} ${product.model}`}
-            compact
-          />
-        )}
         <div className="card-top">
           <ShopChip product={product} shopName={shopName} />
           <div className="badges">
@@ -196,39 +189,48 @@ export function ProductCard({
             navigation={filterNavigation}
           />
         </p>
-        <h2>
-          {hasServerDetail && (product.offer_count !== 1 || sourceUrl === "#") ? (
-            <button
-              type="button"
-              className="product-title-link"
-              data-offers={product.key}
-              onClick={() => onOffers(product.key)}
-            >
-              {title}
-            </button>
-          ) : sourceUrl !== "#" ? (
-            <a
-              className="product-title-link"
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {title}
-            </a>
-          ) : (
-            <span className="product-title-link">{title}</span>
+        <div className="product-heading">
+          <h2>
+            {hasServerDetail && (product.offer_count !== 1 || sourceUrl === "#") ? (
+              <button
+                type="button"
+                className="product-title-link"
+                data-offers={product.key}
+                onClick={() => onOffers(product.key)}
+              >
+                {title}
+              </button>
+            ) : sourceUrl !== "#" ? (
+              <a
+                className="product-title-link"
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {title}
+              </a>
+            ) : (
+              <span className="product-title-link">{title}</span>
+            )}
+            {/* Beside the name, not inside it: the model is what groups the colours together. */}
+            {colors.length ? (
+              <span className="product-colors">
+                {colors.map((color) => (
+                  <span className="product-color" key={color}>
+                    {color}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </h2>
+          {product.identity_kind === "catalog" && (
+            <CatalogPhoto
+              photo={product.photo}
+              name={`${product.manufacturer} ${product.model}`}
+              compact
+            />
           )}
-          {/* Beside the name, not inside it: the model is what groups the colours together. */}
-          {colors.length ? (
-            <span className="product-colors">
-              {colors.map((color) => (
-                <span className="product-color" key={color}>
-                  {color}
-                </span>
-              ))}
-            </span>
-          ) : null}
-        </h2>
+        </div>
         <div className="product-submeta">
           <ProductCategoryLinks product={product} navigation={filterNavigation} />
         </div>
