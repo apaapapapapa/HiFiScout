@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { runRetentionCleanup } from "../src/maintenance.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { database } from "./helpers/d1-write-budget.js";
 
 const MIGRATION = "0133_evidence_archive_crawl_run.sql";
 const NOW = new Date("2026-09-16T00:00:00.000Z");
 
-async function arrange(before?: string) {
+async function arrange(before?: string, size = 2000) {
   const fixture = await database(before ? { before } : {});
   await fixture.db
     .prepare(`WITH RECURSIVE n(i) AS (
@@ -20,7 +22,7 @@ async function arrange(before?: string) {
     .run();
   await fixture.db
     .prepare(`WITH RECURSIVE n(i) AS (
-      SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000
+      SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${size}
     )
     INSERT INTO evidence_archive(
       shop_key, product_id, crawl_run_id, reason, content_hash, r2_object_key, captured_at
@@ -65,3 +67,32 @@ test("crawl-run retention indexes the evidence foreign key instead of rescanning
 
   console.log(JSON.stringify({ event: "crawl_run_retention_read_budget", legacy, indexed }));
 }, 60_000);
+
+test("retention cost does not scale with unrelated evidence history", async () => {
+  const reads: number[] = [];
+  for (const size of [100, 1000, 10000]) {
+    const { db, dispose } = await arrange(undefined, size);
+    try {
+      const boundary = measureD1Cost(db);
+      const result = await runRetentionCleanup({ DB: boundary.db }, { now: NOW });
+      assert.equal(result.deleted.crawlRuns, 500);
+      assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM evidence_archive").first("n"), size);
+      const cost = boundary.metrics();
+      assert.ok(cost.rowsRead !== null && cost.rowsRead < 10000);
+      assert.equal(cost.rowsWritten, 500);
+      reads.push(cost.rowsRead);
+      await recordCostSample(
+        `retention-history-${size}`,
+        "local-workerd",
+        cost,
+        ["test/retention-crawl-run-read-budget.test.ts"],
+        [
+          "500 parent deletions with unrelated retained child rows; all cleanup statements included.",
+        ],
+      );
+    } finally {
+      await dispose();
+    }
+  }
+  assert.ok(reads[2] <= reads[0] + 100, JSON.stringify(reads));
+}, 60000);

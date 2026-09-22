@@ -1,39 +1,55 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { auctionFixture } from "./helpers/auction-fixture.js";
+import { auctionSnapshot } from "./helpers/auction-snapshot.js";
 import { toAuctionOffer } from "../src/auctions/public-offer.js";
+import { applyAuctionObservation, emptyAuctionLiveFacts } from "../src/auctions/observations.js";
 
 const identity = {
   catalogProductId: null,
   manufacturer: "Example",
-  model: "Model II",
-  categoryId: "SPK.BOOKSHELF",
+  model: "A-100 MK II",
+  categoryId: "AMP.INTEGRATED",
 };
-const now = Date.parse("2026-09-19T11:00:00.000Z");
+const now = "2026-09-22T01:01:00.000Z";
 
-test("public auction serialization excludes retained seller evidence and extra runtime fields", () => {
-  const item = {
-    ...auctionFixture({
+test("public auction serialization excludes raw evidence and extra nested runtime fields", () => {
+  const base = auctionSnapshot();
+  const current = base.live.currentPrice;
+  assert.ok(current);
+  const snapshot = {
+    ...base,
+    item: {
+      ...base.item,
       title: "private-evidence-title",
       rawManufacturer: "private-evidence-manufacturer",
       rawModel: "private-evidence-model",
-      rawCategoryPath: "private-evidence-category",
-    }),
+      conditionText: "private-evidence-condition",
+    },
+    live: {
+      ...base.live,
+      currentPrice: {
+        ...current,
+        value: { ...current.value, rawPrice: "private-evidence-price" },
+        internal: "private-evidence-price-fact",
+      },
+      bidCount: { value: 0, observedAt: base.stamp.observedAt, rawBids: "private-evidence-bids" },
+    },
     futureInternalField: "private-evidence-new-field",
   };
   const mappedIdentity = { ...identity, internal: "private-evidence-identity" };
-  const offer = toAuctionOffer(item, mappedIdentity, now);
-  const json = JSON.stringify(offer);
-  assert.equal(json.includes("private-evidence"), false);
+  const offer = toAuctionOffer(snapshot, mappedIdentity, now);
+  assert.equal(JSON.stringify(offer).includes("private-evidence"), false);
   for (const key of [
+    "item",
+    "live",
+    "stamp",
+    "cycle",
     "title",
     "rawManufacturer",
     "rawModel",
-    "rawCategoryPath",
     "sourceCategoryId",
-    "requestedAt",
-    "sourceStartedAt",
-    "sourceStatus",
+    "sourceCategoryPath",
+    "conditionText",
     "futureInternalField",
     "internal",
   ]) {
@@ -41,43 +57,74 @@ test("public auction serialization excludes retained seller evidence and extra r
   }
   assert.equal(offer.manufacturer, identity.manufacturer);
   assert.equal(offer.model, identity.model);
-  assert.equal(offer.currentPriceYen, 1);
-  assert.equal(offer.bidCount, 0);
-  assert.equal(offer.saleUnit, "pair");
-  assert.equal(offer.priceObservedAt, item.observedAt);
-  assert.equal(offer.displayState, "active");
+  assert.equal(offer.currentPrice?.amountYen, 88_000);
+  assert.equal(offer.currentPrice?.tax, "inclusive");
+  assert.equal(offer.bidCount?.value, 0);
+  assert.equal(offer.currentPrice?.observedAt, base.live.currentPrice?.observedAt);
+  assert.equal(offer.displayState, "open");
 });
 
-test("public buy-now facts preserve availability and do not invent a price observation", () => {
-  for (const buyNowPriceStatus of ["none", "unknown"] as const) {
-    const offer = toAuctionOffer(
-      auctionFixture({ currentPriceYen: null, buyNowPriceStatus, buyNowPriceYen: null }),
-      identity,
-      now,
-    );
-    assert.equal(offer.buyNowPriceStatus, buyNowPriceStatus);
-    assert.equal(offer.buyNowPriceYen, null);
-    assert.equal(offer.priceObservedAt, null);
-  }
-  const item = auctionFixture({
-    currentPriceYen: null,
-    buyNowPriceStatus: "set",
-    buyNowPriceYen: 100,
+test("public buy-now prices distinguish a known price, explicit none and unobserved availability", () => {
+  const first = auctionSnapshot();
+  const known = toAuctionOffer(first, identity, now);
+  assert.deepEqual(known.buyNowPrice, {
+    status: "set",
+    price: { amountYen: 120_000, tax: "inclusive", observedAt: first.stamp.observedAt },
   });
-  const offer = toAuctionOffer(item, identity, now);
-  assert.equal(offer.buyNowPriceStatus, "set");
-  assert.equal(offer.buyNowPriceYen, 100);
-  assert.equal(offer.priceObservedAt, item.observedAt);
+  const absent = toAuctionOffer(auctionSnapshot(1), identity, now);
+  assert.deepEqual(absent.buyNowPrice, { status: "none", observedAt: first.stamp.observedAt });
+  const unknown = toAuctionOffer(
+    {
+      ...first,
+      live: { ...first.live, currentPrice: null, buyNowPrice: null },
+    },
+    identity,
+    now,
+  );
+  assert.deepEqual(unknown.buyNowPrice, { status: "unknown" });
+  assert.equal(unknown.currentPrice, null);
+  const zero = toAuctionOffer(
+    {
+      ...first,
+      live: {
+        ...first.live,
+        buyNowPrice: {
+          value: { amountYen: 0, tax: "unknown" },
+          observedAt: first.stamp.observedAt,
+        },
+      },
+    },
+    identity,
+    now,
+  );
+  assert.deepEqual(zero.buyNowPrice, {
+    status: "set",
+    price: { amountYen: 0, tax: "unknown", observedAt: first.stamp.observedAt },
+  });
 });
 
-test("public auction display evaluates time on each read without refreshing saved facts", () => {
-  const item = auctionFixture();
-  const before = JSON.stringify(item);
-  assert.ok(item.scheduledEndAt);
-  assert.equal(toAuctionOffer(item, identity, NaN).displayState, "unknown");
+test("public partial rechecks preserve independent price times and source-state freshness", () => {
+  const first = auctionSnapshot();
+  const at = "2026-09-22T02:00:00.000Z";
+  const result = applyAuctionObservation(first, {
+    ...first,
+    stamp: { generation: 1, sequence: 2, observedAt: at },
+    live: { ...emptyAuctionLiveFacts(), buyNowPrice: { value: null, observedAt: at } },
+  });
+  assert.ok(result.snapshot);
+  const offer = toAuctionOffer(result.snapshot, identity, at, 60_000);
+  assert.equal(offer.currentPrice?.observedAt, first.stamp.observedAt);
+  assert.deepEqual(offer.buyNowPrice, { status: "none", observedAt: at });
+  assert.equal(offer.freshness, "stale");
+});
+
+test("public reads derive expiry without changing saved facts or refreshing their timestamps", () => {
+  const snapshot = auctionSnapshot();
+  const before = JSON.stringify(snapshot);
+  assert.equal(toAuctionOffer(snapshot, identity, "invalid").displayState, "unknown");
   assert.equal(
-    toAuctionOffer(item, identity, Date.parse(item.scheduledEndAt)).displayState,
-    "end_confirmation_pending",
+    toAuctionOffer(snapshot, identity, "2026-09-22T12:31:00Z").displayState,
+    "end_check_pending",
   );
-  assert.equal(JSON.stringify(item), before);
+  assert.equal(JSON.stringify(snapshot), before);
 });

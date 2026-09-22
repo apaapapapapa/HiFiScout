@@ -114,26 +114,74 @@ source fixture; measure account headroom; implement stage-3 bounded storage, pac
 admission; run offline regression/CI and review. Keep unresolved prerequisites unchecked in #703.
 A merged foundation or a green source/deployment run is not authorization to start collecting.
 
-## Observation and public contracts
+## Offline observation contract (step 2)
 
-`src/api/auction-contracts.ts` separates retained `AuctionObservation` evidence from the explicit
-public `AuctionOffer` fields. `src/auctions/public-offer.ts` copies only those public fields and
-normalized catalog identity. Seller titles, raw manufacturer/model/category evidence, request
-timestamps and extra runtime properties must not enter public responses. Future routes must use
-this mapper after observation validation; the mapper does not grant permission to serve data.
+`src/auctions/types.ts` is separate from retail offers. `YahooAuctionSource.parse(unknown, unknown)`
+is exchangeable and performs no I/O, pagination, persistence or registration. The candidate HTML
+adapter accepts only bounded `li.Product` cards with one validated `Product__titleLink` and explicit
+`dt`/`dd` labels. This is a deliberately narrow **synthetic fixture contract, not verified current
+Yahoo markup**. Do not turn on collection based on these tests. Obtain an authorized raw fixture
+and adjust/replace the adapter before changing `sourceContract` to verified. Unknown layouts,
+empty pages, inert templates, duplicate labels and oversized responses never prove empty inventory.
+Parsed pages always have partial coverage; malformed fields/cards retain diagnostics.
 
-`buyNowPriceStatus` distinguishes `set`, explicitly confirmed `none`, and `unknown`. A set price
-requires a bounded integer; none/unknown require a null price. Missing status and inconsistent
-combinations fail validation rather than converting an unconfirmed price into an absent offer.
-Current price, buy-now price, bid count, tax, shipping and sale unit remain distinct facts; no
-retail price or winning-bid claim is derived from them.
+Stable item facts are separated from `live` observations. An outer `null` means not observed;
+`buyNowPrice: {value: null, observedAt}` specifically means explicitly no instant-buy price.
+Updates preserve unobserved live facts and their original timestamps. Current price and instant-buy
+price have separate integer-yen/tax fields; shipping is a separate enum, not an assumed zero.
+No field represents a hammer price or a confirmed transaction. Multiple amounts or ambiguous tax
+values stay unresolved. Titles and revisions remain intact; sold-subject and sale-unit labels are
+explicit hints, never canonical product matches. Missing hints remain unknown for the existing
+catalog resolver to evaluate in step 4.
 
-`src/auctions/observation.ts` reuses the reviewed Yahoo identity policy above. It validates bounded
-fields and canonical UTC instants, orders updates by request start and requires explicit relisting
-evidence before reopening a confirmed ending. Display state validates the clock before every
-source status: future observations and non-finite current times return unknown. Scheduled expiry
-becomes end-confirmation-pending, not a confirmed ending. `priceObservedAt` is null when neither
-price was observed; it is never advanced to the display request's time.
+The scheduler owns generation/sequence and the original fetch time. The parser validates these
+runtime inputs; replay time is never substituted. The pure reducer rejects stale generations,
+sequences and timestamps, mismatched source identities and unconfirmed reopening. Missing records
+are not reducer inputs. A later explicit start after an observed confirmed end is required to
+reopen the same external ID as a new cycle; the old cycle's live facts are not carried forward.
+A new external ID is a separate listing. State/outcome are not inferred from transport failures,
+prices or bid counts. Expiring an end timestamp derives `end_check_pending` for presentation only;
+it does not mutate the observed source state or prove a winner. End extensions are new observations.
+Partial field updates never refresh the source state's own freshness timestamp. An explicit second
+confirmation of the same terminal state does refresh that state's evidence time.
 
-The policy, switches, category scope and proposed resource ceilings in `src/auctions/yahoo/policy.ts`
-remain canonical. These contracts introduce no parallel configuration or production entrypoint.
+### Visibility boundary and regression coverage
+
+After the shared raw-text/comment filter, `visible-markup.ts` removes complete explicitly hidden
+subtrees before any card, title or labelled field is extracted. It covers hidden ancestors as well
+as attributes directly on a card or value: boolean `hidden`, `aria-hidden=true` and explicit inline
+`display:none` / `visibility:hidden`. Attribute scanning respects quoted `>` characters and void
+elements; CSS comments and HTML character references do not hide those explicit declarations.
+Structural placeholders prevent removed labels from pairing with an unrelated neighboring value.
+Unterminated hidden subtrees or quoted attributes reject the candidate layout rather than exposing
+unknown fallback content. This is a conservative bounded filter, **not an HTML5/CSS renderer**;
+external stylesheets, media queries and browser-repaired malformed structures are not established
+by this contract. Validate actual source visibility under the source-contract gate before enabling.
+
+The offline suite contains the policy tests, 16 observation/parser cases, two self-review regressions
+and five visibility/calendar cases. The latter reproduce the hidden-ancestor review finding, protect
+against inherited object-property labels, and check the last valid/first invalid day in all 12 months.
+Tests use fictional IDs and products. They exercise adjacency, missing/explicitly absent facts,
+hidden raw markup, unknown layouts, zero bids, tax/shipping, sale units/subjects, price changes,
+extensions, stale/replayed observations and confirmed versus scheduled ends. They make no seller
+requests and establish neither production parser compatibility nor actual Cloudflare costs.
+
+## Public offer boundary
+
+The canonical observation, reducer and parser above remain the only internal model. The explicit
+`AuctionOffer` in `src/api/auction-contracts.ts` does not inherit observations or retained item facts.
+`src/auctions/public-offer.ts` copies approved public fields and normalized catalog identity at each
+nesting level; seller titles, raw manufacturer/model/category/condition text, internal stamps and
+extra runtime properties do not enter public responses. Future routes must use this mapper after
+source validation and the existing serving admission gates. No route is activated by this contract.
+
+The public buy-now union preserves all three existing source meanings: `set` carries the price,
+tax evidence and its observation time; `none` carries the explicit absence's observation time;
+`unknown` carries no invented value or timestamp. Current and buy-now price evidence remain
+independent, including after partial rechecks. Public reads do not replace their times with now or
+with the latest unrelated observation, and they do not calculate guessed tax/fee-inclusive prices.
+
+Presentation checks the current clock, snapshot time and source-state evidence time before deriving
+any phase. Invalid times or future evidence yield unknown phase/freshness, including for ended and
+unavailable states. Saved source facts remain untouched. The existing freshness threshold, expiry,
+confirmed-ending and relisting rules continue to use the canonical reducer/presentation helpers.

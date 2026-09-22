@@ -36,11 +36,12 @@ version; change task scheduling/cache metadata in Vite's task configuration.
 The unit jobs preserve all four JSON timing reports even on failure. `product-replay` imports those
 reports to assess fixed extraction, normalization, classification, identity, search and admin-override
 regressions; it does not execute a second test suite. Existing D1, DO and Queue budget tests and the
-parser benchmark emit 13 cost samples. The measurement tasks include `GITHUB_SHA` in their cache
+parser benchmark emit the required samples enumerated in `scripts/harness/cost.ts`. The measurement tasks include `GITHUB_SHA` in their cache
 keys. The aggregate job requires matching source identities and complete required measurements;
 missing metadata is unknown. `product-replay` and `cost-evidence` artifacts retain the result and
 original samples for 30 days. Existing assertions and CPU baseline gates still own behavioral and
-performance success; the cost report alone establishes only that measurement exists.
+performance success; the cost report also enforces registered absolute ceilings and rejects missing measurements.
+The load contracts cover growth, no-op publication, indirect schema costs, scheduling and continuation.
 
 The component job enables `HARNESS_UI=1` for isolated gallery/admin browser evidence. Every case
 captures a screenshot, DOM, console/page errors, request metadata and SHA/URL/retry identity;

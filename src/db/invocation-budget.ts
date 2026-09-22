@@ -58,6 +58,17 @@ export function invocationBudget(
     clock = () => performance.now(),
   } = {},
 ): InvocationBudget {
+  if (
+    !Number.isSafeInteger(maxCalls) ||
+    maxCalls < 1 ||
+    !Number.isSafeInteger(finalizationReserve) ||
+    finalizationReserve < 0 ||
+    finalizationReserve > maxCalls ||
+    !Number.isFinite(maxWallMs) ||
+    maxWallMs <= 0
+  ) {
+    throw new Error("invalid_invocation_budget");
+  }
   const started = clock();
   const workLimit = maxCalls - Math.min(maxCalls, Math.max(0, finalizationReserve));
   let calls = 0;
@@ -67,6 +78,9 @@ export function invocationBudget(
   let finalizationDepth = 0;
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
   const checkAllowance = (requiredCalls: number) => {
+    if (!Number.isSafeInteger(requiredCalls) || requiredCalls < 0) {
+      throw new Error("invalid_d1_work_unit_budget");
+    }
     if (finalizationDepth) {
       // A yield must not strand a newly-created run or replay a successfully sent Queue wake.
       // Cleanup may pass the work deadline, but it never bypasses the invocation's hard cap.

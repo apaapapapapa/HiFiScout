@@ -7,6 +7,7 @@ import { isRecord } from "../../src/types.js";
 import { requireSha, requireText, requireTimestamp } from "./report.js";
 import { assessHarnessReport } from "./report.js";
 import { readCheckout } from "./checkpoint.js";
+import { LOAD_SAMPLE_BUDGETS } from "./load-contracts.js";
 const initialCheckout = process.env.HARNESS_COST_OUTPUT ? readCheckout() : null;
 
 const METRICS = {
@@ -19,9 +20,32 @@ const METRICS = {
   queueRetries: "messages",
   cpuUs: "microseconds",
   cpuRelative: "ratio",
+  d1Calls: "calls",
+  scheduledInvocations: "calls",
+  crawlDispatches: "calls",
+  plannedPages: "pages",
 } as const;
 export type CostMetric = keyof typeof METRICS;
 export type CostMetrics = Partial<Record<CostMetric, number | null>>;
+export function assessCostBudget(metrics: CostMetrics, limits: CostMetrics) {
+  const keys = Object.keys(limits) as CostMetric[];
+  if (
+    !keys.length ||
+    keys.some(
+      (key) => typeof limits[key] !== "number" || !Number.isFinite(limits[key]) || limits[key]! < 0,
+    )
+  ) {
+    throw new Error("invalid_cost_budget");
+  }
+  if (
+    keys.some(
+      (key) =>
+        typeof metrics[key] !== "number" || !Number.isFinite(metrics[key]) || metrics[key]! < 0,
+    )
+  )
+    return "unknown";
+  return keys.some((key) => metrics[key]! > limits[key]!) ? "fail" : "pass";
+}
 type CostEnvironment = "local-workerd" | "local-mock" | "local-node";
 export interface CostSample {
   schemaVersion: 1;
@@ -95,7 +119,9 @@ export async function recordCostSample(
   })
     .split("\0")
     .filter(Boolean);
-  const hash = createHash("sha256").update("cost-profile-v1\0").update(environment);
+  const hash = createHash("sha256")
+    .update("cost-profile-v2\0")
+    .update(JSON.stringify([environment, process.version, process.platform, process.arch]));
   for (const path of [...new Set([...paths, ...fixturePaths, "package-lock.json"])].sort())
     hash
       .update(path)
@@ -230,11 +256,7 @@ export function compareCosts(beforeValues: unknown[], afterValues: unknown[]) {
 }
 
 export const REQUIRED_COST_SAMPLES = [
-  "crawl-checkpoint-inline",
-  "crawl-checkpoint-split",
-  "crawl-do-retry",
-  "queue-export-redelivery",
-  "category-prune",
+  ...Object.keys(LOAD_SAMPLE_BUDGETS),
   "cpu-dynamic-audio-parse",
   "cpu-dynamic-audio-normalize",
   "cpu-dynamic-audio-discover",
@@ -260,26 +282,32 @@ export async function costReport(directory: string, outputPath: string) {
     finishedAt: new Date().toISOString(),
     checks: REQUIRED_COST_SAMPLES.map((id) => {
       const sample = samples.find((item) => item.id === id);
-      const keys: CostMetric[] = id.startsWith("cpu-")
-        ? ["cpuUs", "cpuRelative"]
-        : id.startsWith("crawl-do-")
-          ? ["doAlarms", "doStorageWrites"]
-          : id.startsWith("queue-")
-            ? ["queueSends", "queueRetries"]
-            : ["rowsRead", "rowsWritten", "sqlStatements"];
+      const budget = LOAD_SAMPLE_BUDGETS[id];
+      const keys: CostMetric[] = budget
+        ? (Object.keys(budget.limits) as CostMetric[])
+        : id.startsWith("cpu-")
+          ? ["cpuUs", "cpuRelative"]
+          : id.startsWith("crawl-do-")
+            ? ["doAlarms", "doStorageWrites"]
+            : id.startsWith("queue-")
+              ? ["queueSends", "queueRetries"]
+              : ["rowsRead", "rowsWritten", "sqlStatements"];
       const complete =
         sample &&
         sample.checkoutClean &&
         !checkout.dirty &&
         sample.sourceSha === checkout.sourceSha &&
+        (!budget || sample.environment === budget.environment) &&
         keys.every((key) => typeof sample.metrics[key] === "number");
+      const exceeded =
+        complete && budget && assessCostBudget(sample.metrics, budget.limits) === "fail";
       return {
         id: `cost/${id}`,
         required: true,
         scope: "source",
-        status: complete ? "pass" : "unknown",
+        status: exceeded ? "fail" : complete ? "pass" : "unknown",
         reason: complete
-          ? `${sample.environment}: measurement available; compare a baseline separately`
+          ? `${sample.environment}: ${exceeded ? "load_budget_exceeded" : "measurement_and_registered_budget_pass"}; compare a baseline separately`
           : "missing_measurement_or_stale_or_dirty_checkout",
         evidence: sample
           ? [

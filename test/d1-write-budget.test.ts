@@ -7,6 +7,8 @@ import { syncProductIdentityResolutions } from "../src/db/product-identity-repos
 import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../src/db/product-search-projection-repository.js";
 import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-candidate-refresh.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
 import { AT, NEXT, database, listing } from "./helpers/d1-write-budget.js";
@@ -106,10 +108,22 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
     await refreshKnowledgeCatalogCandidates(db, AT);
 
     const second = (await enrich(NEXT)).products;
-    const replay = accountReads(db);
+    const boundary = measureD1Cost(db);
+    const replay = accountReads(boundary.db);
     await upsertProducts(replay.db, "hifido", second, NEXT);
     await syncProductMetadata(replay.db, "hifido", second, NEXT);
+    await syncProductSearchProjections(replay.db, "hifido", ["one"]);
+    await syncProductIdentityResolutions(replay.db, "hifido", ["one"]);
     await syncProductSearchEntities(replay.db, "hifido", ["one"]);
+    await recordCostSample(
+      "projection-unchanged",
+      "local-workerd",
+      boundary.metrics(),
+      ["test/d1-write-budget.test.ts"],
+      [
+        "Unchanged listing, metadata, search projection, identity resolution and search entity replay, including physical index/trigger/sequence cost.",
+      ],
+    );
     const candidatesBefore = await db.prepare("SELECT * FROM knowledge_catalog_candidates").all();
     const sequenceBefore = await db
       .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
