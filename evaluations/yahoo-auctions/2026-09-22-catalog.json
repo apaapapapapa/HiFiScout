@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "issue": 703,
+  "baseSha": "275b4ba7abc32ff84014f7026f6d25bbd340921f",
+  "sourceSha": "aaebe84f8636aa80c020cc836361c88a6e6e20b6",
+  "treeSha": "d6081bc760593adb510d25eea865d28a7c2b112f",
+  "command": "HARNESS_COST_OUTPUT=.generated/catalog-cost-reviewed vp test run test/auction-catalog.test.ts test/auction-catalog-runtime.test.ts",
+  "result": {
+    "files": 2,
+    "tests": 6,
+    "status": "pass"
+  },
+  "samples": [
+    {
+      "schemaVersion": 1,
+      "kind": "cost-sample",
+      "id": "auction-catalog-replay",
+      "sourceSha": "aaebe84f8636aa80c020cc836361c88a6e6e20b6",
+      "checkoutClean": true,
+      "recordedAt": "2026-09-22T05:26:13.038Z",
+      "profileHash": "2cabaa19d8d6e33db21400e121a6ff8c354109af08d39df948054095e195b5b8",
+      "environment": "local-workerd",
+      "metrics": {
+        "rowsRead": 4,
+        "rowsWritten": 0,
+        "sqlStatements": 3
+      },
+      "notes": [
+        "Price-only update keeps candidate key and does not query D1 or rewrite identity; workerd cursors consumed."
+      ],
+      "queryPlans": []
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "cost-sample",
+      "id": "auction-catalog-shared",
+      "sourceSha": "aaebe84f8636aa80c020cc836361c88a6e6e20b6",
+      "checkoutClean": true,
+      "recordedAt": "2026-09-22T05:26:15.313Z",
+      "profileHash": "3db847fc35f465e90a3b6c34bf1845550a63fc78ecc2a85f4506009131cdf584",
+      "environment": "local-workerd",
+      "metrics": {
+        "rowsRead": 17,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "notes": [
+        "2,000 duplicate listing inputs cause the same bounded read-only candidate lookup as one input; no auction D1 writes."
+      ],
+      "queryPlans": []
+    }
+  ],
+  "productionUsage": null,
+  "activation": "disabled_pending_permission_source_contract_and_account_headroom",
+  "notes": [
+    "Prior complete load-capture at 8f7a6bc8cdaaeb54d4220b6799ed59cf26ca34ef passed all cases. Updated null-label and orphan-retention regressions were remeasured here.",
+    "Local external-free tsc passed. Wrangler type generation was blocked by automatic approval review; current CI is authoritative for generation."
+  ]
+}

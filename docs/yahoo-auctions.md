@@ -240,3 +240,45 @@ The executable `auction-storage` harness contract runs `test/auction-runtime.tes
 workerd SQLite, covering rollback, replays, 2,000-item capacity/unrelated growth, live-only writes,
 Japanese trigram, UTC reset, pause/resume, quiet hours, Retry-After and receipt/cursor recovery.
 These outcomes are local runtime evidence, not production cost or data-quality measurements.
+
+## Step 4: shared catalog candidates
+
+The DO uses the existing manufacturer/model resolution and product-identity vetoes. Candidate
+sets are keyed by normalized manufacturer/model input; the final identity is computed from each
+listing's title, revision/edition, category evidence, subject and unit. Initial linking requires
+an explicit main-unit subject and excludes sets. Unknown subjects remain searchable but unmatched.
+Title/category accessory evidence still vetoes a contradictory main-unit label. No auction row,
+price history, listing projection or unverified product candidate is inserted into D1.
+
+Each maintenance turn registers at most twenty changed item inputs, reads at most twenty due
+candidate keys from D1, and replays at most twenty affected listings. Duplicate inputs are collapsed;
+price-only updates keep their key and verdict. Queries use the existing catalog/model/alias indexes,
+cap candidates and hydration rows, and fence operational manufacturer-alias changes with the existing
+registry clock. Oversized/failed lookups do not certify a match. The AI verification clock is not
+treated as a complete catalog-change feed.
+
+Candidate snapshots, including empty results, expire after fifteen wall-clock minutes. Their digest
+covers current product names/models/verification, manufacturer/alias evidence and categories. The
+bounded recheck reads the authoritative tables, so admin, CSV, verification, deletion and merge paths
+are covered without requiring every writer to send an event. Only changed keys enqueue a durable
+listing cursor; unrelated manufacturer changes do not invalidate every listing. A global
+`RESOLUTION_VERSIONS` change invalidates old rule versions on read and replays each refreshed key.
+
+Public readers must require an unexpired candidate snapshot, the current rule version and an exact
+listing/cache revision match. Once an update is observed, old links are excluded immediately, even
+while the bounded replay is incomplete. During outages or backlog, the fifteen-minute guarantee
+expires and the listing becomes unmatched; stale correspondence is never extended by a failed read.
+An empty snapshot is retried on expiry, so new catalog additions recover without an inventory sweep.
+
+Catalog work shares the existing Alarm and persisted daily reservations, but performs no seller
+request and may run during the collection quiet window. Due maintenance performs one bounded turn,
+then yields at least a minute to seller work. Its next checkpoint and Alarm are persisted before D1
+I/O; reads time out after fifteen seconds, failures back off thirty minutes, and pause/generation
+changes reject late replies. Outer admission and all deployment/permission stops still apply.
+Schema version 2 adds candidate keys, revision/cursor and schedule tables. Rollback must retain the
+version-2-aware Worker and disable the three switches; a version-1 Worker deliberately rejects it.
+
+The `auction-catalog` load contract measures shared D1 reads for one versus 2,000 duplicate inputs,
+and SQLite zero-write replay after a price update. Workerd tests exercise bounded continuation,
+negative-cache recovery, revision/expiry exclusion and pause during a delayed lookup. These are
+synthetic, local results; live acquisition and public rollout remain blocked by the evidence gates.

@@ -3,6 +3,8 @@ import { isRecord } from "../types.js";
 import { emptyAuctionCharge, reserveAuctionBudget } from "./runtime-policy.js";
 import { AuctionStore } from "./storage.js";
 import { AuctionScheduler } from "./scheduler.js";
+import { AuctionCatalogMaintenance } from "./catalog.js";
+import { readAuctionCatalog } from "../db/auction-catalog-repository.js";
 import { yahooAuctionTransport } from "./yahoo/acquisition.js";
 import { yahooAuctionHtmlSource } from "./yahoo/parser.js";
 import {
@@ -22,6 +24,10 @@ export class YahooAuctions extends DurableObject<Env> {
         yahooAuctionTransport,
         yahooAuctionHtmlSource,
         () => yahooAuctionAccess(this.env).collect,
+        Date.now,
+        new AuctionCatalogMaintenance(store, {
+          read: (inputs) => readAuctionCatalog(this.env.DB, inputs),
+        }),
       ),
     };
   }

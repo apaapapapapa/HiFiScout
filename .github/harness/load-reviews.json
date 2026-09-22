@@ -270,6 +270,36 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/715"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "275b4ba7abc32ff84014f7026f6d25bbd340921f",
+      "beforeDigest": "f0d8736ac184ff66c80b3dc33e15be3ab8115d597519681299a2cc39530ac445",
+      "afterDigest": "93f940e5f557c10d48f5c3544b5646a4b96a34923c2b074689f1d23a93c399d4",
+      "reason": "Add bounded read-only auction catalog lookup and unchanged-price replay cases. Existing ceilings are unchanged. Exact-source deterministic measurements pass: shared lookup 17/0/8 and replay 3/0/3; these are initial baselines, not production cost claims.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/716"
+      ]
+    },
+    {
+      "id": "auction-catalog-replay",
+      "baseSha": "275b4ba7abc32ff84014f7026f6d25bbd340921f",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1a7e6c59c193fe2d0242eb632d36d06b0bf3cf74522c99c77fcd713aa2ab5048",
+      "reason": "Reviewed initial offline case with passing real D1/SQLite workerd regressions. Duplicate inputs share one lookup; changed/expired/negative revisions cannot certify stale links. No previous sample is invented and no existing ceiling is relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/716"
+      ]
+    },
+    {
+      "id": "auction-catalog-shared",
+      "baseSha": "275b4ba7abc32ff84014f7026f6d25bbd340921f",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1792e53cd01888e1baf7ffbad7dfdacef461b021bc57f4c595c5e9ea90ad1f9c",
+      "reason": "Reviewed initial offline case with passing real D1/SQLite workerd regressions. Duplicate inputs share one lookup; changed/expired/negative revisions cannot certify stale links. No previous sample is invented and no existing ceiling is relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/716"
+      ]
     }
   ]
 }

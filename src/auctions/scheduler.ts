@@ -25,6 +25,10 @@ export class AuctionScheduler {
     readonly source: YahooAuctionSource,
     readonly allowed: () => boolean,
     readonly clock = Date.now,
+    readonly maintenance?: {
+      nextDue(now: number): number | null;
+      run(now: number, beforeRead?: () => Promise<void>): Promise<void>;
+    },
   ) {}
 
   async control(
@@ -95,11 +99,21 @@ export class AuctionScheduler {
       return;
     }
     const next = this.store.nextTask(state.lastKind, now);
-    if (!next || next.due === Number.MAX_SAFE_INTEGER) {
+    const maintenanceAt = this.maintenance?.nextDue(now) ?? Number.MAX_SAFE_INTEGER;
+    if (
+      (!next || next.due === Number.MAX_SAFE_INTEGER) &&
+      maintenanceAt === Number.MAX_SAFE_INTEGER
+    ) {
       await this.store.storage.deleteAlarm();
       return;
     }
-    const target = auctionFetchDue(state, next.due, now + 1);
+    const target = Math.max(
+      now + 1,
+      Math.min(
+        next ? auctionFetchDue(state, next.due, now + 1) : Number.MAX_SAFE_INTEGER,
+        maintenanceAt,
+      ),
+    );
     if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
   }
 
@@ -117,6 +131,12 @@ export class AuctionScheduler {
     const now = this.clock();
     let state = this.store.runtime(now);
     if (!this.allowed() || state.paused || state.halt) return;
+    const maintenanceAt = this.maintenance?.nextDue(now);
+    if (maintenanceAt != null && maintenanceAt <= now) {
+      await this.maintenance!.run(now, () => this.rearm());
+      await this.rearm();
+      return;
+    }
     const task = this.store.nextTask(state.lastKind, now);
     if (!task) return;
     if (!state.categories.includes(task.categoryId)) {
