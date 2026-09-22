@@ -3,6 +3,16 @@
   "reviews": [
     {
       "id": "load-contracts",
+      "baseSha": "c98bc5017fb7c520b9fac537a525ae3e9d6385b0",
+      "beforeDigest": "9effc356a88d667d9147f716c9cc11004a618804bdc8d83c26a45be7cf61b6a6",
+      "afterDigest": "5c0f167bf3c7caa2ac4300c07e79ad0099fbed6f23f7a359aebf790fe37312dc",
+      "reason": "Register both existing export-job repositories and their extracted shared lifecycle under queue-redelivery, with four existing export/recovery suites. Reviewed clean base c98bc501 and candidate 835d496c: load captures pass 111/143 tests and all 31 samples retain identical profiles; all 23 deterministic samples retain identical counts. The fixed alternating three-session CPU comparison passes all eight stages and unchanged absolute ceilings. The initial single-session dynamic-audio-normalize CPU comparison failed and remains recorded in the evidence; it is not waived or relabeled. This ownership/suite registration changes no sample, fixture, budget, query predicate or SQL call count.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/refactor/export-job-lifecycle-20260922/evaluations/2026-09-22-export-job-lifecycle.md"
+      ]
+    },
+    {
+      "id": "load-contracts",
       "baseSha": "43336539aba9b54ee45fe4ccf0e52536f67e98cd",
       "beforeDigest": "5de111175b3edd9a6289bef08655ab2d215ba97263a9fa918cd870af84e68edf",
       "afterDigest": "9effc356a88d667d9147f716c9cc11004a618804bdc8d83c26a45be7cf61b6a6",

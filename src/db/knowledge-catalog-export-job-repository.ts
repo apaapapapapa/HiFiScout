@@ -10,10 +10,26 @@ import type {
   KnowledgeCatalogExportJobStatus,
 } from "../knowledge-catalog-export/types.js";
 import type { QueryableDatabase } from "./types.js";
+import { createDataExportJobLifecycle } from "./data-export-job-lifecycle.js";
 
 export const KNOWLEDGE_CATALOG_EXPORT_READY_RETENTION_DAYS = 7;
 export const KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS = 1;
 export const KNOWLEDGE_CATALOG_EXPORT_GENERATION_DEADLINE_HOURS = 24;
+
+export const {
+  getLeaseExpiry: getKnowledgeCatalogExportLeaseExpiry,
+  reserveEnqueue: reserveKnowledgeCatalogExportEnqueue,
+  claim: claimKnowledgeCatalogExportJob,
+  releaseClaim: releaseKnowledgeCatalogExportJobClaim,
+  advance: advanceKnowledgeCatalogExportJob,
+  fail: failKnowledgeCatalogExportJob,
+  failQueued: failQueuedKnowledgeCatalogExportJob,
+  failClaimed: failClaimedKnowledgeCatalogExportJob,
+} = createDataExportJobLifecycle("knowledge_catalog_export", {
+  getJob: getKnowledgeCatalogExportJob,
+  readyRetentionDays: KNOWLEDGE_CATALOG_EXPORT_READY_RETENTION_DAYS,
+  failedRetentionDays: KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS,
+});
 
 interface KnowledgeCatalogExportJobRow {
   format: DataExportFormat;
@@ -52,10 +68,6 @@ function number(value: unknown): number {
 
 function addSeconds(date: Date, seconds: number): string {
   return new Date(date.getTime() + seconds * 1000).toISOString();
-}
-
-function addDays(date: Date, days: number): string {
-  return addSeconds(date, days * 24 * 60 * 60);
 }
 
 function generationDeadline(date: Date): string {
@@ -194,22 +206,6 @@ export async function getKnowledgeCatalogExportJob(
   return jobFromRow(row);
 }
 
-export async function getKnowledgeCatalogExportLeaseExpiry(
-  db: QueryableDatabase,
-  jobId: string,
-  expectedCursor: KnowledgeCatalogExportExpectedCursor,
-): Promise<string | null> {
-  const row = await db
-    .prepare(`
-      SELECT lease_expires_at
-      FROM knowledge_catalog_export_jobs
-      WHERE id = ? AND status = 'processing' AND after_id = ? AND chunk_count = ?
-    `)
-    .bind(jobId, expectedCursor.afterId, expectedCursor.chunkCount)
-    .first<{ lease_expires_at: string | null }>();
-  return row?.lease_expires_at || null;
-}
-
 /** Returns the latest non-expired job for page reload/status polling. */
 export async function getLatestKnowledgeCatalogExportJob(
   db: QueryableDatabase,
@@ -244,37 +240,6 @@ export async function getLatestKnowledgeCatalogExportJob(
   return jobFromRow(row);
 }
 
-export async function reserveKnowledgeCatalogExportEnqueue(
-  db: QueryableDatabase,
-  jobId: string,
-  expectedCursor: KnowledgeCatalogExportExpectedCursor,
-  reservedAt: Date,
-  staleSeconds: number,
-): Promise<boolean> {
-  const timestamp = reservedAt.toISOString();
-  const staleBefore = addSeconds(reservedAt, -Math.max(30, staleSeconds));
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET updated_at = ?
-      WHERE id = ? AND after_id = ? AND chunk_count = ?
-        AND status IN ('queued', 'processing')
-        AND expires_at > ? AND updated_at <= ?
-        AND (status = 'queued' OR lease_expires_at IS NULL OR lease_expires_at <= ?)
-    `)
-    .bind(
-      timestamp,
-      jobId,
-      expectedCursor.afterId,
-      expectedCursor.chunkCount,
-      timestamp,
-      staleBefore,
-      timestamp,
-    )
-    .run();
-  return number(result?.meta?.changes) > 0;
-}
-
 export async function staleKnowledgeCatalogExportJobs(
   db: QueryableDatabase,
   now: Date,
@@ -295,190 +260,4 @@ export async function staleKnowledgeCatalogExportJobs(
     .bind(timestamp, staleBefore, timestamp)
     .all<KnowledgeCatalogExportJobRow>();
   return (result.results || []).map((row) => jobFromRow(row)).filter((job) => job !== null);
-}
-
-export async function claimKnowledgeCatalogExportJob(
-  db: QueryableDatabase,
-  jobId: string,
-  expectedAfterId: number,
-  expectedChunkCount: number,
-  claimedAt: Date,
-  leaseSeconds: number,
-): Promise<ClaimedKnowledgeCatalogExportJob | null> {
-  const timestamp = claimedAt.toISOString();
-  const leaseToken = crypto.randomUUID();
-  const leaseExpiresAt = addSeconds(claimedAt, Math.max(5, Math.min(3600, leaseSeconds)));
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = 'processing', delivery_attempts = delivery_attempts + 1,
-          lease_token = ?, lease_expires_at = ?, updated_at = ?
-      WHERE id = ? AND after_id = ? AND chunk_count = ? AND expires_at > ?
-        AND (
-          status = 'queued'
-          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
-        )
-    `)
-    .bind(
-      leaseToken,
-      leaseExpiresAt,
-      timestamp,
-      jobId,
-      expectedAfterId,
-      expectedChunkCount,
-      timestamp,
-      timestamp,
-    )
-    .run();
-  if (number(result?.meta?.changes) === 0) return null;
-  const job = await getKnowledgeCatalogExportJob(db, jobId);
-  return job ? { job, leaseToken, leaseExpiresAt } : null;
-}
-
-export async function releaseKnowledgeCatalogExportJobClaim(
-  db: QueryableDatabase,
-  jobId: string,
-  leaseToken: string,
-  releasedAt: Date,
-  error: unknown,
-): Promise<boolean> {
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = 'queued', lease_token = NULL, lease_expires_at = NULL,
-          error = ?, updated_at = ?
-      WHERE id = ? AND status = 'processing' AND lease_token = ?
-    `)
-    .bind(String(error || "").slice(0, 1000), releasedAt.toISOString(), jobId, leaseToken)
-    .run();
-  return number(result?.meta?.changes) > 0;
-}
-
-/** Caller must enqueue the continuation before this exact-cursor CAS. */
-export async function advanceKnowledgeCatalogExportJob(
-  db: QueryableDatabase,
-  input: AdvanceKnowledgeCatalogExportJobInput,
-): Promise<boolean> {
-  const timestamp = input.advancedAt.toISOString();
-  const status: KnowledgeCatalogExportJobStatus = input.hasMore ? "queued" : "ready";
-  const completedAt = input.hasMore ? null : timestamp;
-  const readyExpiresAt = input.hasMore
-    ? null
-    : addDays(input.advancedAt, KNOWLEDGE_CATALOG_EXPORT_READY_RETENTION_DAYS);
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = ?, after_id = ?, chunk_count = chunk_count + 1,
-          row_count = row_count + ?, byte_count = byte_count + ?,
-          lease_token = NULL, lease_expires_at = NULL, error = '', updated_at = ?,
-          completed_at = ?, expires_at = COALESCE(?, expires_at)
-      WHERE id = ? AND status = 'processing' AND lease_token = ?
-        AND after_id = ? AND chunk_count = ? AND expires_at > ?
-    `)
-    .bind(
-      status,
-      Math.max(0, input.nextAfterId),
-      Math.max(0, input.addedRows),
-      Math.max(0, input.addedBytes),
-      timestamp,
-      completedAt,
-      readyExpiresAt,
-      input.jobId,
-      input.leaseToken,
-      input.expectedAfterId,
-      input.expectedChunkCount,
-      timestamp,
-    )
-    .run();
-  return number(result?.meta?.changes) > 0;
-}
-
-export async function failKnowledgeCatalogExportJob(
-  db: QueryableDatabase,
-  jobId: string,
-  error: unknown,
-  failedAt: Date = new Date(),
-  expectedCursor?: KnowledgeCatalogExportExpectedCursor,
-): Promise<boolean> {
-  const timestamp = failedAt.toISOString();
-  const cursorClause = expectedCursor ? "AND after_id = ? AND chunk_count = ?" : "";
-  const bindings: unknown[] = [
-    String(error || "knowledge_catalog_export_failed").slice(0, 1000),
-    timestamp,
-    timestamp,
-    addDays(failedAt, KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS),
-    jobId,
-  ];
-  if (expectedCursor) bindings.push(expectedCursor.afterId, expectedCursor.chunkCount);
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = 'failed', lease_token = NULL, lease_expires_at = NULL,
-          error = ?, updated_at = ?, completed_at = ?, expires_at = ?
-      WHERE id = ? AND status IN ('queued', 'processing') ${cursorClause}
-    `)
-    .bind(...bindings)
-    .run();
-  return number(result?.meta?.changes) > 0;
-}
-
-/** DLQ terminal CAS: it must never fail a cursor claimed by a main-queue worker. */
-export async function failQueuedKnowledgeCatalogExportJob(
-  db: QueryableDatabase,
-  jobId: string,
-  error: unknown,
-  failedAt: Date,
-  expectedCursor: KnowledgeCatalogExportExpectedCursor,
-): Promise<boolean> {
-  const timestamp = failedAt.toISOString();
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = 'failed', lease_token = NULL, lease_expires_at = NULL,
-          error = ?, updated_at = ?, completed_at = ?, expires_at = ?
-      WHERE id = ? AND status = 'queued' AND after_id = ? AND chunk_count = ?
-    `)
-    .bind(
-      String(error || "knowledge_catalog_export_failed").slice(0, 1000),
-      timestamp,
-      timestamp,
-      addDays(failedAt, KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS),
-      jobId,
-      expectedCursor.afterId,
-      expectedCursor.chunkCount,
-    )
-    .run();
-  return number(result?.meta?.changes) > 0;
-}
-
-/** Fails only the exact lease held by the caller, never a later claimant. */
-export async function failClaimedKnowledgeCatalogExportJob(
-  db: QueryableDatabase,
-  jobId: string,
-  leaseToken: string,
-  error: unknown,
-  failedAt: Date,
-  expectedCursor: KnowledgeCatalogExportExpectedCursor,
-): Promise<boolean> {
-  const timestamp = failedAt.toISOString();
-  const result = await db
-    .prepare(`
-      UPDATE knowledge_catalog_export_jobs
-      SET status = 'failed', lease_token = NULL, lease_expires_at = NULL,
-          error = ?, updated_at = ?, completed_at = ?, expires_at = ?
-      WHERE id = ? AND status = 'processing' AND lease_token = ?
-        AND after_id = ? AND chunk_count = ?
-    `)
-    .bind(
-      String(error || "knowledge_catalog_export_failed").slice(0, 1000),
-      timestamp,
-      timestamp,
-      addDays(failedAt, KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS),
-      jobId,
-      leaseToken,
-      expectedCursor.afterId,
-      expectedCursor.chunkCount,
-    )
-    .run();
-  return number(result?.meta?.changes) > 0;
 }
