@@ -17,6 +17,20 @@ const d1 = (rowsRead: number, rowsWritten: number, sqlStatements: number) => ({
 /** Reviewed ceilings, not observations or estimates of account-wide production consumption. */
 export const LOAD_CONTRACTS: LoadContract[] = [
   {
+    id: "hifido-parser",
+    sources: ["src/crawler/shops/hifido.ts"],
+    suites: [
+      "test/hifido.test.ts",
+      "test/parser.test.ts",
+      "test/product-data-audit-parser-regressions.test.ts",
+      "test/html-raw-text.test.ts",
+    ],
+    // CPU samples and ceilings belong to the mandatory paired gate, not a single-session budget.
+    samples: {},
+    reason:
+      "Hifido extraction preserves factual fields and hidden-text boundaries. Required cpu-hifido-parse and cpu-hifido-normalize samples retain their existing same-runner paired CPU ceilings and regression checks.",
+  },
+  {
     id: "auction-storage",
     sources: ["src/auctions/*", "src/crawler/types.ts"],
     suites: ["test/auction-runtime.test.ts"],

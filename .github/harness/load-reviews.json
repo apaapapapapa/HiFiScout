@@ -3,6 +3,17 @@
   "reviews": [
     {
       "id": "load-contracts",
+      "baseSha": "43336539aba9b54ee45fe4ccf0e52536f67e98cd",
+      "beforeDigest": "5de111175b3edd9a6289bef08655ab2d215ba97263a9fa918cd870af84e68edf",
+      "afterDigest": "9effc356a88d667d9147f716c9cc11004a618804bdc8d83c26a45be7cf61b6a6",
+      "reason": "Register the existing Hifido parser and four factual-extraction/raw-text suites as an owning boundary. CI 35699496928 retained 31 passing cost cases and complete paired CPU evidence for base 43336539 and tested source 902fa707; its only load-gate problem was the missing ownership registration. Hifido parse medians were 232.740/229.455 microseconds and reference ratios 13.765/13.608, both below the unchanged 16.25 ceiling. The benchmark, fixtures, profiles and all existing budgets are unchanged. CPU samples remain globally required and gated by the paired runner; adding single-session CPU budgets here would incorrectly restore a second veto. This record approves the ownership mapping only, never missing evidence or an absolute overrun.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/721",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35699496928/artifacts/10682500184"
+      ]
+    },
+    {
+      "id": "load-contracts",
       "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
       "beforeDigest": "7348267630a36dad2fe5730e1786c32933076d0598a7ffea20a99c74449b1fd1",
       "afterDigest": "f0d8736ac184ff66c80b3dc33e15be3ab8115d597519681299a2cc39530ac445",

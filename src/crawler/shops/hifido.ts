@@ -42,11 +42,11 @@ const MUSIC_SOFTWARE_TITLE_RE = /[0-9０-９]+\s*枚(?:セット|組)/u;
 function isOutOfScopeMusicSoftware(
   link: HifidoProductLink,
   title: string,
-  sourceUrl: string,
+  sourceUrl: URL,
 ): boolean {
   // Hifido also lists used records/CD box sets. They are intentionally excluded from HiFiScout's
   // hardware catalog, just as other mixed-inventory shops exclude non-audio product departments.
-  const path = new URL(sourceUrl).pathname;
+  const path = sourceUrl.pathname;
   return path.startsWith("/26-20368") || MUSIC_SOFTWARE_TITLE_RE.test(title);
 }
 
@@ -141,9 +141,9 @@ function canonicalManufacturer(value = ""): string {
   return latin || text;
 }
 
-function absoluteUrl(href: string): string | null {
+function absoluteUrl(href: string): URL | null {
   try {
-    return new URL(href, "https://www.hifido.co.jp").toString();
+    return new URL(href, "https://www.hifido.co.jp");
   } catch {
     return null;
   }
@@ -151,11 +151,8 @@ function absoluteUrl(href: string): string | null {
 
 function htmlToText(html: string): string {
   // Listing blocks and the detail header are sanitized once at their entry boundary.
-  return cleanText(
-    html
-      .replace(/<br\s*\/?\s*>/gi, " ")
-      .replace(/<\/(?:p|li|div|article|section|tr|td|h\d)>/gi, " "),
-  );
+  // cleanText already replaces every tag (including breaks and block closings) with a space.
+  return cleanText(html);
 }
 
 function attr(attrs: string, name: string): string {
@@ -253,11 +250,10 @@ export function extractHifidoDetailCategoryEvidence(
  * snapshots are supported only when the category is structurally adjacent to the price/status row
  * or occupies an exact standalone field; arbitrary prose never becomes seller metadata.
  */
-function categoryFromBlock(block: string, sourceId: string): string {
+function categoryFromBlock(block: string, sourceId: string, text: string): string {
   const genre = listingFieldText(block, `genre-${sourceId}`, "id");
   if (genre) return normalizeHifidoCategory(genre) || genre;
 
-  const text = htmlToText(block);
   const labeledCategory = text.match(CATEGORY_LABEL_RE)?.[1]?.trim() || "";
   if (labeledCategory) return labeledCategory;
 
@@ -289,7 +285,7 @@ function parseProductBlock(block: string, link: HifidoProductLink): SellerProduc
     text.match(/メーカー\s*[:：]\s*(.+?)(?=\s+(?:定価|売価)(?:\([^)]*\))?\s*[:：])/i)?.[1] ||
     "";
   const manufacturer = canonicalManufacturer(manufacturerRaw);
-  const rawCategory = categoryFromBlock(block, link.sourceId);
+  const rawCategory = categoryFromBlock(block, link.sourceId, text);
   const category = rawCategory || inferCategory(title);
   const inferred = inferStockStatus(text);
   const ordered = /(?:^|\s)注文(?:\s|$)/.test(text);
@@ -309,7 +305,7 @@ function parseProductBlock(block: string, link: HifidoProductLink): SellerProduc
     conditionText: /パーツ取り用商品|ジャンク/i.test(text) ? "ジャンク" : "",
     priceYen,
     stockStatus,
-    sourceUrl,
+    sourceUrl: sourceUrl.toString(),
     sourcePublishedAt: sourcePublishedAt(text),
   };
 }
