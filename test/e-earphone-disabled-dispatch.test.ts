@@ -39,9 +39,10 @@ test("production e-earphone is excluded from scheduled, forced and due dispatch"
 test("recovery leaves an old disabled e-earphone reservation unchanged", async () => {
   const { db, sqlite } = migratedSqlite();
   try {
-    await reserveShopDispatch(db, "e-earphone", REQUESTED_AT, 120);
+    const token = await reserveShopDispatch(db, "e-earphone", REQUESTED_AT, 120);
+    assert.equal(token, `e-earphone:${REQUESTED_AT}`);
     const before = await getShopState(db, "e-earphone");
-    assert.ok(before?.dispatch_token);
+    assert.ok(before);
     const env = {
       ...config.vars,
       DB: db,
