@@ -97,6 +97,16 @@ export class AuctionScheduler {
     if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
   }
 
+  /** Soft invocation admission leaves the recovery reserve for this single durable UTC wake. */
+  async deferForBudget(): Promise<void> {
+    const now = this.clock();
+    const state = this.store.runtime(now);
+    if (!this.allowed() || state.paused || state.halt) return;
+    const reset = (Math.max(state.utcDay, Math.floor(now / 86_400_000)) + 1) * 86_400_000;
+    const target = auctionFetchDue(state, reset, now);
+    if ((await this.store.storage.getAlarm()) !== target) await this.store.storage.setAlarm(target);
+  }
+
   async alarm(): Promise<void> {
     const now = this.clock();
     let state = this.store.runtime(now);
@@ -196,6 +206,7 @@ export class AuctionScheduler {
         this.store.saveRuntime({
           ...current,
           robots: { text: response.text, observedAt: completedAt, delayMs: permit.delayMs },
+          throttleCount: 0,
           nextFetchAt: Math.max(current.nextFetchAt, completedAt + permit.delayMs),
         });
         this.store.task({ ...task, sequence: null, due: completedAt + permit.delayMs });
@@ -248,12 +259,13 @@ export class AuctionScheduler {
           });
       }
       this.store.commitReceipt(receipt, completedAt, page.coverage);
-      const end = page.observations[0]?.live.scheduledEndAt?.value;
+      const merged = task.auctionId ? this.store.item(task.auctionId)?.snapshot : null;
+      const end = merged?.live.scheduledEndAt?.value;
       const endChecks =
         task.kind === "confirm" && end && Date.parse(end) <= completedAt
           ? (task.endChecks ?? 0) + 1
           : 0;
-      if (task.kind === "confirm" && page.observations[0]?.live.sourceState?.value === "ended")
+      if (task.kind === "confirm" && merged?.live.sourceState?.value === "ended")
         this.store.sql("task", "DELETE FROM auction_tasks WHERE id=?", task.id);
       else
         this.store.task({
@@ -277,6 +289,7 @@ export class AuctionScheduler {
         coverage: "partial",
         lastSuccessAt: new Date(now).toISOString(),
         lastFailure: null,
+        throttleCount: 0,
       });
     });
     this.store.retain(completedAt);

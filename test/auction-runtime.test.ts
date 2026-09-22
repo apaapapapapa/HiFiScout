@@ -189,7 +189,12 @@ describe("SQLite auction runtime", () => {
   it("persists a robots permit, receipt and page cursor; duplicate alarms do not fetch again", async () => {
     await call({
       op: "state",
-      state: { ...initialAuctionRuntime(now), paused: false, categories: ["2084037425"] },
+      state: {
+        ...initialAuctionRuntime(now),
+        paused: false,
+        throttleCount: 2,
+        categories: ["2084037425"],
+      },
     });
     await call({
       op: "task",
@@ -214,6 +219,7 @@ describe("SQLite auction runtime", () => {
       },
     });
     expect(robots.state.nextFetchAt).toBe(now + 90_000);
+    expect(robots.state.throttleCount).toBe(0);
     expect((await call({ op: "alarm", now: now + 60_000 })).calls).toHaveLength(0);
     const page = await call({
       op: "alarm",
@@ -233,6 +239,57 @@ describe("SQLite auction runtime", () => {
     const replay = await call({ op: "alarm", now: now + 90_000 });
     expect(replay.calls).toHaveLength(0);
     expect(replay.receipts).toHaveLength(2);
+  });
+  it("missing fields in a confirmation preserve the stored ending and remove its task", async () => {
+    const reviewNow = now + 180_000;
+    const ended = auctionSnapshot();
+    ended.stamp = { generation: 50, sequence: 1, observedAt: new Date(reviewNow).toISOString() };
+    for (const fact of Object.values(ended.live))
+      if (fact) fact.observedAt = ended.stamp.observedAt;
+    ended.live.sourceState = { value: "ended", observedAt: ended.stamp.observedAt };
+    ended.live.scheduledEndAt = null;
+    await call({ op: "apply", now: reviewNow, observations: [ended] });
+    await call({
+      op: "state",
+      state: {
+        ...initialAuctionRuntime(reviewNow),
+        generation: 50,
+        sequence: 1,
+        lastKind: "discover",
+        paused: false,
+        categories: ["2084037425"],
+        throttleCount: 2,
+        robots: { text: "User-agent: *\nAllow: /", observedAt: reviewNow, delayMs: 60_000 },
+      },
+    });
+    await call({
+      op: "task",
+      task: {
+        id: `confirm:${ended.auctionId}`,
+        kind: "confirm",
+        categoryId: "2084037425",
+        auctionId: ended.auctionId,
+        page: 1,
+        due: reviewNow,
+        attempts: 0,
+        sequence: null,
+      },
+    });
+    const html = `<li class="Product"><a class="Product__titleLink" href="${ended.sourceUrl}">Example amp</a><dl><dt>現在</dt><dd>100円（税込）</dd></dl></li>`;
+    const result = await call({
+      op: "alarm",
+      now: reviewNow,
+      response: { status: 200, text: html, retryAfter: null, authenticationRequired: false },
+      id: ended.auctionId,
+    });
+    expect(result.calls).toHaveLength(1);
+    expect(result.item?.snapshot.live.sourceState?.value).toBe("ended");
+    expect(
+      result.tasks
+        .map((row) => JSON.parse(row.value))
+        .some((row) => row.id === `confirm:${ended.auctionId}`),
+    ).toBe(false);
+    expect(result.state.throttleCount).toBe(0);
   });
 });
 it("does not restore budget at JST midnight, 08:00, restarts or a backwards clock", () => {

@@ -15,8 +15,8 @@
       "id": "auction-price-change",
       "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "5aa44c4cede43998b4b24571039b01d4fe982b2c9369540faacf5b64dfa52467",
-      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented.",
+      "afterDigest": "4c1cb6f6a3f165bf6692fcc3547759d1200c6275e69f4530449a663cb1442edb",
+      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented. Review regression coverage added; remeasured the new fixture at 99543983a1996afcf84bf200f07c3f1ee2160c14 with identical costs (replay 2/0/1, price update 3/5/2).",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/715"
       ]
@@ -25,8 +25,8 @@
       "id": "auction-replay",
       "baseSha": "3f6cca7c98661fbbab261f537b5d87316f9872a0",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "b2977f3e8a75da61a201546a8c25b5fa610bce58619295c3727056c9bb998b37",
-      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented.",
+      "afterDigest": "d48bf05c157c927e8d1e0f5185e94bd324d5cc405af5fcd3609fafb0e65f795e",
+      "reason": "Reviewed new SQLite DO initial baseline: identical replay writes zero; price-only update reads 3/writes 5 rows with 1,999 unrelated items, and touches neither static attributes nor FTS. Both cases pass their new absolute limits; no previous measurement is invented. Review regression coverage added; remeasured the new fixture at 99543983a1996afcf84bf200f07c3f1ee2160c14 with identical costs (replay 2/0/1, price update 3/5/2).",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/715"
       ]

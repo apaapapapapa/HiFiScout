@@ -89,6 +89,7 @@ export class YahooAuctions extends DurableObject<Env> {
     const { store, scheduler } = this.engine();
     try {
       if (this.reserve(store, 50, 20)) await scheduler.alarm();
+      else await scheduler.deferForBudget();
     } finally {
       this.logUsage(store, "alarm");
     }
@@ -98,7 +99,7 @@ export class YahooAuctions extends DurableObject<Env> {
       store.runtime(Date.now()),
       { ...emptyAuctionCharge(), requests: 1, reads, writes, durationGbSeconds: 0.25 },
       Date.now(),
-      true,
+      false,
     );
     if (!next || this.ctx.storage.sql.databaseSize >= YAHOO_AUCTION_PILOT_LIMITS.storedBytes)
       return false;
