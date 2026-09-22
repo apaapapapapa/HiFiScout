@@ -17,6 +17,17 @@ const d1 = (rowsRead: number, rowsWritten: number, sqlStatements: number) => ({
 /** Reviewed ceilings, not observations or estimates of account-wide production consumption. */
 export const LOAD_CONTRACTS: LoadContract[] = [
   {
+    id: "auction-storage",
+    sources: ["src/auctions/*", "src/crawler/types.ts"],
+    suites: ["test/auction-runtime.test.ts"],
+    samples: {
+      "auction-replay": d1(5, 0, 1),
+      "auction-price-change": d1(20, 20, 2),
+    },
+    reason:
+      "SQLite-backed auction DO replay writes zero rows; price updates preserve static attributes and FTS. Real workerd SQL rows are separate from production billing.",
+  },
+  {
     id: "crawl-checkpoints",
     sources: ["src/db/crawl-fetch-*", "src/crawler/collection-progress.ts"],
     suites: ["test/d1-crawl-checkpoint-budget.test.ts", "test/d1-crawl-collection-budget.test.ts"],

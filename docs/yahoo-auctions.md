@@ -1,8 +1,8 @@
 # Yahoo! Auctions: gated audio pilot
 
 Status: offline foundation only; collection and public serving are **not approved or enabled**.
-Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). Current scope is steps 1–2;
-DO persistence, scheduling, catalog integration and UI are later steps, not part of this change.
+Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). The offline contracts and disabled
+SQLite storage/scheduler are implemented. Catalog integration and UI are subsequent changes.
 
 ## Review recorded 2026-09-22
 
@@ -94,7 +94,7 @@ source contract. Collection requires its acquisition/robots/budget/contract gate
 redistribution/budget/contract gates. Stopping collection does not inherently disable serving
 already authorized stored facts. All three are off with the committed evidence.
 
-These controls are **not deployed bindings or implemented routes yet**. Stage 3 must wire every
+These controls are wired to the dedicated DO with disabled deployment defaults. Stage 3 must wire every
 scheduled/manual/recovery entry through collection admission, the shared 23:00–08:00 JST quiet
 window and durable manual pause. Stage 5 must gate both API and UI independently. No public request
 may fetch Yahoo. Unknown source layouts and responses beyond bounds stop parsing, not report an
@@ -185,3 +185,54 @@ Presentation checks the current clock, snapshot time and source-state evidence t
 any phase. Invalid times or future evidence yield unknown phase/freshness, including for ended and
 unavailable states. Saved source facts remain untouched. The existing freshness threshold, expiry,
 confirmed-ending and relisting rules continue to use the canonical reducer/presentation helpers.
+
+## SQLite runtime implementation (step 3, disabled deployment)
+
+The `YahooAuctions` SQLite DO uses the stable name `yahoo-auctions-v1`; the existing crawl/admin
+namespaces are unchanged. Its version table rejects a newer schema rather than mutating it on an
+older Worker. New deploy vars for collection, search and display are all `false`. The reviewed
+source/robots/permission/account gates remain unverified. No scheduled dispatch or public route
+is introduced by the storage PR; there is no production acquisition during this rollout.
+
+`auction_items` and its trigram FTS index change only for changed item facts. Live prices/state
+have a separate table and indexes; an identical observation stamp performs zero SQL writes.
+A fresh confirmation keeps its actual observation timestamp and pays the live-state write.
+Receipts, task cursors and observations commit in one synchronous storage transaction. All SQL
+cursors are consumed before `await`; cursor rowsRead/rowsWritten are collected after consumption.
+
+The scheduler reserves an upper bound before the request and persists its generation/sequence,
+attempt and next eligible time. It arms a recovery wake before I/O. A failed commit retries with a
+new charged permit, while a committed page advances the cursor and prevents immediate refetch.
+Pause increments the generation, fencing delayed responses. Resume preserves backoff, source halt
+and UTC-day charges. Ready discovery/confirmation classes alternate. Discovery overlaps three
+20-item pages every cycle; coverage stays partial. Confirmation uses one hour, shortened to thirty
+minutes near/past the planned end. Eight successful-but-unconfirmed past-end checks stop that task.
+Four transport failures stop a task; `retry_failed` explicitly resets at most twenty tasks without
+resetting the shared budget or source halt. `wake` repairs missing Alarms without fetching directly.
+
+Robots is its own paced/charged request with a maximum 64 KiB body. One external HTTP request uses
+one permit; redirects and authentication challenges stop for review. Existing robots parsing and
+bounded response decoding are reused. The candidate listing/detail adapter still requires an
+**authorized real fixture**; a synthetic parser pass does not approve its live URL/markup contract.
+Unknown layouts stop the scheduler. No HTML response is persisted. Retry-After is honored; repeated
+429s, authentication failures, or delays exceeding thirty days halt for review.
+
+Retention deletes at most twenty records, receipts and expired candidate-cache entries per successful
+scheduler turn. The retained-item cap is 2,000; exceeding it cannot create unbounded confirmation
+tasks. Collection and public-serving pauses are separate durable fields, both initially paused.
+The deployment switches remain the emergency stop if storage/quota prevents a management write.
+Rollback must keep this namespace/class export and set the switches false; do not delete its data or
+rename the namespace. A newer schema requires a forward-compatible Worker, not destructive rollback.
+
+SQL family measurements are emitted as `auction_sql_usage`, tagged with the Worker **version ID**,
+not mislabeled as a Git SHA. SQL writes include index/FTS effects reported by workerd. The runtime
+budgets are conservative reservations, not actual account billing. Invocation admission reserves the
+DO request; seller permits separately reserve HTTP requests, commit/retention rows and wall-duration
+headroom. Failed reservations do not restore earlier consumption. CPU and billed duration remain
+null until platform telemetry is available. KV/Alarm billing and account-wide headroom still require
+platform reconciliation before collection is approved. The 100 MB database ceiling includes indexes.
+
+The executable `auction-storage` harness contract runs `test/auction-runtime.test.ts` in real
+workerd SQLite, covering rollback, replays, 2,000-item capacity/unrelated growth, live-only writes,
+Japanese trigram, UTC reset, pause/resume, quiet hours, Retry-After and receipt/cursor recovery.
+These outcomes are local runtime evidence, not production cost or data-quality measurements.
