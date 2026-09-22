@@ -5,6 +5,8 @@ import { AuctionStore } from "./storage.js";
 import { AuctionScheduler } from "./scheduler.js";
 import { AuctionCatalogMaintenance } from "./catalog.js";
 import { readAuctionCatalog } from "../db/auction-catalog-repository.js";
+import { searchAuctions } from "./search.js";
+import { AuctionQueryError, parseAuctionQuery } from "../api/auction-query.js";
 import { yahooAuctionTransport } from "./yahoo/acquisition.js";
 import { yahooAuctionHtmlSource } from "./yahoo/parser.js";
 import {
@@ -32,9 +34,36 @@ export class YahooAuctions extends DurableObject<Env> {
     };
   }
   async fetch(request: Request): Promise<Response> {
-    const { store, scheduler } = this.engine();
     const url = new URL(request.url);
+    if (url.pathname === "/search" && !yahooAuctionAccess(this.env).search)
+      return Response.json(
+        { error: "auction_disabled" },
+        { status: 404, headers: { "cache-control": "no-store" } },
+      );
+    const { store, scheduler } = this.engine();
     try {
+      if (url.pathname === "/search" && request.method === "GET") {
+        try {
+          parseAuctionQuery(url);
+        } catch (error) {
+          if (error instanceof AuctionQueryError)
+            return Response.json({ error: error.message }, { status: 400 });
+          throw error;
+        }
+        if (store.runtime(Date.now()).publicPaused)
+          return Response.json({ error: "auction_paused" }, { status: 503 });
+        if (!this.reserve(store, 15_100, 20, false, true))
+          return Response.json({ error: "auction_budget_exhausted" }, { status: 503 });
+        const body = JSON.stringify(searchAuctions(store, url, Date.now()));
+        if (new TextEncoder().encode(body).length > 96 * 1024)
+          return Response.json({ error: "auction_response_limit" }, { status: 503 });
+        return new Response(body, {
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        });
+      }
       if (url.pathname === "/admin/control" && request.method === "POST") {
         const body: unknown = await request.json();
         if (
@@ -104,10 +133,23 @@ export class YahooAuctions extends DurableObject<Env> {
       this.logUsage(store, "alarm");
     }
   }
-  private reserve(store: AuctionStore, reads: number, writes: number, recovery = false): boolean {
+  private reserve(
+    store: AuctionStore,
+    reads: number,
+    writes: number,
+    recovery = false,
+    publicRead = false,
+  ): boolean {
     const next = reserveAuctionBudget(
       store.runtime(Date.now()),
-      { ...emptyAuctionCharge(), requests: 1, reads, writes, durationGbSeconds: 0.25 },
+      {
+        ...emptyAuctionCharge(),
+        requests: 1,
+        publicRequests: publicRead ? 1 : 0,
+        reads,
+        writes,
+        durationGbSeconds: 0.25,
+      },
       Date.now(),
       recovery,
     );

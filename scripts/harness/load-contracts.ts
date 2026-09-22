@@ -39,6 +39,19 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Bounded shared D1 candidate lookup is independent of duplicate auction count. Price-only updates reuse the SQLite candidate snapshot with zero writes and no D1 lookup.",
   },
   {
+    id: "auction-search",
+    sources: [
+      "src/auctions/search.ts",
+      "src/api/auction-query.ts",
+      "src/http/auctions.ts",
+      "src/http/router.ts",
+    ],
+    suites: ["test/auction-search.test.ts", "test/auction-http.test.ts"],
+    samples: { "auction-search-page": d1(6100, 0, 2), "auction-search-filtered": d1(15000, 0, 2) },
+    reason:
+      "A bounded 25-offer SQLite DO page among 2,000 retained listings uses one lookahead, reads the runtime coverage, and performs no D1, seller or data writes. Admission reservations are separate from SQL observations.",
+  },
+  {
     id: "crawl-checkpoints",
     sources: ["src/db/crawl-fetch-*", "src/crawler/collection-progress.ts"],
     suites: ["test/d1-crawl-checkpoint-budget.test.ts", "test/d1-crawl-collection-budget.test.ts"],

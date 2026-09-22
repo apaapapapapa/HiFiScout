@@ -1,6 +1,12 @@
 /** Public catalog application rendered entirely through React components. */
 
 import { createRoot } from "react-dom/client";
+import {
+  AuctionSearchApp,
+  AuctionProductSection,
+  AuctionPermalinkOffers,
+  useAuctionFeatures,
+} from "./auctions.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -544,6 +550,8 @@ function SyncStatus({ meta, failed }: { meta: MetaResponse | null; failed: boole
 }
 
 export function PublicApp() {
+  const auctionFeatures = useAuctionFeatures();
+  const auctionsEnabled = Boolean(auctionFeatures?.search && auctionFeatures.display);
   const [api] = useState(() => createApiClient());
   const [filters, setFilters] = useState<ProductFilters>(() => filtersFromLocation());
   const filtersRef = useRef(filters);
@@ -1137,6 +1145,7 @@ export function PublicApp() {
           </a>
           <p className="lead">中古オーディオを、ショップをまたいで探す。</p>
         </div>
+        {auctionsEnabled ? <a href="/auctions">オークション検索</a> : null}
         <SyncStatus meta={meta} failed={initialization === "error"} />
       </header>
 
@@ -1556,6 +1565,15 @@ export function PublicApp() {
             shopName={shopName}
             onHistory={(listingId) => void showHistory(listingId)}
           />
+          {auctionsEnabled &&
+          offersState?.kind === "ready" &&
+          offersState.data.product.key.startsWith("c-") &&
+          offersState.data.product.catalog_product_id ? (
+            <AuctionProductSection
+              key={offersState.data.product.key}
+              catalogId={offersState.data.product.catalog_product_id}
+            />
+          ) : null}
         </div>
       </dialog>
 
@@ -1586,6 +1604,7 @@ export function PublicApp() {
         </div>
       </dialog>
 
+      <AuctionPermalinkOffers enabled={auctionsEnabled} />
       <footer>
         <p>
           HiFiScout
@@ -1598,6 +1617,12 @@ export function PublicApp() {
 }
 
 export function mountPublicApp() {
+  if (location.pathname === "/auctions") {
+    const root = document.getElementById("root");
+    if (!root) throw new Error("React root is missing");
+    createRoot(root).render(<AuctionSearchApp />);
+    return;
+  }
   sanitizeAddressBar();
   const root = document.getElementById("root");
   if (!root) throw new Error("React root is missing");

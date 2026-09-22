@@ -10,7 +10,8 @@ import type { AuctionPublicIdentity } from "./public-offer.js";
 import { AuctionStore, auctionSearchText } from "./storage.js";
 import { emptyAuctionCharge, reserveAuctionBudget } from "./runtime-policy.js";
 
-export const AUCTION_CATALOG_RULE = JSON.stringify({ ...RESOLUTION_VERSIONS, auction: 1 });
+// Version 2 also replays pre-search identities whose title-inferred model was not indexed.
+export const AUCTION_CATALOG_RULE = JSON.stringify({ ...RESOLUTION_VERSIONS, auction: 2 });
 export const AUCTION_CATALOG_TTL = 15 * 60_000;
 /** Public SQL joins must additionally compare the listing revision to this cached revision. */
 export function currentAuctionIdentity(
@@ -203,21 +204,24 @@ export class AuctionCatalogMaintenance {
     row: { auction_id: string; item: string; fingerprint: string },
     entry: AuctionCatalogEntry,
   ): void {
-    const identity = auctionCatalogIdentity(JSON.parse(row.item) as AuctionItemFacts, entry);
+    const item = JSON.parse(row.item) as AuctionItemFacts;
+    const identity = auctionCatalogIdentity(item, entry);
     this.store.sql(
       "catalog",
-      `UPDATE auction_items SET identity=?,catalog_id=?,manufacturer=?,model=?,category=?,match_revision=?
-      WHERE auction_id=? AND fingerprint=? AND (match_revision IS NOT ? OR identity IS NOT ?)`,
+      `UPDATE auction_items SET identity=?,catalog_id=?,manufacturer=?,model=?,model_key=?,category=?,match_revision=?
+      WHERE auction_id=? AND fingerprint=? AND (match_revision IS NOT ? OR identity IS NOT ? OR model_key IS NOT ?)`,
       JSON.stringify(identity),
       identity.catalogProductId,
       auctionSearchText(identity.manufacturer),
       identity.model,
+      auctionSearchText(item.rawModel || identity.model),
       identity.categoryId,
       entry.revision,
       row.auction_id,
       row.fingerprint,
       entry.revision,
       JSON.stringify(identity),
+      auctionSearchText(item.rawModel || identity.model),
     );
   }
   async refresh(now: number, canCommit = () => true): Promise<void> {
