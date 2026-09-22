@@ -40,9 +40,13 @@ first. Use the existing runners and collectors rather than creating a parallel v
   boundary as defined in the harness guide and domain skill. Reuse valid CI-produced evidence;
   do not duplicate suites or run unrelated collectors merely to claim harness use.
 - Follow [hifiscout-delivery](.agents/skills/hifiscout-delivery/SKILL.md) for PR/review/merge and
-  resulting pipelines. Use its delivery collector; when shell authentication is unavailable, use
-  the documented native GitHub evidence path. Retain actual commands, results and evidence bound to the
-  evaluated SHA, and report any unavailable checks as incomplete rather than passed.
+  resulting pipelines. Use its delivery collector with authenticated `gh`; otherwise collect the
+  same evidence directly through the authenticated GitHub connector. For normal engineering work,
+  record the PR head, checks/statuses, discussions, reviews and all inline thread pages; after merge,
+  verify main/push runs for the merge SHA and applicable deployment receipts, without creating a
+  loop. Use Work's `loop handoff` path only for an already initialized eligible loop. Retain actual
+  commands, results and evidence bound to the evaluated SHA, and report any unavailable checks as
+  incomplete rather than passed.
 
 This requirement stays within the authorized task and the validation matrix: explanation/audit-only
 requests remain read-only, contributor-instruction edits use the wording-only checks, and the CI
