@@ -18,21 +18,42 @@ const reviewed: YahooAuctionReview = {
 
 describe("Yahoo auction pilot admission", () => {
   it("defaults off even with approvals and cannot approve evidence through flags", () => {
-    expect(yahooAuctionAccess({}, reviewed)).toMatchObject({ collect: false, search: false, display: false });
-    expect(yahooAuctionAccess({
-      YAHOO_AUCTIONS_COLLECT_ENABLED: "true",
-      YAHOO_AUCTIONS_SEARCH_ENABLED: "true",
-      YAHOO_AUCTIONS_DISPLAY_ENABLED: "true",
-    })).toMatchObject({ collect: false, search: false, display: false });
+    expect(yahooAuctionAccess({}, reviewed)).toMatchObject({
+      collect: false,
+      search: false,
+      display: false,
+    });
+    expect(
+      yahooAuctionAccess({
+        YAHOO_AUCTIONS_COLLECT_ENABLED: "true",
+        YAHOO_AUCTIONS_SEARCH_ENABLED: "true",
+        YAHOO_AUCTIONS_DISPLAY_ENABLED: "true",
+      }),
+    ).toMatchObject({ collect: false, search: false, display: false });
     expect(yahooAuctionAccess().blockers).toHaveLength(Object.keys(YAHOO_AUCTION_REVIEW).length);
   });
 
   it("keeps collection and both serving switches independent", () => {
-    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_SEARCH_ENABLED: "true" }, reviewed))
-      .toMatchObject({ collect: false, search: true, display: false });
-    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_COLLECT_ENABLED: "1" }, reviewed).collect).toBe(false);
-    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_COLLECT_ENABLED: "true" }, { ...reviewed, robots: "denied" }).collect).toBe(false);
-    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_COLLECT_ENABLED: "true" }, { ...reviewed, accountBudget: "unverified" }).collect).toBe(false);
+    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_SEARCH_ENABLED: "true" }, reviewed)).toMatchObject({
+      collect: false,
+      search: true,
+      display: false,
+    });
+    expect(yahooAuctionAccess({ YAHOO_AUCTIONS_COLLECT_ENABLED: "1" }, reviewed).collect).toBe(
+      false,
+    );
+    expect(
+      yahooAuctionAccess(
+        { YAHOO_AUCTIONS_COLLECT_ENABLED: "true" },
+        { ...reviewed, robots: "denied" },
+      ).collect,
+    ).toBe(false);
+    expect(
+      yahooAuctionAccess(
+        { YAHOO_AUCTIONS_COLLECT_ENABLED: "true" },
+        { ...reviewed, accountBudget: "unverified" },
+      ).collect,
+    ).toBe(false);
   });
 
   it("does not widen discovery by roots, related links or arbitrary descendants", () => {
@@ -43,8 +64,12 @@ describe("Yahoo auction pilot admission", () => {
   });
 
   it("canonicalizes a detail link without treating tracking as identity", () => {
-    expect(yahooAuctionIdentity("https://auctions.yahoo.co.jp/jp/auction/a1234567890?tracking=x"))
-      .toEqual({ auctionId: "a1234567890", sourceUrl: "https://auctions.yahoo.co.jp/jp/auction/a1234567890" });
+    expect(
+      yahooAuctionIdentity("https://auctions.yahoo.co.jp/jp/auction/a1234567890?tracking=x"),
+    ).toEqual({
+      auctionId: "a1234567890",
+      sourceUrl: "https://auctions.yahoo.co.jp/jp/auction/a1234567890",
+    });
     for (const url of [
       "http://auctions.yahoo.co.jp/jp/auction/a1234567890",
       "https://auctions.yahoo.co.jp.evil.example/jp/auction/a1234567890",
@@ -53,7 +78,8 @@ describe("Yahoo auction pilot admission", () => {
       "https://auctions.yahoo.co.jp/jp/auction/a1234567890#description",
       "https://auctions.yahoo.co.jp/login",
       "https://auctions.yahoo.co.jp/jp/auction/a1234567890/extra",
-    ]) expect(yahooAuctionIdentity(url)).toBeNull();
+    ])
+      expect(yahooAuctionIdentity(url)).toBeNull();
   });
 
   it("never converts transport failures into a confirmed auction end", () => {

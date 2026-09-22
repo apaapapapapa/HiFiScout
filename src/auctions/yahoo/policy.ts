@@ -47,7 +47,8 @@ export function yahooAuctionAccess(
   review: Readonly<YahooAuctionReview> = YAHOO_AUCTION_REVIEW,
 ): { collect: boolean; search: boolean; display: boolean; blockers: string[] } {
   const verified = (key: keyof YahooAuctionReview) => review[key] === "verified";
-  const servingAllowed = verified("redistribution") && verified("sourceContract") && verified("accountBudget");
+  const servingAllowed =
+    verified("redistribution") && verified("sourceContract") && verified("accountBudget");
   return {
     collect:
       env.YAHOO_AUCTIONS_COLLECT_ENABLED === "true" &&
@@ -85,7 +86,9 @@ export function yahooAuctionCategory(categoryId: string) {
 }
 
 /** Only vetted HTTPS detail paths; never accept login, alternate ports, credentials or fragments. */
-export function yahooAuctionIdentity(value: unknown): { auctionId: string; sourceUrl: string } | null {
+export function yahooAuctionIdentity(
+  value: unknown,
+): { auctionId: string; sourceUrl: string } | null {
   if (typeof value !== "string" || value.length > 2_048) return null;
   let url: URL;
   try {
