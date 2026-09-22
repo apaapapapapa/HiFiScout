@@ -1,4 +1,4 @@
-/** Offline admission policy for #703. No transport, scheduler, binding or route is registered. */
+/** Admission policy for #703. Acquisition and serving require verified evidence gates. */
 export const YAHOO_AUCTION_SOURCE = "yahoo-auctions" as const;
 export const YAHOO_AUCTION_ORIGIN = "https://auctions.yahoo.co.jp";
 

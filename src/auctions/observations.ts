@@ -141,7 +141,44 @@ export function applyAuctionObservation(
     outcome: next.live.outcome ?? previous.live.outcome,
     shipping: next.live.shipping ?? previous.live.shipping,
   };
-  return { status: "applied", snapshot: { ...next, stamp, live, cycle: previous.cycle } };
+  // Source label presence distinguishes an explicit unknown/empty fact from missing evidence.
+  // Legacy observations without the presence mask retain the conservative missing-field merge.
+  const observed = (field: keyof AuctionObservation["item"]) =>
+    next.observedItemFields?.includes(field) === true;
+  const item = {
+    ...previous.item,
+    ...next.item,
+    title: next.item.title || previous.item.title,
+    rawManufacturer: observed("rawManufacturer")
+      ? next.item.rawManufacturer
+      : (next.item.rawManufacturer ?? previous.item.rawManufacturer),
+    rawModel: observed("rawModel")
+      ? next.item.rawModel
+      : (next.item.rawModel ?? previous.item.rawModel),
+    conditionText: observed("conditionText")
+      ? next.item.conditionText
+      : (next.item.conditionText ?? previous.item.conditionText),
+    saleUnit:
+      next.item.saleUnit === "unknown" && !observed("saleUnit")
+        ? previous.item.saleUnit
+        : next.item.saleUnit,
+    saleSubject:
+      next.item.saleSubject === "unknown" && !observed("saleSubject")
+        ? previous.item.saleSubject
+        : next.item.saleSubject,
+    sourceCategoryId: next.item.sourceCategoryId || previous.item.sourceCategoryId,
+    sourceCategoryPath: next.item.sourceCategoryPath.length
+      ? next.item.sourceCategoryPath
+      : previous.item.sourceCategoryPath,
+    rawCategory: next.item.rawCategory || previous.item.rawCategory,
+    categoryHint: observed("categoryHint")
+      ? next.item.categoryHint
+      : next.item.categoryHint ||
+        (next.item.sourceCategoryId && next.item.sourceCategoryId !== previous.item.sourceCategoryId
+          ? ""
+          : previous.item.categoryHint),
+  };
+  return { status: "applied", snapshot: { ...next, item, stamp, live, cycle: previous.cycle } };
 }
 
 /** Passing time never mutates source state or proves a sale. */

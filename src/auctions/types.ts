@@ -62,6 +62,8 @@ export interface AuctionObservation {
   sourceUrl: string;
   stamp: AuctionObservationStamp;
   item: AuctionItemFacts;
+  /** Present source labels, including explicit unknown/empty values; absent labels are not facts. */
+  observedItemFields?: readonly (keyof AuctionItemFacts)[];
   live: AuctionLiveFacts;
 }
 

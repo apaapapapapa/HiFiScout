@@ -33,6 +33,7 @@ import { previewAdminCsvChange, applyAdminCsvChange } from "./db/admin-csv-impor
 import { parseAdminCsvPreview, parseAdminCsvApply } from "./http/admin-csv-import.js";
 import type { AdminCsvApplyInput, AdminCsvChange } from "./api/admin-csv-contracts.js";
 export { CrawlScheduler } from "./crawler/crawl-scheduler-do.js";
+export { YahooAuctions } from "./auctions/durable-object.js";
 export { PublicSearchCache } from "./http/public-search-cache.js";
 import type {
   CatalogAdminCreateInput,
