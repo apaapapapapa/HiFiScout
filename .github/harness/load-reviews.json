@@ -306,7 +306,7 @@
       "baseSha": "e4ade1b0f362a3a54d4f89a987371f62c0baca48",
       "beforeDigest": "93f940e5f557c10d48f5c3544b5646a4b96a34923c2b074689f1d23a93c399d4",
       "afterDigest": "e84d4e7631f467aaf77714197060121ac76f017814f9c62efff19837bbc5ef36",
-      "reason": "Add bounded SQLite listing search cases with 2,000 retained items and zero versus 2,000 catalog keys. Existing ceilings are unchanged. Exact-source measurements: sorted page 5997/0/2; worst filtered workload 12001/0/2. New limits 6100 and 15000 reads are below the 15100 public admission reservation and establish initial offline baselines, not production capacity. The new gated router dispatch belongs to auction-search; its HTTP admission suite validates disabled/invalid/rate-limit paths before DO work. No unregistered boundary is waived.",
+      "reason": "Add bounded SQLite listing search cases with 2,000 retained items and zero versus 2,000 catalog keys. Existing ceilings are unchanged. Exact-source measurements: sorted page 53/0/2; worst filtered workload 12001/0/2. New limits 6100 and 15000 reads are below the 15100 public admission reservation and establish initial offline baselines, not production capacity. The new gated router dispatch belongs to auction-search; its HTTP admission suite validates disabled/invalid/rate-limit paths before DO work. No unregistered boundary is waived.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/717"
       ]
