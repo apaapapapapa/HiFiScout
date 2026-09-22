@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
@@ -8,7 +8,6 @@ import { ModelRelations } from "./model-relations-ui.js";
 import { MarketAnalysis } from "./market-analysis-ui.js";
 import { OfferFacts } from "./offer-facts.js";
 import { OfferTerms } from "./offer-terms.js";
-import { offerTermGroups } from "../src/api/offer-terms-contracts.js";
 import { WatchSummary } from "./watch-preferences-ui.js";
 import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
 import type { ProductFilterNavigation } from "./product-filter-links.js";
@@ -391,63 +390,143 @@ function OfferRow({
   offer,
   shopName,
   onHistory,
+  expanded,
+  onToggle,
 }: {
   offer: DisplayOffer;
   shopName: (shopKey: string) => string;
   onHistory: (listingId: number) => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const dropped =
     offer.previous_price_yen != null &&
     offer.price_yen != null &&
     offer.price_yen < offer.previous_price_yen;
   const price = offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen);
+  const name = shopName(offer.shop_key);
+  const sourceUrl = safeExternalUrl(offer.source_url);
+  const shopUrl = shopListingUrl(offer);
+  const detailId = `offer-details-${offer.listing_product_id}`;
+  const toggleId = `${detailId}-toggle`;
   return (
-    <li className="offer">
-      <div className="offer-head">
-        <span className={`offer-shop shop-${offer.shop_key}`}>{shopName(offer.shop_key)}</span>
-        {offer.presentation_color ? (
-          <span className="product-color">{offer.presentation_color}</span>
-        ) : null}
-        {offer.condition_text ? <span className="condition">{offer.condition_text}</span> : null}
-        <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
+    <li className="offer offer-item">
+      <div className="offer-summary">
+        <div className="offer-identity">
+          {shopUrl ? (
+            <a className="offer-shop" href={shopUrl} target="_blank" rel="noopener noreferrer">
+              {name}
+            </a>
+          ) : (
+            <span className="offer-shop">{name}</span>
+          )}
+          <div className="offer-condition">
+            <span className="condition">{offer.condition_text || "状態の記載なし"}</span>
+            {offer.presentation_color ? (
+              <span className="product-color">{offer.presentation_color}</span>
+            ) : null}
+          </div>
+        </div>
+        <div className="offer-commerce">
+          <strong>{price}</strong>
+          {dropped && offer.previous_price_yen != null ? (
+            <del>{yen.format(offer.previous_price_yen)}</del>
+          ) : null}
+          <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
+        </div>
       </div>
-      <p className="offer-title">{offer.title}</p>
-      <OfferFacts facts={offer.offer_facts} />
-      <p className="offer-updated">
-        掲載情報の最終取得:{" "}
-        {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (
-          <time dateTime={offer.last_seen_at}>
-            {new Date(offer.last_seen_at).toLocaleString("ja-JP")}
-          </time>
-        ) : (
-          "日時不明"
-        )}
-      </p>
-      <div className="offer-commerce">
-        <strong>{price}</strong>
-        {dropped && offer.previous_price_yen != null ? (
-          <del>{yen.format(offer.previous_price_yen)}</del>
-        ) : null}
-      </div>
-      <OfferTerms facts={offer.offer_facts} />
-      <div className="offer-actions">
+      {!expanded ? <OfferTerms facts={offer.offer_facts} compact /> : null}
+      <div className="offer-primary-actions">
         <button
+          id={toggleId}
           type="button"
-          data-history={offer.listing_product_id}
-          onClick={() => onHistory(offer.listing_product_id)}
+          aria-expanded={expanded}
+          aria-controls={detailId}
+          aria-label={`${name}・出品番号 ${offer.listing_product_id}の詳細を${expanded ? "閉じる" : "見る"}`}
+          onClick={onToggle}
         >
-          価格履歴
+          {expanded ? "詳細を閉じる" : "詳細を見る"}
+          <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
         </button>
-        <a
-          className="shop-link"
-          href={safeExternalUrl(offer.source_url)}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          販売店で確認 ↗
-        </a>
+        {sourceUrl !== "#" ? (
+          <a
+            className="shop-link"
+            href={sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${name}・出品番号 ${offer.listing_product_id}の販売ページへ（新しいタブ）`}
+          >
+            販売ページへ <span aria-hidden="true">↗</span>
+          </a>
+        ) : (
+          <span className="offer-link-unavailable">販売ページのURLなし</span>
+        )}
+      </div>
+      <div id={detailId} className="offer-details" hidden={!expanded} aria-labelledby={toggleId}>
+        <p className="offer-reference">出品番号 {offer.listing_product_id}</p>
+        <p className="offer-title">{offer.title}</p>
+        <OfferTerms facts={offer.offer_facts} />
+        <p className="offer-updated">
+          掲載情報の最終取得:{" "}
+          {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (
+            <time dateTime={offer.last_seen_at}>
+              {new Date(offer.last_seen_at).toLocaleString("ja-JP")}
+            </time>
+          ) : (
+            "日時不明"
+          )}
+        </p>
+        <OfferFacts facts={offer.offer_facts} />
+        <div className="offer-actions">
+          <button
+            type="button"
+            data-history={offer.listing_product_id}
+            onClick={() => onHistory(offer.listing_product_id)}
+          >
+            価格履歴
+          </button>
+        </div>
       </div>
     </li>
+  );
+}
+
+function OffersList({
+  offers,
+  shopName,
+  onHistory,
+}: {
+  offers: DisplayOffer[];
+  shopName: (shopKey: string) => string;
+  onHistory: (listingId: number) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(
+    offers.length === 1 ? offers[0].listing_product_id : null,
+  );
+  return (
+    <section className="offer-list" aria-label="店舗ごとの価格・在庫一覧">
+      <h3>{offers.length > 1 ? "掲載中の出品を比較" : "出品情報"}</h3>
+      <ol className="offers">
+        {offers.length ? (
+          offers.map((offer) => (
+            <OfferRow
+              key={offer.listing_product_id}
+              offer={offer}
+              shopName={shopName}
+              onHistory={onHistory}
+              expanded={expandedId === offer.listing_product_id}
+              onToggle={() =>
+                setExpandedId((current) =>
+                  current === offer.listing_product_id ? null : offer.listing_product_id,
+                )
+              }
+            />
+          ))
+        ) : (
+          <li>表示できる在庫がありません。</li>
+        )}
+      </ol>
+    </section>
   );
 }
 
@@ -529,98 +608,7 @@ export function OffersContent({
           ? `全${product.offer_count}件のうち${offers.length}件を表示しています。`
           : ""}
       </p>
-      {offers.length > 1 ? (
-        <div
-          className="offer-overview"
-          tabIndex={0}
-          role="region"
-          aria-label="店舗ごとの価格・在庫一覧"
-        >
-          <table>
-            <caption>掲載中の出品を比較</caption>
-            <thead>
-              <tr>
-                <th scope="col">販売店</th>
-                <th scope="col">価格</th>
-                <th scope="col">状態</th>
-                <th scope="col">在庫</th>
-                <th scope="col">販売単位・仕様</th>
-                <th scope="col">確認先</th>
-              </tr>
-            </thead>
-            <tbody>
-              {offers.map((offer) => (
-                <tr key={offer.listing_product_id}>
-                  <th scope="row">{shopName(offer.shop_key)}</th>
-                  <td>{offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen)}</td>
-                  <td>{offer.condition_text || "記載なし"}</td>
-                  <td>{stockLabel(offer.stock_status)}</td>
-                  <td>
-                    {offerTermGroups(offer.offer_facts).every((group) =>
-                      group.values.every((value) => value === "記載なし"),
-                    ) ? (
-                      "記載なし"
-                    ) : (
-                      <OfferTerms facts={offer.offer_facts} compact />
-                    )}
-                  </td>
-                  <td>
-                    <a
-                      href={`#offer-details-${offer.listing_product_id}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        const details = document.getElementById(
-                          `offer-details-${offer.listing_product_id}`,
-                        );
-                        if (!(details instanceof HTMLDetailsElement)) return;
-                        details.open = true;
-                        details.querySelector("summary")?.focus();
-                        details.scrollIntoView({ block: "nearest" });
-                      }}
-                    >
-                      出品詳細
-                    </a>
-                    <a
-                      href={safeExternalUrl(offer.source_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`${shopName(offer.shop_key)}で確認`}
-                    >
-                      販売店 ↗
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      <ol className="offers">
-        {offers.length ? (
-          offers.map((offer) => (
-            <li key={offer.listing_product_id} className="offer-item">
-              <details
-                id={`offer-details-${offer.listing_product_id}`}
-                className="offer-details"
-                open={offers.length === 1}
-              >
-                <summary>
-                  {shopName(offer.shop_key)} /{" "}
-                  {offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen)}
-                  {" / "}
-                  {offer.condition_text || "状態の記載なし"} / {stockLabel(offer.stock_status)}
-                  <span className="offer-reference">出品番号 {offer.listing_product_id}</span>
-                </summary>
-                <ol className="offer-detail-content">
-                  <OfferRow offer={offer} shopName={shopName} onHistory={onHistory} />
-                </ol>
-              </details>
-            </li>
-          ))
-        ) : (
-          <li>表示できる在庫がありません。</li>
-        )}
-      </ol>
+      <OffersList key={product.key} offers={offers} shopName={shopName} onHistory={onHistory} />
       <p className="filter-note">
         記載なしは「付属しない」「保証がない」「整備歴がない」という意味ではありません。
         店舗独自の外観ランクは共通ランクに換算していません。日付はこの出品情報を取得した記録で、現在の在庫を保証するものではありません。最新の状態は販売店で確認してください。
