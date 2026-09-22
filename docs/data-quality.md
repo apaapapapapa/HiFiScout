@@ -205,7 +205,9 @@ Cloudflare billing metrics. Follow [the remediation runbook](./data-quality-reme
 After evaluation, the crawler emits a structured `data_quality_evaluated` log with shop, crawl-run ID, status, item total, and quality rates. HTML and other evidence content are never included in the structured log. Evaluation failures emit `data_quality_evaluation_failure` without failing the crawl.
 
 `Production Operational Health` has paused its active data-platform, Product Search identity and
-Knowledge Catalog checks; only passive D1 SQL archiving remains active. When explicitly enabled,
+Knowledge Catalog checks. Its passive job still archives native D1 Insights and runtime telemetry,
+analyzes saved SQL archives, and publishes admin dashboard snapshots without application-table
+queries; see [D1 SQL observation](./d1-sql-observation.md). When explicitly enabled,
 the checks recompute active-listing Identity coverage and Product Search membership/grouping. Missing identity rows, missing memberships, stale
 fallbacks, and invalid entity/offer state fail the operational check. They do not retroactively fail
 a successful Worker deployment. Automatic checks consume the deployed SHA from `deployment-identity`;

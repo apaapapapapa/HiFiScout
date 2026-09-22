@@ -138,9 +138,11 @@ one complete local report with
 `vp test run --reporter=json --outputFile=.generated/unit-timings.json` and pass that file. Review
 the resulting weights as configuration; they affect scheduling, never which tests are selected.
 
-Documentation-only comparisons skip application suites while retaining the source/toolchain checks
-and required `fan-out` result. An uncertain comparison runs everything. Migration safety always
-uses a fresh D1 for application changes, independently of the documentation site's schema cache.
+Markdown-only comparisons run the lightweight `changes` and required `fan-out` jobs; source/toolchain
+checks and application suites skip. Other documentation-only assets retain source/toolchain checks.
+The separate Developer Docs workflow still builds the site and checks documented commands in both
+cases. An uncertain comparison runs everything. Migration safety uses a fresh D1 for application
+changes, independently of the documentation site's schema cache.
 
 The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 
@@ -226,11 +228,13 @@ scheduler, and require recovery without another seller fetch. Fetch/parse/404 re
 coverage, failed transactions, legacy sessions and generation mismatch use the real migrated schema.
 Progress shares the existing DO command write and Alarm; the test counts both operations.
 
-The Miniflare collection fixture includes session/page creation, ten nonempty fetch/parse steps and
-the final D1 summary checkpoint: legacy progress bills 134 rows, DO progress 96 rows. In that fixture
-the formula is `4 + 13P` versus `6 + 9P`, saving `4P - 2` billed D1 rows for P nonempty pages. This is
-collection staging only, not total crawl writes; listing publication, retention, retries and DO
-duration retain their own costs. Daily listing freshness and page payloads remain in D1.
+The Miniflare collection fixture includes session/page creation, ten nonempty listing pages and the
+final D1 summary checkpoint. It compares legacy D1 progress, split fetch/parse with DO progress, and
+the current combined fetch/parse path with DO progress. The combined path must write at least 20%
+fewer D1 rows than the split DO path, with fewer reads and statements. Exact formulas for the retained
+split paths live in `test/d1-crawl-collection-budget.test.ts`; they are not the current DO path's cost.
+This is collection staging only, not total crawl writes; listing publication, retention, retries and
+DO duration retain their own costs. Daily listing freshness and page payloads remain in D1.
 
 Public-cache tests require canonical URLs and clean headers at the internal entrypoint, a rate-limit
 check even for a cached URL, no caching of validation/rate-limit/admin errors, and the existing
