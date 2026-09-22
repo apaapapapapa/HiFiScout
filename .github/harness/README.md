@@ -317,10 +317,8 @@ redelivery, and eight parser stages. The registered ceilings in `load-contracts.
 For a local capture on a clean checkout:
 
 ```bash
-HARNESS_COST_OUTPUT=.generated/cost vp test run test/d1-crawl-checkpoint-budget.test.ts test/observed-sql-read-budget.test.ts test/crawl-do-collection-progress.test.ts test/queue-routing.test.ts
-HARNESS_COST_OUTPUT=.generated/cost vp run benchmark:parser
-vp run harness cost-report .generated/cost .generated/cost-report.json
-vp run harness compare-cost <baseline-samples-dir> <candidate-samples-dir>
+vp run harness load-capture .generated/load-candidate
+vp run harness compare-cost <baseline-capture-dir>/samples .generated/load-candidate/samples
 ```
 
 Use fresh directories and retain failed test/benchmark output as well as samples. A sample's
