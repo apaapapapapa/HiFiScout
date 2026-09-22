@@ -220,6 +220,38 @@ test("a review never permits missing metadata, an environment downgrade or an ab
   }
 });
 
+test("review records cannot remove an absolute budget or substitute mocked CPU", () => {
+  const removed = input();
+  delete removed.afterContracts[0].samples.lookup;
+  removed.reviews = reviewFor(removed).map((r) => ({
+    ...r,
+    id: "load-contracts",
+    beforeDigest: loadDigest(removed.beforeContracts),
+    afterDigest: loadDigest(removed.afterContracts),
+  }));
+  assert.ok(evaluateLoadGate(removed).problems.includes("missing_absolute_budget:lookup"));
+
+  const cpu = input();
+  const before = {
+    ...sample(BASE),
+    id: "cpu-parse",
+    environment: "local-node" as const,
+    metrics: { cpuUs: 100, cpuRelative: 1 },
+  };
+  const after = { ...before, sourceSha: HEAD, environment: "local-mock" as const };
+  cpu.before.push(before);
+  cpu.after.push(after);
+  cpu.beforeRequired.push(before.id);
+  cpu.afterRequired.push(after.id);
+  cpu.reviews = reviewFor(cpu).map((r) => ({
+    ...r,
+    id: after.id,
+    beforeDigest: sampleReviewDigest(before, cpu.beforeContracts),
+    afterDigest: sampleReviewDigest(after, cpu.afterContracts),
+  }));
+  assert.ok(evaluateLoadGate(cpu).problems.includes("cpu_measurement_environment:cpu-parse"));
+});
+
 test("review records require a reason, durable repository evidence and unambiguous identities", () => {
   assert.equal(loadDigest({ b: 1, a: 2 }), loadDigest({ a: 2, b: 1 }));
   assert.throws(

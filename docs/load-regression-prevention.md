@@ -49,8 +49,9 @@ the expected increase in the PR. A policy/profile change requires an explicit en
 `evidence` links to this repository's PR, workflow artifacts or committed evaluation.
 
 The record binds exact profiles, deterministic observations and ceilings to one base revision.
-It cannot waive a missing required sample, unknown metric, failed/skipped test, unknown owning
-boundary or absolute overrun. A same-profile CPU regression remains a failure. An accepted fixture
+It cannot waive a missing required sample or absolute ceiling, unknown metric, failed/skipped test,
+unknown owning boundary, substituted CPU measurement environment or absolute overrun. A same-profile
+CPU regression remains a failure. An accepted fixture
 change is reported as `reviewed_baseline`, preserving the original unknown comparison; it is never
 reported as measured improvement. Do not generate review records automatically when a gate fails.
 An added case needs measured absolute limits and its reviewed initial baseline; retain existing

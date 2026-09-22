@@ -218,6 +218,9 @@ export function evaluateLoadGate(input: LoadGateInput) {
       problems.push(`missing_sample:${id}`);
       continue;
     }
+    if (!budget && !id.startsWith("cpu-")) problems.push(`missing_absolute_budget:${id}`);
+    if (id.startsWith("cpu-") && current.environment !== "local-node")
+      problems.push(`cpu_measurement_environment:${id}`);
     if (
       budget &&
       (current.environment !== budget.environment ||
