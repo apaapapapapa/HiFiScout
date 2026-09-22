@@ -3,21 +3,8 @@ import type { Page } from "@playwright/test";
 import type { NotificationWatch } from "../../src/api/contracts.js";
 
 async function setup(page: Page, permission: "granted" | "denied" = "granted") {
-  await page.goto("/");
-  await page.evaluate((permission) => {
-    localStorage.clear();
-    history.replaceState(null, "", "/");
-    localStorage.setItem(
-      "hifiscout:saved-searches:v1",
-      JSON.stringify([
-        {
-          id: "saved-one",
-          name: "LUXMANの候補",
-          query: "q=LUXMAN&shop=hifido&maxPrice=150000",
-          updatedAt: new Date().toISOString(),
-        },
-      ]),
-    );
+  // The gallery's mount navigates again; permissions/subscriptions must survive that navigation.
+  await page.addInitScript((permission) => {
     Object.defineProperty(window, "Notification", {
       configurable: true,
       value: { requestPermission: async () => permission },
@@ -43,6 +30,22 @@ async function setup(page: Page, permission: "granted" | "denied" = "granted") {
       },
     });
   }, permission);
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.clear();
+    history.replaceState(null, "", "/");
+    localStorage.setItem(
+      "hifiscout:saved-searches:v1",
+      JSON.stringify([
+        {
+          id: "saved-one",
+          name: "LUXMANの候補",
+          query: "q=LUXMAN&shop=hifido&maxPrice=150000",
+          updatedAt: new Date().toISOString(),
+        },
+      ]),
+    );
+  });
   const state = {
     watches: [] as NotificationWatch[],
     requests: [] as string[],
