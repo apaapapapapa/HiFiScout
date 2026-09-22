@@ -48,7 +48,8 @@ regressions, incomplete test/metric evidence, unregistered load boundaries and u
 fixture changes. `fan-out` requires both baseline and comparison to succeed. Candidate unit tests are
 not repeated. CPU comparison uses three fixed, alternating base/candidate sessions on the same
 runner; all sessions must complete and their medians must pass the unchanged parser ceilings.
-The original per-revision parser gates remain required. All raw sessions and the paired
+The required paired gate also compares CPU-use medians against one baseline reference; per-job
+captures retain diagnostics and fixture assertions without an extra single-session veto. All raw sessions and the paired
 manifest are retained with the baseline and comparison artifacts for 30 days; see
 [load prevention](../../docs/load-regression-prevention.md) for intentional baseline review.
 

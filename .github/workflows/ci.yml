@@ -86,7 +86,7 @@ jobs:
       - name: Typecheck source
         if: needs.changes.outputs.application == 'true'
         run: vp run ci:typecheck
-      - name: Compare parser stages with relative CPU baselines
+      - name: Capture parser observations for the required paired CPU gate
         if: needs.changes.outputs.application == 'true'
         run: vp run ci:parser-benchmark
       - name: Preserve parser CPU cost samples
@@ -142,8 +142,13 @@ jobs:
         with:
           ref: ${{ needs.changes.outputs.load-base-sha }}
       - uses: ./.github/actions/setup-node-deps
+      - name: Check out the tested capture driver
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .generated/load-driver
       - name: Measure the exact baseline with its frozen toolchain
-        run: vp run harness load-capture .generated/load-baseline
+        run: vp exec node --import tsx .generated/load-driver/scripts/harness.ts load-capture .generated/load-baseline
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

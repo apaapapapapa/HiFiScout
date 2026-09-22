@@ -24,7 +24,9 @@ Use identical profiles for `compare-cost`; changing a test or runtime cannot est
 CI's `changes` job pins the tested SHA and resolves the PR merge commit's first parent (or the
 previous main push). This avoids a stale event `pull_request.base.sha` when main advances.
 The `load-baseline` job checks out that exact baseline, installs that
-revision's pinned dependencies and executes `load-capture`. The candidate reuses D1/DO/Queue samples
+revision's pinned dependencies and executes the candidate's `load-capture` controller against it.
+The measured revision owns its suites, cost policy and benchmark implementation; the controller
+captures raw CPU without invoking a historical single-session veto. The candidate reuses D1/DO/Queue samples
 and real Vitest outcomes from the existing four shards; there is no second candidate unit-test run. The required
 `product-replay` job runs `load-gate`, and `fan-out` requires both jobs to succeed. Markdown-only
 changes retain the existing lightweight path.
@@ -35,7 +37,12 @@ message increases have no implicit allowance. CPU is measured separately by `loa
 and candidate checkouts run alternately on the same runner, with three fixed sessions per revision.
 The gate compares their medians with the existing relative noise allowance and each revision's
 unchanged parser ceilings. Every session must complete with valid fixtures and measurements; failed
-runs are never retried until green or discarded. The original CI parser gates remain required.
+runs are never retried until green or discarded. The required paired gate owns both CPU ceilings
+and regression checks; per-job captures retain raw diagnostics without a second single-session veto.
+Because both revisions run on the same host, their CPU-use medians share the baseline reference.
+The candidate/baseline CPU-use ratio must not exceed `1.75 + 0.5 / baselineRelativeCPU`, preserving
+the existing allowance without dividing by two independently noisy control loops. Both raw ratios
+remain in the report. Parser fixture assertions and missing-measurement checks remain mandatory.
 Cross-job single CPU observations and absolute Node CPU remain diagnostic. A new or moved
 DB/crawler/background-work path without an owning
 contract fails. Direct DB/storage access added elsewhere in `src` is also treated conservatively.

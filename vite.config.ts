@@ -101,7 +101,7 @@ export default defineConfig(({ mode }) => ({
       "ci:test-shard-4": ciTestShard(4),
       "ci:parser-benchmark": {
         command: ciShell(
-          `HARNESS_COST_OUTPUT=.generated/harness-cost ${packageJson.scripts["benchmark:parser"]}`,
+          "HARNESS_COST_OUTPUT=.generated/harness-cost node --import tsx scripts/parser-cpu-benchmark.ts",
         ),
         env: ["GITHUB_SHA"],
         output: [".generated/harness-cost"],

@@ -12,7 +12,7 @@ import {
 } from "./cost.js";
 import type { CostSample } from "./cost.js";
 import { LOAD_CONTRACTS } from "./load-contracts.js";
-import { readPairedCpu } from "./load-cpu.js";
+import { comparePairedCpu, readPairedCpu } from "./load-cpu.js";
 import type { LoadContract } from "./load-contracts.js";
 import { collectReplayCases } from "./replay.js";
 import { readCheckout } from "./checkpoint.js";
@@ -168,6 +168,7 @@ export interface LoadGateInput {
   sources?: Record<string, string>;
   reviews: LoadReview[];
   guardSuites?: string[];
+  pairedCpu?: boolean;
 }
 
 export function evaluateLoadGate(input: LoadGateInput) {
@@ -228,7 +229,11 @@ export function evaluateLoadGate(input: LoadGateInput) {
         assessCostBudget(current.metrics, budget.limits) !== "pass")
     )
       problems.push(`absolute_budget_or_measurement:${id}`);
-    const comparison = old ? compareCosts([old], [current]) : null;
+    const comparison = old
+      ? input.pairedCpu && id.startsWith("cpu-")
+        ? comparePairedCpu(old, current)
+        : compareCosts([old], [current])
+      : null;
     // Missing metrics cannot be waived. A new case can only establish a reviewed initial baseline.
     const metricKeys = [
       ...new Set([
@@ -341,6 +346,7 @@ export async function runLoadGate(
   });
   const originalAfter = await readCostSamples(candidateDirectory, { allowEmpty: true });
   const result = evaluateLoadGate({
+    pairedCpu: true,
     baseSha,
     sourceSha: checkout.sourceSha,
     checkoutClean: !checkout.dirty,
