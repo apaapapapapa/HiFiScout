@@ -40,15 +40,26 @@ export const LOAD_CONTRACTS: LoadContract[] = [
   },
   {
     id: "auction-search",
-    sources: ["src/auctions/search.ts", "src/api/auction-query.ts", "src/http/auctions.ts"],
-    suites: ["test/auction-search.test.ts"],
+    sources: [
+      "src/auctions/search.ts",
+      "src/api/auction-query.ts",
+      "src/http/auctions.ts",
+      "src/http/router.ts",
+    ],
+    suites: ["test/auction-search.test.ts", "test/auction-http.test.ts"],
     samples: { "auction-search-page": d1(6100, 0, 2), "auction-search-filtered": d1(15000, 0, 2) },
     reason:
       "A bounded 25-offer SQLite DO page among 2,000 retained listings uses one lookahead, reads the runtime coverage, and performs no D1, seller or data writes. Admission reservations are separate from SQL observations.",
   },
   {
     id: "auction-admin",
-    sources: ["src/auctions/admin.ts", "src/auctions/status.ts"],
+    sources: [
+      "src/auctions/admin.ts",
+      "src/auctions/status.ts",
+      "src/api/admin-auction-contracts.ts",
+      "src/admin/entry.ts",
+      "src/worker.ts",
+    ],
     suites: ["test/auction-admin-runtime.test.ts"],
     samples: { "auction-admin-status": d1(10100, 0, 6) },
     reason:

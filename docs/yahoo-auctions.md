@@ -16,8 +16,11 @@ or the existing retail price/history projections.
 
 During this implementation, [#706](https://github.com/apaapapapapa/HiFiScout/pull/706) advanced main
 to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that seller's consent was
-confirmed. That independent authorization does **not** satisfy any Yahoo acquisition/redistribution
-gate. Preserve the concurrent shop change; Yahoo remains disabled and unverified.
+confirmed. The operator then excluded e-earphone collection in
+[#713](https://github.com/apaapapapapa/HiFiScout/pull/713), merged as
+`ea3d0fbe121625bc9fd157e84b3ef95a4b9e0845`; its production flag is again disabled.
+Preserve that current exclusion. Neither shop decision satisfies any Yahoo
+acquisition/redistribution gate; Yahoo remains disabled and unverified.
 
 ### Acquisition and redistribution gate
 
