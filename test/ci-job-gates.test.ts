@@ -23,6 +23,7 @@ test("required CI gate accepts only the job results required by the detected sco
   const applicationJobs = [
     "UNIT_RESULT",
     "REPLAY_RESULT",
+    "LOAD_BASELINE_RESULT",
     "INTEGRATION_RESULT",
     "MIGRATION_RESULT",
     "COMPONENT_RESULT",

@@ -110,13 +110,35 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+  load-baseline:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - uses: ./.github/actions/setup-node-deps
+      - name: Measure the exact baseline with its frozen toolchain
+        run: vp run harness load-capture .generated/load-baseline
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: load-baseline
+          path: .generated/load-baseline/
+          retention-days: 30
+          if-no-files-found: error
+
   product-replay:
-    needs: [changes, unit-test, static-checks]
+    needs: [changes, unit-test, static-checks, load-baseline]
     if: always() && needs.changes.result == 'success' && needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-deps
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -138,9 +160,23 @@ jobs:
           pattern: harness-cost-*
           path: .generated/cost-samples
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: always()
+        with:
+          name: load-baseline
+          path: .generated/load-baseline
       - name: Assess complete cost evidence for this source
         if: always()
         run: vp run harness cost-report .generated/cost-samples .generated/cost-report.json
+      - name: Block load regressions, missing coverage and unreviewed budget changes
+        if: always()
+        env:
+          LOAD_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${LOAD_BASE_SHA}^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$LOAD_BASE_SHA"
+          vp run harness load-gate "$LOAD_BASE_SHA" .generated/load-baseline .generated/cost-samples .generated/load-gate.json .generated/replay-input/unit-timings-{1,2,3,4}.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -148,6 +184,7 @@ jobs:
           path: |
             .generated/cost-samples/
             .generated/cost-report.json
+            .generated/load-gate.json
           retention-days: 30
           if-no-files-found: error
 
@@ -230,6 +267,7 @@ jobs:
       - static-checks
       - unit-test
       - product-replay
+      - load-baseline
       - integration
       - migration-safety
       - component
@@ -247,6 +285,7 @@ jobs:
           STATIC_RESULT: ${{ needs.static-checks.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
           REPLAY_RESULT: ${{ needs.product-replay.result }}
+          LOAD_BASELINE_RESULT: ${{ needs.load-baseline.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           MIGRATION_RESULT: ${{ needs.migration-safety.result }}
           COMPONENT_RESULT: ${{ needs.component.result }}
@@ -275,6 +314,7 @@ jobs:
           for result in \
             "${UNIT_RESULT}" \
             "${REPLAY_RESULT}" \
+            "${LOAD_BASELINE_RESULT}" \
             "${INTEGRATION_RESULT}" \
             "${MIGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \

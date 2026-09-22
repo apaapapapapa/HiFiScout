@@ -42,6 +42,12 @@ missing metadata is unknown. `product-replay` and `cost-evidence` artifacts reta
 original samples for 30 days. Existing assertions and CPU baseline gates still own behavioral and
 performance success; the cost report also enforces registered absolute ceilings and rejects missing measurements.
 The load contracts cover growth, no-op publication, indirect schema costs, scheduling and continuation.
+The parallel `load-baseline` job captures these scenarios on the exact PR base or previous main SHA.
+`product-replay` compares that evidence with the current shards through `load-gate`, rejecting cost
+regressions, incomplete test/metric evidence, unregistered load boundaries and unreviewed budget or
+fixture changes. `fan-out` requires both baseline and comparison to succeed. Candidate tests are
+not repeated. The baseline and comparison artifacts remain available for 30 days; see
+[load prevention](../../docs/load-regression-prevention.md) for intentional baseline review.
 
 The component job enables `HARNESS_UI=1` for isolated gallery/admin browser evidence. Every case
 captures a screenshot, DOM, console/page errors, request metadata and SHA/URL/retry identity;
