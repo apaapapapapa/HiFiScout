@@ -237,7 +237,11 @@ test("an unresolved listing stays searchable as a product of its own", async ({
     unresolvedOffer.source_url,
   );
 
-  await catalogPage.productTitle("SQ-N150").click();
+  await expect(catalogPage.productTitle("SQ-N150")).toHaveAttribute(
+    "href",
+    unresolvedOffer.source_url,
+  );
+  await catalogPage.offerButton("l-77").click();
   await expect(page).toHaveURL(/\/p\/l-77(?:\?|$)/);
   await expect(catalogPage.offersDialog).toBeVisible();
   await expect(catalogPage.offersDialog).toContainText("他店の在庫と照合できていません");

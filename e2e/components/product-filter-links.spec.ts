@@ -155,7 +155,7 @@ test("detail metadata searches close the detail and Back restores the detail and
   await mount("frontend/public-app/Default");
   await page.getByRole("button", { name: "2ページ目", exact: true }).click();
   await expect(page.locator('.page-button[aria-current="page"]')).toHaveText("2");
-  await page.locator(".card .product-title-link").click();
+  await page.locator(".card .offers-button[data-offers]").click();
   await expect(page.locator("#offers-dialog")).toBeVisible();
   await expect(page).toHaveURL(/\/p\/c-1$/);
   await page.locator("#offers-dialog [data-manufacturer-filter]").click();

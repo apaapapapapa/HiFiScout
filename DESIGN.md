@@ -98,6 +98,12 @@ Favor catalog rows or visually quiet product cells over floating ecommerce cards
 Offer condition belongs in the per-offer comparison and details. Result cards omit the cheapest
 and representative offer's condition labels.
 
+A product name with one offer opens that offer's seller page in a new tab. Multiple offers,
+including several at the same shop, keep opening product details for comparison. The separate
+detail action remains available for a single offer; missing or unsafe seller URLs fall back to it.
+A single shop's name opens its curated listing page, or the seller URL's website when no listing
+page is configured. A multi-shop card retains its shop-count label.
+
 Do not use shadows to make every result a separate card. Prefer whitespace, alignment, and hairline dividers. Keep NEW, PRICE DOWN, relative-price, comparison, and similar badges compact so they do not compete with the model name.
 
 Keep the filter action footer visible while its fields scroll. Detail edits remain staged until

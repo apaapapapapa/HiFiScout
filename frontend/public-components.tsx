@@ -14,13 +14,13 @@ import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-l
 import type { ProductFilterNavigation } from "./product-filter-links.js";
 import type { WatchPreference } from "./watch-preferences.js";
 import {
-  SHOP_LISTING_URLS,
   categoryOptionModel,
   offerAvailability,
   offerAvailabilityClass,
   priceSummary,
   productColors,
   safeExternalUrl,
+  shopListingUrl,
   stockLabel,
   syncShopPresentations,
 } from "./product-presentation.js";
@@ -121,7 +121,7 @@ function ShopChip({
   }
   const shopKey = product.representative_offer?.shop_key || "";
   const label = shopKey ? shopName(shopKey) : "ショップ不明";
-  const listingUrl = SHOP_LISTING_URLS[shopKey];
+  const listingUrl = shopListingUrl(product.representative_offer);
   if (listingUrl) {
     return (
       <a
@@ -129,8 +129,8 @@ function ShopChip({
         href={listingUrl}
         target="_blank"
         rel="noopener noreferrer"
-        title="販売店の新着・中古一覧を開く"
-        aria-label={`${label}の新着・中古一覧を開く`}
+        title="販売店のサイトを開く"
+        aria-label={`${label}のサイトを開く`}
       >
         {label}
       </a>
@@ -190,7 +190,7 @@ export function ProductCard({
           />
         </p>
         <h2>
-          {hasServerDetail ? (
+          {hasServerDetail && (product.offer_count !== 1 || sourceUrl === "#") ? (
             <button
               type="button"
               className="product-title-link"
@@ -199,7 +199,7 @@ export function ProductCard({
             >
               {title}
             </button>
-          ) : (
+          ) : sourceUrl !== "#" ? (
             <a
               className="product-title-link"
               href={sourceUrl}
@@ -208,6 +208,8 @@ export function ProductCard({
             >
               {title}
             </a>
+          ) : (
+            <span className="product-title-link">{title}</span>
           )}
           {/* Beside the name, not inside it: the model is what groups the colours together. */}
           {colors.length ? (
