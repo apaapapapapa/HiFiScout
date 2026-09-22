@@ -5,6 +5,17 @@ import type { AuctionStore } from "../src/auctions/storage.js";
 import { yahooAuctionHtmlSource } from "../src/auctions/yahoo/parser.js";
 import type { AuctionTask } from "../src/auctions/runtime-policy.js";
 import type { AuctionAcquisition } from "../src/auctions/yahoo/acquisition.js";
+import { auctionRobotsPermit } from "../src/auctions/yahoo/acquisition.js";
+
+it("unsupported robots pacing halts instead of creating an unbounded dormant task", () => {
+  const url = "https://auctions.yahoo.co.jp/jp/auction/a100001";
+  const permit = (seconds: string) =>
+    auctionRobotsPermit(`User-agent: *\nAllow: /\nCrawl-delay: ${seconds}`, url);
+  expect(permit("120")).toEqual({ allowed: true, delayMs: 120_000 });
+  expect(permit("2592000")).toEqual({ allowed: true, delayMs: 30 * 86_400_000 });
+  expect(permit("2678401").allowed).toBe(false);
+  expect(permit("1000000000000000000").allowed).toBe(false);
+});
 
 it("a rejected invocation keeps one durable next-UTC-day wake without resetting consumption", async () => {
   const now = Date.parse("2026-09-22T23:00:00Z");

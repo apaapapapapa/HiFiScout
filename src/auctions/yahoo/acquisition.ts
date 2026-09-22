@@ -77,8 +77,12 @@ export function auctionRobotsPermit(
   text: string,
   url: string,
 ): { allowed: boolean; delayMs: number } {
+  const delayMs = Math.max(60_000, getCrawlDelayMs(text, AUCTION_USER_AGENT));
+  // Keep unsupported pacing visible as a review halt, never a silently dormant collector.
+  if (!Number.isFinite(delayMs) || delayMs > 30 * 86_400_000)
+    return { allowed: false, delayMs: 60_000 };
   return {
     allowed: isPathAllowed(text, url, AUCTION_USER_AGENT),
-    delayMs: Math.max(60_000, getCrawlDelayMs(text, AUCTION_USER_AGENT)),
+    delayMs,
   };
 }
