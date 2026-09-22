@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { test } from "vite-plus/test";
 import {
   invocationBudget,
@@ -149,12 +150,16 @@ test("budget-limited daily work resumes on later ticks and lets untouched tasks 
       },
     },
   ];
+  let totalCalls = 0,
+    totalStatements = 0;
   for (let tick = 0; tick < 6; tick += 1) {
     const now = new Date(at.getTime() + tick * 5 * 60_000);
     const budget = invocationBudget(db, { maxCalls: 12 });
     // Representative watchdog work shares the same budget as maintenance.
     await budget.db.prepare("SELECT 1").first();
     await runPendingMaintenance({ DB: budget.db } as unknown as Env, now, budget, tasks);
+    totalCalls += budget.metrics().d1Calls;
+    totalStatements += budget.metrics().sqlStatements;
     assert.ok(budget.metrics().d1Calls <= 12);
     if (tick === 0) assert.equal(smallRuns, 0);
     if (tick === 1)
@@ -166,6 +171,15 @@ test("budget-limited daily work resumes on later ticks and lets untouched tasks 
   }
   assert.equal(sqlite.prepare("SELECT n FROM progress").get()?.n, 25);
   assert.equal(smallRuns, 1);
+  await recordCostSample(
+    "maintenance-continuation",
+    "local-mock",
+    { d1Calls: totalCalls, sqlStatements: totalStatements },
+    ["test/scheduled-invocation-budget.test.ts"],
+    [
+      "Six ticks; 25 committed work units; SQLite-shaped D1 call counts, not billed rows. Includes watchdog, claim, resume and finalization.",
+    ],
+  );
   assert.deepEqual(await pendingMaintenance(db, new Date(at.getTime() + 60 * 60_000)), []);
 });
 
@@ -326,4 +340,26 @@ test("a completed maintenance page keeps its obligation without blocking other w
   } finally {
     sqlite.close();
   }
+});
+
+test("invalid limits cannot silently disable the shared budget or admit unbounded work", async () => {
+  const db = asQueryableDatabase({
+    prepare: () => {
+      throw new Error("must not execute");
+    },
+  });
+  for (const maxCalls of [NaN, Infinity, -1, 0, 1.5])
+    assert.throws(() => invocationBudget(db, { maxCalls }), /invalid_invocation_budget/);
+  for (const maxWallMs of [NaN, Infinity, -1, 0])
+    assert.throws(() => invocationBudget(db, { maxWallMs }), /invalid_invocation_budget/);
+  for (const finalizationReserve of [-1, NaN, 46, 0.5])
+    assert.throws(() => invocationBudget(db, { finalizationReserve }), /invalid_invocation_budget/);
+  const bounded = invocationBudget(db);
+  for (const cost of [NaN, Infinity, -1, 0.5])
+    await assert.rejects(
+      withinD1Budget(bounded.db, cost, async () => {
+        throw new Error("must not run");
+      }),
+      /invalid_d1_work_unit_budget/,
+    );
 });

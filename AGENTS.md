@@ -73,6 +73,10 @@ use [testing strategy](docs/testing-strategy.md) when choosing that boundary.
   seller pacing is PREPARE / Alarm / FETCH, without crawl Queue lanes, a second D1 lease or sleeps.
 - Keep work bounded and proportional to changed listings/dirty identities. Preserve durable cursors,
   idempotency and budget-aware finalization. Public metadata/prices use persisted projections.
+- For DB, schema, scheduling or background-work changes, identify the owning load contract in
+  `scripts/harness/load-contracts.ts`. Preserve zero-write replay, unrelated-data growth and recovery
+  evidence. Explain budget/fixture changes with before/after measurements; never relax a ceiling merely
+  to pass. Follow [load regression prevention](docs/load-regression-prevention.md).
 - Keep verified catalog matching distinct from guarded exact-identity fallback. Fuzzy/candidate
   matches never authorize merging products; preserve revision, accessory and bundle evidence.
 - Taxonomy v3 separates category leaves, facets and capabilities. `unclassified` is unresolved;
