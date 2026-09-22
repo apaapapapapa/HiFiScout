@@ -12,6 +12,7 @@ import {
 } from "./cost.js";
 import type { CostSample } from "./cost.js";
 import { LOAD_CONTRACTS } from "./load-contracts.js";
+import { readPairedCpu } from "./load-cpu.js";
 import type { LoadContract } from "./load-contracts.js";
 import { collectReplayCases } from "./replay.js";
 import { readCheckout } from "./checkpoint.js";
@@ -288,6 +289,7 @@ export async function runLoadGate(
   baseSha: string,
   baselineDirectory: string,
   candidateDirectory: string,
+  cpuDirectory: string,
   output: string,
   reports: string[],
 ) {
@@ -333,12 +335,17 @@ export async function runLoadGate(
       sources[path] = execFileSync("git", ["show", `${baseSha}:${path}`], { encoding: "utf8" });
     }
   }
+  const cpu = await readPairedCpu(cpuDirectory, baseSha, checkout.sourceSha);
+  const originalBefore = await readCostSamples(join(baselineDirectory, "samples"), {
+    allowEmpty: true,
+  });
+  const originalAfter = await readCostSamples(candidateDirectory, { allowEmpty: true });
   const result = evaluateLoadGate({
     baseSha,
     sourceSha: checkout.sourceSha,
     checkoutClean: !checkout.dirty,
-    before: await readCostSamples(join(baselineDirectory, "samples"), { allowEmpty: true }),
-    after: await readCostSamples(candidateDirectory, { allowEmpty: true }),
+    before: [...originalBefore.filter((s) => !s.id.startsWith("cpu-")), ...cpu.before],
+    after: [...originalAfter.filter((s) => !s.id.startsWith("cpu-")), ...cpu.after],
     beforeContracts,
     afterContracts: LOAD_CONTRACTS,
     beforeRequired: capture.requiredSamples as string[],
@@ -356,13 +363,28 @@ export async function runLoadGate(
       "test/harness-cost.test.ts",
       "test/load-contracts.test.ts",
       "test/load-gate.test.ts",
+      "test/load-cpu.test.ts",
     ],
   });
   const after = readCheckout();
   if (after.dirty || after.sourceSha !== checkout.sourceSha)
     throw new Error("candidate_changed_during_load_gate");
   await mkdir(dirname(output), { recursive: true });
-  await writeFile(output, JSON.stringify(result, null, 2) + "\n");
+  await writeFile(
+    output,
+    JSON.stringify(
+      {
+        ...result,
+        cpuSampling: {
+          method: cpu.method,
+          rounds: cpu.rounds,
+          evidence: repositoryArtifact(join(cpuDirectory, "capture.json")),
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
   console.log(
     JSON.stringify({
       status: result.status,

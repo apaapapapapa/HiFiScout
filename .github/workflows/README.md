@@ -45,8 +45,11 @@ The load contracts cover growth, no-op publication, indirect schema costs, sched
 The parallel `load-baseline` job captures these scenarios on the exact PR base or previous main SHA.
 `product-replay` compares that evidence with the current shards through `load-gate`, rejecting cost
 regressions, incomplete test/metric evidence, unregistered load boundaries and unreviewed budget or
-fixture changes. `fan-out` requires both baseline and comparison to succeed. Candidate tests are
-not repeated. The baseline and comparison artifacts remain available for 30 days; see
+fixture changes. `fan-out` requires both baseline and comparison to succeed. Candidate unit tests are
+not repeated. CPU comparison uses three fixed, alternating base/candidate sessions on the same
+runner; all sessions must complete and their medians must pass the unchanged parser ceilings.
+The original per-revision parser gates remain required. All raw sessions and the paired
+manifest are retained with the baseline and comparison artifacts for 30 days; see
 [load prevention](../../docs/load-regression-prevention.md) for intentional baseline review.
 
 The component job enables `HARNESS_UI=1` for isolated gallery/admin browser evidence. Every case

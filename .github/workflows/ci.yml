@@ -134,7 +134,7 @@ jobs:
     needs: [changes, unit-test, static-checks, load-baseline]
     if: always() && needs.changes.result == 'success' && needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -168,6 +168,16 @@ jobs:
       - name: Assess complete cost evidence for this source
         if: always()
         run: vp run harness cost-report .generated/cost-samples .generated/cost-report.json
+      - name: Measure paired CPU on the same runner
+        if: always()
+        env:
+          LOAD_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach .generated/load-cpu-source "$LOAD_BASE_SHA"
+          (cd .generated/load-cpu-source && vp install --frozen-lockfile)
+          vp run harness load-cpu .generated/load-cpu-source .generated/load-cpu
       - name: Block load regressions, missing coverage and unreviewed budget changes
         if: always()
         env:
@@ -176,7 +186,7 @@ jobs:
         run: |
           set -euo pipefail
           git cat-file -e "${LOAD_BASE_SHA}^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$LOAD_BASE_SHA"
-          vp run harness load-gate "$LOAD_BASE_SHA" .generated/load-baseline .generated/cost-samples .generated/load-gate.json .generated/replay-input/unit-timings-{1,2,3,4}.json
+          vp run harness load-gate "$LOAD_BASE_SHA" .generated/load-baseline .generated/cost-samples .generated/load-cpu .generated/load-gate.json .generated/replay-input/unit-timings-{1,2,3,4}.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -185,6 +195,7 @@ jobs:
             .generated/cost-samples/
             .generated/cost-report.json
             .generated/load-gate.json
+            .generated/load-cpu/
           retention-days: 30
           if-no-files-found: error
 
