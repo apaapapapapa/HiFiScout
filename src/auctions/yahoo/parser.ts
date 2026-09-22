@@ -47,7 +47,11 @@ function unsupported(reason: string): AuctionParseResult {
 /** One labelled value per card. Duplicate labels are ambiguous rather than last-value-wins. */
 function labelledFields(card: string): Map<string, string> | null {
   const fields = new Map<string, string>();
-  const pairs = card.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt\s*>\s*<dd\b[^>]*>([\s\S]*?)<\/dd\s*>/giu);
+  // Never backtrack across another definition or list boundary after a hidden dt/dd was removed.
+  // Inline spans/time remain valid; an orphan label must not consume a later, valid pair.
+  const pairs = card.matchAll(
+    /<dt\b[^>]*>((?:(?!<\/?d[tdl]\b)[\s\S])*)<\/dt\s*>\s*<dd\b[^>]*>((?:(?!<\/?d[tdl]\b)[\s\S])*)<\/dd\s*>/giu,
+  );
   for (const pair of pairs) {
     const label = cleanText(pair[1])
       .normalize("NFKC")
