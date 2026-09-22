@@ -304,57 +304,57 @@
     },
     {
       "id": "load-contracts",
-      "baseSha": "59b7a561dc3f349e9ee1154b6e724dc2db8aeeda",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "5c0f167bf3c7caa2ac4300c07e79ad0099fbed6f23f7a359aebf790fe37312dc",
       "afterDigest": "8a39c84f60a8fb30bedc199e31e31ec703236e315e5249177fe330a07ebe1446",
-      "reason": "Register manufacturer-photo CRUD/search/merge/permalink coverage, map the complete-export table selector to its existing export suites, and add four initial photo measurements. Existing workloads, profiles and ceilings are unchanged; all non-CPU existing measurements match the exact baseline. Local source-bound baseline/candidate captures passed. CI photo observations independently match; its unrelated crawler-test timeout still requires a passing final CI and is not waived.",
+      "reason": "Register manufacturer-photo CRUD/search/merge/permalink coverage, map the complete-export table selector to its existing export suites, and add four initial photo measurements. Existing workloads, profiles and ceilings are unchanged; all non-CPU existing measurements match the exact baseline. Local source-bound captures and the exact updated CI baseline passed. Final-source CI photo observations independently match and all four unit shards pass; no earlier timeout is waived.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/726",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35706773499"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35708547114"
       ]
     },
     {
       "id": "catalog-photo-search-100",
-      "baseSha": "59b7a561dc3f349e9ee1154b6e724dc2db8aeeda",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "62d833c905dd1a84c87d916c74ae9c78d897b274b5f208a0cc8f121a2f399a28",
       "reason": "Reviewed initial manufacturer-photo workload, with no historical measurement invented. Actual real-D1 measurement is 161 reads / 0 writes / 4 statements. The 100-row and 10,000-row searches have identical costs; replay writes zero and a real edit writes one row. Bounded absolute limits, concurrent-edit rejection and merge rollback remain enforced.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/726",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35706773499"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35708547114"
       ]
     },
     {
       "id": "catalog-photo-search-10000",
-      "baseSha": "59b7a561dc3f349e9ee1154b6e724dc2db8aeeda",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "9361aec4cb084848e7ef3081da5eaa390a2626d0b4885982bf931c6b4adc1cee",
       "reason": "Reviewed initial manufacturer-photo workload, with no historical measurement invented. Actual real-D1 measurement is 161 reads / 0 writes / 4 statements. The 100-row and 10,000-row searches have identical costs; replay writes zero and a real edit writes one row. Bounded absolute limits, concurrent-edit rejection and merge rollback remain enforced.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/726",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35706773499"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35708547114"
       ]
     },
     {
       "id": "catalog-photo-replay",
-      "baseSha": "59b7a561dc3f349e9ee1154b6e724dc2db8aeeda",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "d8937e71c0fd62f7f62f45f766325344c6bf51dec64adb5349f9040b1871bec1",
       "reason": "Reviewed initial manufacturer-photo workload, with no historical measurement invented. Actual real-D1 measurement is 2 reads / 0 writes / 1 statements. The 100-row and 10,000-row searches have identical costs; replay writes zero and a real edit writes one row. Bounded absolute limits, concurrent-edit rejection and merge rollback remain enforced.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/726",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35706773499"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35708547114"
       ]
     },
     {
       "id": "catalog-photo-update",
-      "baseSha": "59b7a561dc3f349e9ee1154b6e724dc2db8aeeda",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "4b0267e0a7527892e7db78445d146c680d5c236ac48f584f308a42d4c293c230",
       "reason": "Reviewed initial manufacturer-photo workload, with no historical measurement invented. Actual real-D1 measurement is 7 reads / 1 writes / 3 statements. The 100-row and 10,000-row searches have identical costs; replay writes zero and a real edit writes one row. Bounded absolute limits, concurrent-edit rejection and merge rollback remain enforced.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/726",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35706773499"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/35708547114"
       ]
     }
   ]
