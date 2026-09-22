@@ -47,6 +47,22 @@ export class TestSearch extends DurableObject {
       await new AuctionCatalogMaintenance(store, { read: async () => input.entries ?? [] }).refresh(
         input.now,
       );
+    if (input.op === "legacy-model") {
+      store.sql("catalog", "UPDATE auction_items SET model_key=''");
+      for (const row of store.sql<{ key: string; value: string }>(
+        "catalog",
+        "SELECT key,value FROM catalog_match_cache",
+      )) {
+        const entry = JSON.parse(row.value) as AuctionCatalogEntry;
+        entry.rule = JSON.stringify({ ...JSON.parse(AUCTION_CATALOG_RULE), auction: 1 });
+        store.sql(
+          "catalog",
+          "UPDATE catalog_match_cache SET value=? WHERE key=?",
+          JSON.stringify(entry),
+          row.key,
+        );
+      }
+    }
     try {
       const result =
         input.op === "search"

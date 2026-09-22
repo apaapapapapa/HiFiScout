@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "issue": 703,
+  "baseSha": "e4ade1b0f362a3a54d4f89a987371f62c0baca48",
+  "sourceSha": "72f33f5764fbb0dfc43cc29cf4fdf7eb564afaae",
+  "treeSha": "1ce4b1e706f4871cacb1e1d67ad467e20225488c",
+  "command": "HARNESS_COST_OUTPUT=.generated/search-cost-reviewed vp test run test/auction-search.test.ts",
+  "result": {
+    "files": 1,
+    "tests": 4,
+    "status": "pass"
+  },
+  "samples": [
+    {
+      "schemaVersion": 1,
+      "kind": "cost-sample",
+      "id": "auction-search-filtered",
+      "sourceSha": "72f33f5764fbb0dfc43cc29cf4fdf7eb564afaae",
+      "checkoutClean": true,
+      "recordedAt": "2026-09-22T05:43:23.599Z",
+      "profileHash": "5fb9b5b503ba372df4afcb37b385cd5d6b26d47e53ab99d4930bcd49ee96b780",
+      "environment": "local-workerd",
+      "metrics": {
+        "rowsRead": 12001,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "notes": [
+        "Worst of 24 query/cache combinations over 2,000 retained listings and distinct candidate cache keys: four FTS terms, indexed model prefix, both price orders, state, filters with no matches, catalog/manufacturer/category join. Admission reserves this bound separately."
+      ],
+      "queryPlans": []
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "cost-sample",
+      "id": "auction-search-page",
+      "sourceSha": "72f33f5764fbb0dfc43cc29cf4fdf7eb564afaae",
+      "checkoutClean": true,
+      "recordedAt": "2026-09-22T05:43:23.631Z",
+      "profileHash": "5fb9b5b503ba372df4afcb37b385cd5d6b26d47e53ab99d4930bcd49ee96b780",
+      "environment": "local-workerd",
+      "metrics": {
+        "rowsRead": 53,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "notes": [
+        "Real SQLite DO sorted page with 2,000 listings, unknown tax, stable ID ties and one lookahead. No COUNT, D1 or seller requests; invocation admission is measured separately."
+      ],
+      "queryPlans": []
+    }
+  ],
+  "productionUsage": null,
+  "activation": "disabled_pending_permission_source_contract_and_account_headroom",
+  "notes": [
+    "Prior complete load-capture at 772482649ce32595c1926a3bb8af439bfd4bfb10 passed all cases. Final filtered workload and model-backfill fix were remeasured here. Full CI and browser verification are required on the PR head; local Chromium download timed out.",
+    "Local external-free tsc passed. Wrangler type generation was blocked by automatic approval review; current CI is authoritative for generation."
+  ]
+}
