@@ -55,4 +55,282 @@ interface DiscoveryCapability<TPage extends CrawlPage> {
     extraPageBudget: number;
   };
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
-  discoverTargets?(html: string, page: TPage): readonly C... (truncated)
+  discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
+}
+```
+
+Use the coverage value deliberately:
+
+- `complete`: the discovered target set is a full snapshot. Only this mode may deactivate missing
+  products, and only after bounded discovery finishes without uncertainty.
+- `partial`: the shop intentionally exposes a subset such as new arrivals or recent pages. Missing
+  products are never deactivated from that crawl.
+- `unknown`: the configured target set cannot prove whether it covers all seller inventory. Missing
+  products are never deactivated.
+
+The platform owns the safety rules: it bounds target count using `maxPages` plus
+`policy.extraPageBudget`, validates every target against the shop's configured HTTPS origin, suppresses duplicate
+URLs, and tracks incomplete discovery. A shop must never fetch another listing page from inside
+`parse()` or `discoverTargets()`.
+
+`discoverTargets()` returns:
+
+- `[]` when that page conclusively exposes no additional targets;
+- additional typed targets when pagination/category expansion is known;
+- `null` when the page layout prevents the adapter from knowing whether discovery is complete.
+
+Legacy pagination flags are not accepted. Empty-page behavior, item-count validation, and the
+additional page budget are expressed only through the typed `discovery.policy` object.
+
+## Seller-product fields
+
+Every parser returns the strict `SellerProduct` shape. `rawManufacturer`, `rawCategory`, and
+`category` are required keys even when the seller provides no value; use `""` rather than omitting
+them.
+
+```ts
+interface SellerProduct {
+  sourceId: string;
+  sourceUrl: string;
+  title: string;
+  rawManufacturer: string;
+  manufacturer: string;
+  model: string;
+  rawCategory: string;
+  category: string;
+  conditionText: string;
+  priceYen: number | null;
+  stockStatus: "in_stock" | "sold_out" | "unknown";
+  sourcePublishedAt?: string | null;
+  metadata?: Record<string, unknown>;
+}
+```
+
+The registry validates seller products at runtime before central catalog normalization. Persistence
+fields such as `shop_key`, `is_active`, or timestamps are rejected at this boundary. Parsers therefore
+cannot accidentally become a second persistence model.
+
+`rawManufacturer` and `rawCategory` preserve the seller's wording when available. `manufacturer`
+and `category` are parser candidates/hints; the catalog layer owns canonical manufacturer/category
+resolution, product identity and persistence.
+
+Scope extraction to each seller card or table row before reading price, availability or identity.
+Prefer separately labeled manufacturer/model fields and structured Product data to title heuristics;
+ignore navigation, comments and script text. `src/crawler/listing-fields.ts` provides bounded card
+and nested field readers, including repeated cards with missing closing tags.
+
+Sanitize comments and raw script/style elements **before** scanning for cards, rows or anchors;
+stripping only the extracted inner text is too late because the hidden wrapper has already been
+lost. Use `stripRawTextElements` at a custom parser's entry boundary. Anchor offsets and the HTML
+sliced with them must refer to the same sanitized string. Keep the generic parser's separate JSON-LD
+reader intact. Each shop has a visible-control/hidden-markup regression in
+`test/crawl-audit-prevention.test.ts`; hidden entries must neither create listings nor change a
+visible listing's maker, model, price or availability.
+
+Retain model revisions, cable lengths, impedance, quantities and bundled accessories. Parentheses
+are not inherently sales annotations: the central model resolver removes only recognized notes and
+records their provenance. Cover adjacent products with different makers/prices/stock states, unknown
+multi-word brands, and Japanese model names using minimal fixtures based on the seller's markup.
+Fujiya's fallback may remove a bilingual manufacturer spelling only when it matches a known alias
+of the same maker. Japanese model names and bracketed SKUs must remain together. If a shop supplies
+no category field, leave `rawCategory` empty; a model-name guess belongs only in the parser hint.
+
+Explicit `+` bundles retain one seller listing and one price. The model resolver stores each
+component's manufacturer/model/finish in `metadata.modelNormalization.bundleComponents`, removes
+manufacturer prefixes within each component, and leaves the bundle in candidate status so it cannot
+attach to a single-product catalog entry. Manufacturer-first titles such as
+`THORENS+JELCO TD-321+SA-750` are paired only when the known manufacturer and model counts agree.
+Unspecified component manufacturers stay unspecified; model suffixes such as `MC-3+USB` and
+`NEO+α`, revisions, raw evidence and ambiguous combinations are retained.
+
+## Availability
+
+Listing parsers and detail-page inventory rechecks use one canonical vocabulary:
+
+```text
+in_stock | sold_out | unknown
+```
+
+Use `src/crawler/availability.ts` for shared evidence combination. Confirmed contradictory evidence
+maps to `unknown`; parser success alone never means `in_stock`. Shop-specific seller semantics stay at
+the adapter boundary. Examples:
+
+- a seller that says `商談中` remains purchasable may map it to `in_stock`;
+- a seller that treats `商談中` as uncertain maps it to `unknown`;
+- an explicit sold marker maps to `sold_out`;
+- conflicting sold and available markers map to `unknown`.
+
+The persisted vocabulary remains the existing D1-compatible tri-state. The generic inventory-recheck
+lifecycle interprets a detail-page `unknown` as an ambiguous recheck outcome and retries according to
+its policy; it does not invent a fourth persisted status.
+
+## Configuration
+
+Shop settings are derived from the definition. The key's SCREAMING_SNAKE_CASE form becomes the
+environment prefix and the platform reads:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `<PREFIX>_ENABLED` | kill switch | `defaultEnabled`, else on |
+| `<PREFIX>_INTERVAL_MINUTES` | health and interval-based eligibility | `defaultIntervalMinutes` |
+| `<PREFIX>_REQUEST_DELAY_MS` | per-request pacing | `defaultRequestDelayMs`, else global |
+| `<PREFIX>_MAX_PAGES` | discovery ceiling | `defaultMaxPages`, else global |
+| `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings | off unless capability enabled |
+
+Declare deployed values in `wrangler.jsonc`. The prefix is always derived from the shop key; aliases and
+custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
+discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
+
+Setting `<PREFIX>_ENABLED=false` prevents both new dispatches and DO start commands, including forced
+or replayed commands. Existing DO Alarms park the exact execution/cursor and delete the Alarm before
+seller preparation, detail/inventory requests, or D1 work. No listings, history, or catalog data are
+deleted. Re-enabling requires an explicit configuration change; parked work may then be woken or
+re-delivered through the normal control path. A request already in flight in the old deployment
+cannot be recalled by this setting.
+
+Shops without `scheduleCron` join the shared 11:00/17:00 JST passes. The generator defaults their
+nominal interval to 720 minutes; changing the interval alone does not change Cron frequency. See
+[Crawl orchestration](./crawl-orchestration.md#daily-shop-schedules) for selection and overnight rules.
+
+`defineShopPlugin` validates the definition, discovery policy, and declared capabilities at module load.
+Invalid keys, non-HTTPS origins, invalid coverage/policies, negative budgets, unsupported transports,
+or duplicate crons fail CI rather than a scheduled crawl. Registered definitions, discovery policies,
+capabilities, plugins and the registry are frozen.
+
+## Category evidence and shop policy
+
+Category classification remains deterministic and evidence-based. Do not add shop/model branches to
+the shared taxonomy and do not encode seller merchandising buckets as canonical categories unless the
+seller label is authoritative.
+
+Seller-category policy may be `authoritative`, `corroborative`, or `ignore`. Category mapping/policy is
+registered under `capabilities.catalog`; optional detail enrichment is registered under
+`capabilities.detailCategoryEvidence`. It returns product-specific evidence, never the final category
+decision. Detail requests are bounded by the platform and only unresolved products need them.
+
+Detail extraction must first match the expected product, then read bounded product information.
+Fujiya uses product-specific metadata/lead segments, excluding navigation, related headings and
+accessory rows. Ippinkan reads the matched product's explicit `カテゴリー` table/definition field,
+not its global menu or accessory list. Budgets and cache durations remain shop policy in
+`src/crawler/shops/index.ts` and the corresponding adapter; do not fetch every detail page.
+
+Set `capabilities.detailCategoryEvidence.version` when changing extraction semantics (omitted means
+version 1). Positive and negative detail caches are reused only for the current shop-local version;
+this avoids invalidating other shops or scheduling a catalog-wide replay. Structured staged results
+carry that version too. If a deployment crosses a run, an old committed result retains its request
+fence but cannot be stamped as current evidence or a negative cache hit; the next ordinary crawl
+retries within its existing request budget. Manual overrides and verified catalog authority remain
+ahead of optional detail enrichment.
+
+Taxonomy v3 uses canonical product-type leaves, separate facets, and capabilities. `unclassified`
+means evidence is insufficient; it is internal and non-filterable. There is no canonical `other`
+product type. Legacy IDs are compatibility inputs, not new adapter output. Candidate categories
+from unresolved products must not leak into canonical category filters.
+
+The per-shop Durable Object builds the detail-enrichment plan once per run and advances a cursor
+over immutable target chunks. Preserve product-specific evidence, the durable detail-page fence,
+and positive/negative caching when adding a capability. Do not reload the full staged inventory or
+re-resolve every product on each Alarm; see [Crawl orchestration](./crawl-orchestration.md).
+
+## Shop-specific metadata
+
+Shop-specific factual fields belong in `metadata`, not new `products` columns:
+
+```ts
+{
+  sourceId: "123",
+  rawManufacturer: "Example Audio Co., Ltd.",
+  manufacturer: "Example Audio",
+  model: "Model 1",
+  title: "Example Audio Model 1",
+  rawCategory: "Control Amplifier",
+  category: "プリアンプ",
+  conditionText: "A",
+  priceYen: 100_000,
+  stockStatus: "in_stock",
+  sourceUrl: "https://example.com/used/123",
+  metadata: {
+    storeName: "Tokyo",
+    warranty: "6 months",
+    accessories: ["remote", "box"],
+  },
+}
+```
+
+Only factual seller information belongs here. Do not copy descriptions, staff comments, images, or
+other editorial content.
+
+## Before enabling a collector
+
+1. Replace the generated fixture with representative sanitized listing HTML: normal, sold,
+   negotiating/unknown, pagination termination, malformed/empty page.
+2. Implement `discovery.initialTargets()`, optional `discoverTargets()`, and choose explicit coverage.
+3. Implement `parse()` returning the complete `SellerProduct` contract including raw fields.
+4. Map seller availability to the canonical tri-state and test contradictory/uncertain cases.
+5. Define seller-category mapping/policy and optional detail evidence where listing evidence is weak.
+6. Add parser assertions for raw fields, availability, classification and factual metadata.
+7. Run `vp run verify`, `vp run docs:architecture:check`, and `vp run build`.
+8. Check robots.txt and the site's current terms.
+9. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`; relay collectors also require
+   `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN`.
+10. Remove `defaultEnabled: false` only after the implementation and CI are green.
+
+
+## e☆イヤホン collection
+
+`e-earphone` reads the public `/collections/recently-used` HTML feed. It shares the normal
+11:00/17:00 JST rotation when enabled; current page and pacing limits live in `wrangler.jsonc`.
+Coverage is deliberately **partial**: reaching the page ceiling or the end of recent arrivals cannot
+deactivate absent listings, and older inventory is not a complete, continuously rechecked snapshot.
+The collector makes no product-detail requests and does not retrieve images or seller descriptions.
+
+The adapter scopes manufacturer, title, selling price and collection membership to each product card.
+Membership must match both the card's product ID and handle. Seller collection IDs provide category,
+known rank and positive availability evidence; unknown/missing IDs stay unknown. The combined
+amp/DAC bucket stays corroborative, so it cannot force a headphone-amplifier classification.
+Sale prices take
+precedence over crossed-out prices. Only recognized trailing store names and the leading used marker
+are removed from the model, preserving revisions, bracketed SKUs, bundles and missing-accessory notes.
+
+At the project operator's request on 2026-09-22, production excludes this shop with
+`E_EARPHONE_ENABLED=false`. This supersedes the earlier enablement decision; the registry also retains
+`defaultEnabled: false`. The adapter, parser fixtures, existing listings, price history, and catalog
+remain intact, but retaining them does not authorize or enable further collection. Do not re-enable
+without a new explicit operator instruction and confirmation of the consent required by
+[the seller's terms, Article 15](https://www.e-earphone.jp/policies/terms-of-service).
+Revalidate the current markup, collection IDs and robots policy before any future enablement.
+The observed robots policy
+allows the feed and ordinary `?page=` pagination but disallows collection `sort_by` URLs; the
+adapter follows only the immediate next page and keeps the platform's robots/redirect/body guards.
+
+## Optional capabilities
+
+A normal shop does not need either capability. Seller-specific diagnostics and threshold tuning are
+registered explicitly at the composition boundary; do not add flat hooks to `ShopAdapter` and do
+not branch on a shop key inside the generic crawler or Data Quality evaluator.
+
+```ts
+defineShopPlugin(adapter, definition, {
+  diagnostics: {
+    diagnosePage: (html, page) => diagnoseSellerMarkup(html, page),
+  },
+  dataQuality: {
+    thresholds: {
+      inventoryUnknownRate: { warning: 0.1, critical: 0.25 },
+    },
+  },
+});
+```
+
+`diagnostics.diagnosePage` may return seller-specific explanatory metadata, but the generic crawl
+lifecycle treats that value as opaque. `dataQuality.thresholds` may tune the shared metrics only;
+shops must not replace or duplicate the common evaluator. If a new quality concept should apply to
+all shops, add it to the platform instead.
+
+
+### Capability composition
+
+The adapter itself stays universal and minimal. Transport selection, catalog hints, detail evidence,
+inventory recheck, diagnostics, Data Quality thresholds, and activity semantics are attached only at
+`defineShopPlugin(...)` in the composition root. A normal shop must not add a new optional field to
+`ShopAdapter`.
