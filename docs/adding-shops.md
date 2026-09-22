@@ -285,10 +285,12 @@ Sale prices take
 precedence over crossed-out prices. Only recognized trailing store names and the leading used marker
 are removed from the model, preserving revisions, bracketed SKUs, bundles and missing-accessory notes.
 
-The shop is registered with `defaultEnabled: false` and deployed `E_EARPHONE_ENABLED=false`.
-On 2026-09-19, [the seller's terms, Article 15](https://www.e-earphone.jp/policies/terms-of-service)
-explicitly required seller consent for automated collection. Confirm that consent and revalidate
-the current markup, collection IDs and robots policy before enabling. The observed robots policy
+The project operator confirmed seller consent on 2026-09-22, and production enables collection with
+`E_EARPHONE_ENABLED=true`. The registry retains `defaultEnabled: false` so other deployments require
+explicit opt-in after obtaining the consent required by
+[the seller's terms, Article 15](https://www.e-earphone.jp/policies/terms-of-service).
+Revalidate the current markup, collection IDs and robots policy when enabling another deployment.
+The observed robots policy
 allows the feed and ordinary `?page=` pagination but disallows collection `sort_by` URLs; the
 adapter follows only the immediate next page and keeps the platform's robots/redirect/body guards.
 

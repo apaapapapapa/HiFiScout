@@ -118,10 +118,11 @@ test("e-earphone follows only the immediate next page of its recent feed", () =>
   assert.equal(discoverPages(eEarphoneAdapter, `<script>${fixture}</script>`, firstPage), null);
 });
 
-test("e-earphone remains bounded and disabled pending seller consent, with safe partial coverage", () => {
+test("e-earphone requires explicit opt-in and remains bounded with safe partial coverage", () => {
   const plugin = getShopPlugin("e-earphone")!;
   assert.equal(getShopEnabled({}, plugin.definition), false);
   assert.equal(getShopEnabled({ E_EARPHONE_ENABLED: "false" }, plugin.definition), false);
+  assert.equal(getShopEnabled({ E_EARPHONE_ENABLED: "true" }, plugin.definition), true);
   assert.equal(getShopMaxPages({}, plugin.definition, 40), 10);
   assert.equal(getShopRequestDelayMs({}, plugin.definition, 1200), 2000);
   assert.equal(plugin.definition.defaultIntervalMinutes, 720);
