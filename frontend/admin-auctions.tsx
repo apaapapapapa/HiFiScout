@@ -90,7 +90,7 @@ export function AdminAuctions() {
           <p>
             状態の読取りに失敗していても、予備枠から停止を試みられます。失敗時は配備設定の収集・検索・表示スイッチを無効にしてください。
           </p>
-          <div className="admin-actions">
+          <div className="auction-admin-actions">
             {button("収集を停止", { action: "pause" })}
             {button("公開を停止", { action: "public_pause" })}
           </div>
@@ -166,7 +166,7 @@ export function AdminAuctions() {
               </dd>
             </div>
           </dl>
-          <div className="admin-actions">
+          <div className="auction-admin-actions">
             {button("収集を停止", { action: "pause" }, data.state.paused)}
             {button(
               "収集を再開",
@@ -193,7 +193,7 @@ export function AdminAuctions() {
                 !data.exhaustedTasks,
             )}
           </div>
-          <fieldset disabled={busy}>
+          <fieldset className="auction-admin-fieldset" disabled={busy}>
             <legend>収集対象カテゴリ</legend>
             {data.categories.map((category) => (
               <label key={category.id}>
@@ -214,7 +214,7 @@ export function AdminAuctions() {
             {button("対象カテゴリを保存", { action: "wake", categories })}
           </fieldset>
           {data.state.halt ? (
-            <fieldset disabled={busy}>
+            <fieldset className="auction-admin-fieldset" disabled={busy}>
               <legend>取得元の停止解除</legend>
               <p>
                 取得元の許可・制限・仕様を再確認し、必要な修正を配備してから解除してください。収集の管理停止中にだけ解除できます。
@@ -285,9 +285,9 @@ export function AdminAuctions() {
                   ] as const
                 ).map(([label, used, limit]) => (
                   <tr key={label}>
-                    <td>{label}</td>
-                    <td>{used.toLocaleString("ja-JP")}</td>
-                    <td>{limit.toLocaleString("ja-JP")}</td>
+                    <td data-label="項目">{label}</td>
+                    <td data-label="予約量">{used.toLocaleString("ja-JP")}</td>
+                    <td data-label="暫定上限">{limit.toLocaleString("ja-JP")}</td>
                   </tr>
                 ))}
               </tbody>
