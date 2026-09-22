@@ -22,6 +22,8 @@ ignore engine failures or rewrite the lockfile to accommodate Work's default run
 
 Run `vp install --frozen-lockfile`, `node scripts/work-doctor.ts` and `vp run harness loop help`.
 Keep the tool PATH in subsequent executions, including the loop evaluator's child processes.
+The evaluator prepends each measured checkout's own `node_modules/.bin` so its runner and test
+imports share one installation; the controller's pinned tool PATH remains the installation fallback.
 The harness and aggregate-check TypeScript entrypoints use `node --import tsx`, which avoids
 opening the tsx CLI's control socket in environments that prohibit local socket listeners.
 This preserves TypeScript loading and does not change the checks or their results.

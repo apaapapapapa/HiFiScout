@@ -9,6 +9,37 @@ import { evaluateLoopAttempt } from "../scripts/harness/loop/evaluation.js";
 import { runLoopCommand } from "../scripts/harness/loop/command.js";
 import type { LoopCommand, LoopCommandResult } from "../scripts/harness/loop/command.js";
 
+test("verification uses the candidate's installed runner instead of the controller's runner", async () => {
+  const f = await loopGitFixture();
+  const previousPath = process.env.PATH;
+  try {
+    const controllerBin = join(f.root, "controller-bin");
+    const candidateBin = join(f.source, "node_modules", ".bin");
+    for (const [bin, output] of [
+      [controllerBin, "controller"],
+      [candidateBin, "candidate"],
+    ]) {
+      await mkdir(bin, { recursive: true });
+      await writeFile(join(bin, "vp"), `#!/bin/sh\necho ${output}\n`);
+      await chmod(join(bin, "vp"), 0o755);
+    }
+    process.env.PATH = `${controllerBin}:${previousPath}`;
+    const logPath = join(f.root, "runner.log");
+    const result = await runLoopCommand({
+      cwd: f.source,
+      args: ["run", "check"],
+      logPath,
+      deadline: new Date(Date.now() + 10_000).toISOString(),
+    });
+    assert.equal(result.status, "pass");
+    assert.equal((await readFile(logPath, "utf8")).trim(), "candidate");
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test("a real Git candidate moves from failure through repair to verified review without resetting attempts", async () => {
   const f = await loopGitFixture();
   try {

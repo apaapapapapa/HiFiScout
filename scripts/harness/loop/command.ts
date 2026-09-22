@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import type { CheckStatus } from "../report.js";
 
 export interface LoopCommand {
@@ -25,6 +25,9 @@ export async function runLoopCommand(request: LoopCommand): Promise<LoopCommandR
   const env = { ...process.env };
   for (const key of Object.keys(env))
     if (!["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"].includes(key)) delete env[key];
+  // Each checkout imports its own test runtime. Inheriting the controller's absolute .bin first
+  // loads a second Vitest instance, so no suite can register even with matching package versions.
+  env.PATH = `${join(request.cwd, "node_modules", ".bin")}${delimiter}${env.PATH || ""}`;
   env.CI = "true";
   env.NO_COLOR = "1";
   if (request.costOutput) env.HARNESS_COST_OUTPUT = request.costOutput;

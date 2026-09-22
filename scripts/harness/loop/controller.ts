@@ -54,7 +54,15 @@ export function assessLoopSource(
   const report = parseHarnessReport(value);
   const requirements = [
     ...spec.task.requirements.filter((r) => r.scope === "source" && !isDeliveryCheck(r.id)),
-    ...spec.comparisons.map((kind) => ({ id: `comparison:${kind}`, scope: "source" as const })),
+    ...spec.comparisons
+      .filter(
+        (kind) =>
+          !spec.task.requirements.some(
+            (requirement) =>
+              requirement.id === `comparison:${kind}` && requirement.scope === "source",
+          ),
+      )
+      .map((kind) => ({ id: `comparison:${kind}`, scope: "source" as const })),
   ];
   const checks = bindRequiredChecks(
     requirements,
