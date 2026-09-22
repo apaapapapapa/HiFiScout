@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CatalogPhoto as Photo } from "../src/api/catalog-photo-contracts.js";
+import { safePhotoUrl, type CatalogPhoto as Photo } from "../src/api/catalog-photo-contracts.js";
 
 export function CatalogPhoto({
   photo,
@@ -11,7 +11,8 @@ export function CatalogPhoto({
   compact?: boolean;
 }) {
   const [failedUrl, setFailedUrl] = useState("");
-  if (!photo) return null;
+  const sourceUrl = safePhotoUrl(photo?.sourceUrl);
+  if (!photo || !sourceUrl) return null;
   return (
     <figure className={`catalog-photo${compact ? " catalog-photo-compact" : ""}`}>
       {failedUrl === photo.imageUrl ? (
@@ -29,7 +30,7 @@ export function CatalogPhoto({
         />
       )}
       <figcaption>
-        <a href={photo.sourceUrl} target="_blank" rel="noopener noreferrer">
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
           メーカー写真{photo.credit ? `：${photo.credit}` : "（出典）"}
         </a>
         {!compact && <span>参考写真です。出品の色・付属品・状態は販売店でご確認ください。</span>}

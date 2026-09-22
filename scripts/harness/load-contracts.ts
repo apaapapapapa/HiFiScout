@@ -113,6 +113,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/product-audit-export-job-repository.ts",
       "src/db/knowledge-catalog-export-job-repository.ts",
       "src/db/data-export-job-lifecycle.ts",
+      "src/export/complete-csv.ts",
     ],
     suites: [
       "test/queue-routing.test.ts",
@@ -161,6 +162,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/catalog-photo-repository.ts",
       "src/db/catalog-product-detail-repository.ts",
       "src/db/knowledge-catalog-admin-operations.ts",
+      "src/http/product-permalink.ts",
     ],
     suites: ["test/catalog-photo.test.ts", "test/catalog-photo-budget.test.ts"],
     samples: {

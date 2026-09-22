@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { CatalogPhoto } from "../frontend/catalog-photo.js";
 import { parseCatalogPhoto, safePhotoUrl } from "../src/api/catalog-photo-contracts.js";
 import { readCatalogPhoto, updateCatalogPhoto } from "../src/db/catalog-photo-repository.js";
 import {
@@ -44,6 +47,20 @@ test("photo URLs reject active, credentialed and private-network sources", () =>
     assert.equal(parseCatalogPhoto({ ...photo, imageUrl: url }), null);
     assert.equal(parseCatalogPhoto({ ...photo, sourceUrl: url }), null);
   }
+});
+
+test("photo rendering validates source links even when props bypass the API parser", () => {
+  const render = (sourceUrl: string) =>
+    renderToStaticMarkup(
+      createElement(CatalogPhoto, { photo: { ...photo, sourceUrl }, name: "P-1" }),
+    );
+  for (const sourceUrl of [
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "https://localhost/a",
+  ])
+    assert.equal(render(sourceUrl), "");
+  assert.ok(render(photo.sourceUrl).includes(`href="${photo.sourceUrl}"`));
 });
 
 test("catalog photo publication is idempotent, revision guarded, removable and model scoped", async () => {
