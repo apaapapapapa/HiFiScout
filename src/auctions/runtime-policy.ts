@@ -20,6 +20,7 @@ export interface AuctionTask {
 export interface AuctionCharge {
   requests: number;
   publicRequests: number;
+  alarmOperations: number;
   sellerRequests: number;
   pages: number;
   newItems: number;
@@ -50,6 +51,7 @@ export interface AuctionRuntimeState {
 export const emptyAuctionCharge = (): AuctionCharge => ({
   requests: 0,
   publicRequests: 0,
+  alarmOperations: 0,
   sellerRequests: 0,
   pages: 0,
   newItems: 0,
@@ -92,6 +94,7 @@ export function reserveAuctionBudget(
   const maxima: AuctionCharge = {
     requests: limits.doRequestsPerUtcDay,
     publicRequests: limits.publicRequestsPerUtcDay,
+    alarmOperations: limits.alarmOperationsPerUtcDay,
     sellerRequests: limits.sellerRequestsPerUtcDay,
     pages: limits.listingPagesPerUtcDay,
     newItems: limits.newItemsPerUtcDay,

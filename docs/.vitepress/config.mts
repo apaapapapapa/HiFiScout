@@ -48,6 +48,7 @@ export default {
           { text: "Data Quality", link: "/data-quality" },
           { text: "Remediation Runbook", link: "/data-quality-remediation" },
           { text: "Registered Product Admin", link: "/listing-admin" },
+          { text: "Yahoo Auction Pilot", link: "/yahoo-auctions" },
           { text: "R2 Evidence Limits", link: "/r2-evidence-safety" },
         ],
       },

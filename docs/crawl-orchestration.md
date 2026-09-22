@@ -1,5 +1,10 @@
 # Crawl orchestration
 
+This guide describes registered retail shops. The disabled [Yahoo auction pilot](./yahoo-auctions.md)
+owns a separate SQLite DO and Alarm, while reusing the same 23:00–08:00 JST collection quiet window.
+Auction price/state freshness uses wall-clock observation age, including quiet hours; it does not
+inherit the retail health metric's planned-pause adjustment. No public auction read triggers a fetch.
+
 The per-shop `CrawlScheduler` Durable Object is the authoritative crawl control plane. Cloudflare Queues serve independent post-commit work such as Knowledge Catalog verification and CSV exports; Queue capacity, quota, backlog, or lane selection must not control whether a crawl runs. Current entry points are `src/worker.ts`, `src/scheduled.ts`, `src/crawler/dispatch.ts`, and `src/crawler/crawl-scheduler-do.ts`.
 
 ## Runtime model

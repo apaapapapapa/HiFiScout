@@ -1,3 +1,4 @@
+import { AdminAuctions } from "./admin-auctions.js";
 import { AdminManufacturerRegistry } from "./admin-manufacturer-registry.js";
 import { AdminQualityPanel } from "./admin-quality.js";
 import { AdminExtractionPreview } from "./admin-extraction-preview.js";
@@ -231,6 +232,9 @@ export function AdminConsole() {
               }}
             />
           ) : null}
+        </div>
+        <div hidden={location.view !== "auctions"}>
+          {visited.has("auctions") ? <AdminAuctions /> : null}
         </div>
         <div hidden={location.view !== "crawls"}>
           {visited.has("crawls") ? <AdminCrawls /> : null}

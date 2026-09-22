@@ -4,7 +4,13 @@ Status: Accepted
 
 ## Decision
 
-HiFiScout keeps Cloudflare D1 as the system of record for structured product data. R2 holds bounded diagnostic/verification evidence and generated CSV exports. Product search stays on D1 FTS5. Product identity is deterministic and explainable and uses the verified Knowledge Catalog as its canonical-product basis.
+HiFiScout keeps Cloudflare D1 as the system of record for structured retail and catalog product data. R2 holds bounded diagnostic/verification evidence and generated CSV exports. Retail product search stays on D1 FTS5. Product identity is deterministic and explainable and uses the verified Knowledge Catalog as its canonical-product basis.
+
+The disabled [Yahoo auction pilot](./yahoo-auctions.md) is a separate listing-level boundary: one
+SQLite DO stores static facts/FTS, live auction observations, bounded tasks/receipts and expiring
+shared catalog candidates. D1 remains the read-only catalog authority. Auction bids never enter
+retail listings, price history, minima or Price Index; public requests read the DO and never fetch
+the seller or D1. The pilot's permission, source-contract and account-budget gates remain unverified.
 
 The architecture intentionally does **not** introduce Vectorize/vector databases, graph databases, KV/Redis, document databases, external search engines, or PostgreSQL at this stage.
 

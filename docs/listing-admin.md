@@ -30,10 +30,10 @@ canonical mapping is `frontend/admin-navigation.ts`.
 | 商品管理 | 登録商品、抽出テスト |
 | 品質管理 | 品質点検、誤り報告 |
 | 一括処理 | バックグラウンド処理（カタログ・判定ルール・出品条件の再処理と処理履歴）、CSV入出力 |
-| 稼働管理 | 負荷・稼働状況、ショップ別クロール |
+| 稼働管理 | 負荷・稼働状況、ショップ別クロール、Yahoo!オークション |
 
 Task hashes remain stable (`#catalog`, `#listings`, `#reports`, `#duplicates`, `#candidates`,
-`#ai`, `#manufacturers`, `#extraction`, `#quality`, `#csv`, `#jobs`, `#operations`, `#crawls`).
+`#ai`, `#manufacturers`, `#extraction`, `#quality`, `#csv`, `#jobs`, `#operations`, `#crawls`, `#auctions`).
 The retired `#maintenance` entry resolves to `#jobs` with its query parameters intact and replaces
 its history entry. Browser Back/Forward and direct links select both the workspace and its task.
 Navigation preserves loaded searches and in-progress CSV input within the open console; private
@@ -88,7 +88,17 @@ the admin flag cannot override those prerequisites. Unavailable state is shown a
 controls blocked until a successful refresh. After a control request, including a lost response,
 the console reads saved state before accepting another change.
 
+## Yahoo auction controls
+
+The independent **稼働管理 → Yahoo!オークション** task (`/#auctions`) uses Access-protected
+status/control routes and a named Service Binding method. Collection/public stops, source halt,
+nightly pause, deployment gates and conservative reservations remain separate. It loads only when
+visited or explicitly refreshed; unavailable status and unmeasured billing remain unknown.
+See the [auction management and recovery runbook](./yahoo-auctions.md#management-and-recovery)
+for category scope, lost responses, bounded retry, reviewed halt clearing and emergency rollback.
+
 ## Seller offer decisions
+
 
 The listing row's **出品条件** action opens the title, original condition label and seller-derived
 facts alongside separate manual decisions. The editor can confirm presence, explicit absence, or

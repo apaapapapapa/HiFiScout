@@ -47,6 +47,14 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "A bounded 25-offer SQLite DO page among 2,000 retained listings uses one lookahead, reads the runtime coverage, and performs no D1, seller or data writes. Admission reservations are separate from SQL observations.",
   },
   {
+    id: "auction-admin",
+    sources: ["src/auctions/admin.ts", "src/auctions/status.ts"],
+    suites: ["test/auction-admin-runtime.test.ts"],
+    samples: { "auction-admin-status": d1(10100, 0, 6) },
+    reason:
+      "SQLite DO administrative counts stay bounded by retained items/tasks/candidate keys and remain distinct from unknown production billing. Alarm operations are observed separately.",
+  },
+  {
     id: "crawl-checkpoints",
     sources: ["src/db/crawl-fetch-*", "src/crawler/collection-progress.ts"],
     suites: ["test/d1-crawl-checkpoint-budget.test.ts", "test/d1-crawl-collection-budget.test.ts"],

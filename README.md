@@ -13,7 +13,8 @@ comparison through a React UI on Cloudflare Workers + D1.
 - User traffic never triggers seller crawling. Per-shop Durable Objects execute scheduled crawls
   with Alarm-based pacing and resumable steps.
 - Respect `robots.txt`, authentication boundaries, rate limits, and shop-specific request delays.
-- D1 owns structured facts and search projections; R2 holds bounded evidence and generated exports.
+- D1 owns retail/catalog facts and search projections; R2 holds bounded evidence and generated exports.
+  The disabled Yahoo auction pilot keeps its independent listing facts/search in SQLite DO storage.
 - Preserve shop-specific offers and listing price history while grouping safe product identities.
 
 ## Architecture
@@ -23,6 +24,7 @@ comparison through a React UI on Cloudflare Workers + D1.
 | Public Worker | Static React UI, public HTTP API, Cron and non-crawl Queue entry points | `src/worker.ts`, `src/index.ts` |
 | Crawl control | Reserve a dispatch generation and deliver it to one DO per shop; recover the same token | `src/scheduled.ts`, `src/crawler/dispatch.ts` |
 | CrawlScheduler DO | Bounded fetch/parse/finalize steps and PREPARE / Alarm / FETCH pacing | `src/crawler/crawl-scheduler-do.ts` |
+| YahooAuctions SQLite DO | Gated auction facts, listing search, bounded collection and shared catalog candidates; disabled by default | `src/auctions/`, [pilot/runbook](docs/yahoo-auctions.md) |
 | Shop plugins and relay | Seller discovery/parsing and transport; optional Tokyo Lambda HTTP relay | `src/crawler/shops/index.ts`, `infra/audiounion-lambda/` |
 | D1 / FTS5 | Listings, catalog identity, product entities/offers, price projections, durable work | `src/db/`, `migrations/` |
 | Post-commit Queues | Knowledge Catalog verification and asynchronous CSV exports; independent of crawling | `src/queue.ts`, `wrangler.jsonc` |
@@ -40,6 +42,7 @@ See [Crawl orchestration](docs/crawl-orchestration.md) and
 | Deployed bindings and configuration | `wrangler.jsonc`, `wrangler.admin.jsonc` |
 | Cron selection and maintenance cadence | `src/scheduled.ts` and registered shop definitions |
 | Database schema | Ordered `migrations/*.sql` |
+| Auction gates, SQLite schema and recovery | `src/auctions/yahoo/policy.ts`, `src/auctions/storage.ts`, `docs/yahoo-auctions.md` |
 | Public search and price summaries | `src/http/public-routes.ts`, `src/db/product-search-price-index-repository.ts` |
 | Product identity and exact fallback grouping | `src/catalog/product-identity.ts`, `src/db/product-search-exact-identity.ts` |
 | Taxonomy, classification, remediation | `docs/data-quality.md`, `docs/data-quality-remediation.md`, `src/catalog/` |
@@ -89,6 +92,8 @@ Primary public endpoints include:
 - `GET /api/products/:id/history` — listing-scoped observed price history.
 - `GET /api/meta` — shop state and precomputed metadata counts, including `countsUpdatedAt`.
 - `GET /api/health` — crawler-aware health status.
+- `GET /api/auctions` — gated auction listing search, disabled by default; independent of retail prices.
+- `GET /api/auction-features` — auction serving availability without a DO read.
 - `POST /api/product-correction-reports` — submit a bounded product correction report.
 
 The [HTTP API reference](docs/reference/http-api.md) describes executable contract coverage; it is
@@ -98,6 +103,8 @@ Worker provides catalog/listing corrections, CSV import/export and background jo
 Binding. Catalog-change, model/category and offer-fact reprocessing use the common jobs screen with
 saved progress and pause/resume; see [administration](docs/listing-admin.md). Broader operator maintenance
 uses the scoped Actions/scripts documented in the workflow responsibility map.
+The separate `#auctions` admin task controls the bounded Yahoo pilot without overriding its
+permission, source-contract or account-budget gates; see the [auction runbook](docs/yahoo-auctions.md).
 
 ## Operations and resource use
 

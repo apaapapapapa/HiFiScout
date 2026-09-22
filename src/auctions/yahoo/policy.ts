@@ -75,6 +75,7 @@ export const YAHOO_AUCTION_PILOT_LIMITS = Object.freeze({
   maxItemsPerPage: 100,
   doRequestsPerUtcDay: 5_000,
   publicRequestsPerUtcDay: 500,
+  alarmOperationsPerUtcDay: 5_000,
   rowsReadPerUtcDay: 250_000,
   rowsWrittenPerUtcDay: 10_000,
   durationGbSecondsPerUtcDay: 1_000,

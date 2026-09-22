@@ -39,6 +39,19 @@ export interface StoredAuction {
 
 /** SQL cursors are exhausted synchronously before metering or any caller await. */
 export class AuctionStore {
+  readonly alarmOperations = { get: 0, set: 0, delete: 0 };
+  async getAlarm() {
+    this.alarmOperations.get++;
+    return this.storage.getAlarm();
+  }
+  async setAlarm(at: number) {
+    this.alarmOperations.set++;
+    return this.storage.setAlarm(at);
+  }
+  async deleteAlarm() {
+    this.alarmOperations.delete++;
+    return this.storage.deleteAlarm();
+  }
   readonly usage: Partial<Record<AuctionSqlFamily, AuctionSqlUsage>> = {};
   constructor(readonly storage: DurableObjectStorage) {
     const exists = this.sql(

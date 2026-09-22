@@ -1,3 +1,4 @@
+import { parseAuctionAdminCommand } from "../api/admin-auction-contracts.js";
 import { parseAdminQualityCommand } from "../http/admin-quality.js";
 import { parseAdminManufacturerCommand } from "../http/admin-manufacturer-registry.js";
 import { parseAdminExtractionRequest } from "../http/admin-extraction-preview.js";
@@ -34,6 +35,7 @@ interface ListingAdminRpc extends CatalogAdminRpc {
   getOperations(): Promise<unknown>;
   adminJobs(input: unknown, actor?: string): Promise<unknown>;
   getCrawlOverview(): Promise<unknown>;
+  adminAuctions(input: unknown): Promise<{ status: number; data: unknown }>;
   controlCrawl(shopKey: string, action: "pause" | "resume" | "run"): Promise<unknown>;
   getChangeHistory(kind: "listing" | "catalog", id: number): Promise<unknown>;
   previewHistoryRestore(input: AdminRestoreSelection): Promise<unknown>;
@@ -116,6 +118,8 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === "/api/admin/ai-catalog" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
+    pathname === "/api/admin/auctions" ||
+    pathname === "/api/admin/auctions/control" ||
     pathname === "/api/admin/crawls" ||
     pathname === "/api/admin/crawls/control" ||
     pathname === "/api/admin/change-history" ||
@@ -278,6 +282,25 @@ export async function handleAuthenticatedAdminEntryRequest(
         { status: 503 },
       );
     }
+  }
+
+  if (url.pathname === "/api/admin/auctions" && request.method === "GET") {
+    const result = await env.CATALOG_ADMIN.adminAuctions({ action: "status" });
+    return json(result.data, { status: result.status });
+  }
+  if (url.pathname === "/api/admin/auctions/control" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 1024);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAuctionAdminCommand(body);
+    if (!command || command.action === "status")
+      return json({ error: "invalid_auction_control" }, { status: 400 });
+    const result = await env.CATALOG_ADMIN.adminAuctions(command);
+    return json(result.data, { status: result.status });
   }
 
   if (url.pathname === "/api/admin/crawls" && request.method === "GET")

@@ -793,3 +793,9 @@ button,
     font-size: 16px;
   }
 }
+
+.auction-admin-status { display: grid; gap: 12px; margin-block: 20px; }
+.auction-admin-status > div { display: grid; grid-template-columns: minmax(160px, 1fr) 3fr; gap: 16px; padding-block: 8px; border-bottom: 1px solid var(--line, #ddd); }
+.auction-admin-status dt { font-weight: 600; }
+.auction-admin-status dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .auction-admin-status > div { grid-template-columns: 1fr; gap: 4px; } }
