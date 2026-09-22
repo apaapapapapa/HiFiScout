@@ -108,24 +108,26 @@ export function AdminCrawls() {
               const collectionEnabled = configured && !paused;
               return (
                 <tr key={item.shopKey}>
-                  <td>
-                    {item.name}
-                    <br />
-                    {!item.enabled
-                      ? "設定で無効"
-                      : !item.configured
-                        ? "接続未設定"
-                        : !known
-                          ? "状態不明"
-                          : paused
-                            ? "収集オフ"
-                            : data.quietHours
-                              ? "夜間停止中"
-                              : item.control?.running
-                                ? "実行中"
-                                : "待機"}
+                  <td data-label="ショップ / 状態">
+                    <div>
+                      {item.name}
+                      <br />
+                      {!item.enabled
+                        ? "設定で無効"
+                        : !item.configured
+                          ? "接続未設定"
+                          : !known
+                            ? "状態不明"
+                            : paused
+                              ? "収集オフ"
+                              : data.quietHours
+                                ? "夜間停止中"
+                                : item.control?.running
+                                  ? "実行中"
+                                  : "待機"}
+                    </div>
                   </td>
-                  <td>
+                  <td data-label="収集">
                     {known ? (
                       <button
                         type="button"
@@ -145,64 +147,70 @@ export function AdminCrawls() {
                       "未確認"
                     )}
                   </td>
-                  <td>
-                    {item.error ? (
-                      <p role="alert">{item.error}</p>
-                    ) : (
-                      <>
-                        {STAGES[item.control?.stage ?? "idle"] ?? item.control?.stage}
-                        {item.control?.pagesFetched != null ? (
-                          <p>
-                            取得 {item.control.pagesFetched}ページ / 解析{" "}
-                            {item.control.pagesParsed ?? "不明"}ページ
-                            <br />
-                            進捗日時 {dateText(item.control.progressAt)}
-                          </p>
-                        ) : null}
-                        {item.control?.jobId ? (
-                          <details>
-                            <summary>実行ID</summary>
-                            <code>{item.control.jobId}</code>
-                          </details>
-                        ) : null}
-                      </>
-                    )}
-                    <p>
-                      {paused || !configured ? "再開後の定期枠" : "次の定期枠"}:{" "}
-                      {dateText(item.nextScheduledAt)}
-                    </p>
-                    {item.control?.nextAlarmAt ? (
-                      <p>次ステップ: {dateText(item.control.nextAlarmAt)}</p>
-                    ) : null}
-                  </td>
-                  <td>
-                    {dateText(item.lastSuccessAt)}
-                    <br />
-                    {item.lastItemCount === null ? "取得件数は未記録" : `${item.lastItemCount}件`}
-                    {item.lastItemCount !== null && item.previousItemCount !== null ? (
+                  <td data-label="実行段階 / 次回予定">
+                    <div>
+                      {item.error ? (
+                        <p role="alert">{item.error}</p>
+                      ) : (
+                        <>
+                          {STAGES[item.control?.stage ?? "idle"] ?? item.control?.stage}
+                          {item.control?.pagesFetched != null ? (
+                            <p>
+                              取得 {item.control.pagesFetched}ページ / 解析{" "}
+                              {item.control.pagesParsed ?? "不明"}ページ
+                              <br />
+                              進捗日時 {dateText(item.control.progressAt)}
+                            </p>
+                          ) : null}
+                          {item.control?.jobId ? (
+                            <details>
+                              <summary>実行ID</summary>
+                              <code>{item.control.jobId}</code>
+                            </details>
+                          ) : null}
+                        </>
+                      )}
                       <p>
-                        前回比 {item.lastItemCount - item.previousItemCount > 0 ? "+" : ""}
-                        {item.lastItemCount - item.previousItemCount}件
+                        {paused || !configured ? "再開後の定期枠" : "次の定期枠"}:{" "}
+                        {dateText(item.nextScheduledAt)}
                       </p>
-                    ) : null}
-                    <p>検索への反映完了: {dateText(item.lastProjectionAt)}</p>
+                      {item.control?.nextAlarmAt ? (
+                        <p>次ステップ: {dateText(item.control.nextAlarmAt)}</p>
+                      ) : null}
+                    </div>
                   </td>
-                  <td>
-                    {item.lastError ? (
-                      <>
-                        {item.lastError}
+                  <td data-label="最終成功 / 取得件数">
+                    <div>
+                      {dateText(item.lastSuccessAt)}
+                      <br />
+                      {item.lastItemCount === null ? "取得件数は未記録" : `${item.lastItemCount}件`}
+                      {item.lastItemCount !== null && item.previousItemCount !== null ? (
                         <p>
-                          {dateText(item.lastErrorAt)} · 連続 {item.consecutiveFailures}回
+                          前回比 {item.lastItemCount - item.previousItemCount > 0 ? "+" : ""}
+                          {item.lastItemCount - item.previousItemCount}件
                         </p>
-                        {item.backoffUntil ? (
-                          <p>再試行待機の目安: {dateText(item.backoffUntil)}</p>
-                        ) : null}
-                      </>
-                    ) : (
-                      "記録なし"
-                    )}
+                      ) : null}
+                      <p>検索への反映完了: {dateText(item.lastProjectionAt)}</p>
+                    </div>
                   </td>
-                  <td>
+                  <td data-label="失敗理由">
+                    <div>
+                      {item.lastError ? (
+                        <>
+                          {item.lastError}
+                          <p>
+                            {dateText(item.lastErrorAt)} · 連続 {item.consecutiveFailures}回
+                          </p>
+                          {item.backoffUntil ? (
+                            <p>再試行待機の目安: {dateText(item.backoffUntil)}</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        "記録なし"
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="操作">
                     <button
                       type="button"
                       className="secondary-button"

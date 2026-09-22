@@ -1,44 +1,49 @@
 import { test, expect } from "./fixtures.js";
 import type { AdminCrawlOverview } from "../../src/api/admin-listing-contracts.js";
 
-test("collection flags persist per shop across reloads and remain on during quiet hours", async ({
-  page,
-  context,
-  app,
-}) => {
-  await context.setExtraHTTPHeaders(await app.headers());
-  await page.goto("/#crawls");
-  const panel = page.getByRole("region", { name: "ショップ別クロール管理" });
-  const row = panel
-    .getByRole("row")
-    .filter({ has: page.getByRole("switch", { name: "ハイファイ堂の収集" }) });
-  const toggle = panel.getByRole("switch", { name: "ハイファイ堂の収集" });
-  const other = panel.getByRole("switch", { name: "eイヤホンの収集" });
-  await expect(panel).toContainText("夜間の予定停止中");
-  await expect(row).toContainText("前回比 -10件");
-  await expect(row).toContainText("取得 10ページ");
-  await expect(row).toContainText("取得先から503応答");
-  await expect(toggle).toBeChecked();
-  await expect(other).toBeChecked();
-  expect(app.state.crawls.reads).toBe(1);
-  expect(app.state.crawls.actions).toEqual([]);
-  await toggle.click();
-  await expect(toggle).not.toBeChecked();
-  await expect(row.getByRole("button", { name: "途中から再実行" })).toBeDisabled();
-  await expect(other).toBeChecked();
-  await page.reload();
-  await expect(toggle).not.toBeChecked();
-  await expect(other).toBeChecked();
-  await toggle.focus();
-  await page.keyboard.press("Space");
-  await expect(toggle).toBeChecked();
-  await expect(row.getByRole("button", { name: "途中から再実行" })).toBeEnabled();
-  expect(app.state.crawls.actions).toEqual([
-    { shopKey: "hifido", action: "pause" },
-    { shopKey: "hifido", action: "resume" },
-  ]);
-  expect(app.state.crawls.reads).toBe(4);
-});
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+])
+  test(`collection flags persist per shop across reloads and quiet hours at ${viewport.width}px`, async ({
+    page,
+    context,
+    app,
+  }) => {
+    await page.setViewportSize(viewport);
+    await context.setExtraHTTPHeaders(await app.headers());
+    await page.goto("/#crawls");
+    const panel = page.getByRole("region", { name: "ショップ別クロール管理" });
+    const row = panel
+      .getByRole("row")
+      .filter({ has: page.getByRole("switch", { name: "ハイファイ堂の収集" }) });
+    const toggle = panel.getByRole("switch", { name: "ハイファイ堂の収集" });
+    const other = panel.getByRole("switch", { name: "eイヤホンの収集" });
+    await expect(panel).toContainText("夜間の予定停止中");
+    await expect(row).toContainText("前回比 -10件");
+    await expect(row).toContainText("取得 10ページ");
+    await expect(row).toContainText("取得先から503応答");
+    await expect(toggle).toBeChecked();
+    await expect(other).toBeChecked();
+    expect(app.state.crawls.reads).toBe(1);
+    expect(app.state.crawls.actions).toEqual([]);
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+    await expect(row.getByRole("button", { name: "途中から再実行" })).toBeDisabled();
+    await expect(other).toBeChecked();
+    await page.reload();
+    await expect(toggle).not.toBeChecked();
+    await expect(other).toBeChecked();
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toBeChecked();
+    await expect(row.getByRole("button", { name: "途中から再実行" })).toBeEnabled();
+    expect(app.state.crawls.actions).toEqual([
+      { shopKey: "hifido", action: "pause" },
+      { shopKey: "hifido", action: "resume" },
+    ]);
+    expect(app.state.crawls.reads).toBe(4);
+  });
 
 test("a lost mutation response reconciles the saved collection flag", async ({
   page,
