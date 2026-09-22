@@ -35,7 +35,12 @@ message increases have no implicit allowance. CPU is measured separately by `loa
 and candidate checkouts run alternately on the same runner, with three fixed sessions per revision.
 The gate compares their medians with the existing relative noise allowance and each revision's
 unchanged parser ceilings. Every session must complete with valid fixtures and measurements; failed
-runs are never retried until green or discarded. The original CI parser gates remain required.
+runs are never retried until green or discarded. The required paired gate owns both CPU ceilings
+and regression checks; per-job captures retain raw diagnostics without a second single-session veto.
+Because both revisions run on the same host, their CPU-use medians share the baseline reference.
+The candidate/baseline CPU-use ratio must not exceed `1.75 + 0.5 / baselineRelativeCPU`, preserving
+the existing allowance without dividing by two independently noisy control loops. Both raw ratios
+remain in the report. Parser fixture assertions and missing-measurement checks remain mandatory.
 Cross-job single CPU observations and absolute Node CPU remain diagnostic. A new or moved
 DB/crawler/background-work path without an owning
 contract fails. Direct DB/storage access added elsewhere in `src` is also treated conservatively.

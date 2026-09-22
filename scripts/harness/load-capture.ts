@@ -30,12 +30,17 @@ export async function captureLoad(directory: string): Promise<number> {
     { env, encoding: "utf8", timeout: 240000, maxBuffer: 16 * 1024 * 1024 },
   );
   await writeFile(join(directory, "tests.log"), `${test.stdout ?? ""}\n${test.stderr ?? ""}`);
-  const parser = spawnSync("vp", ["run", "benchmark:parser"], {
-    env,
-    encoding: "utf8",
-    timeout: 120000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
+  // CPU ceilings are evaluated from complete same-runner medians by the required load gate.
+  const parser = spawnSync(
+    "vp",
+    ["exec", "node", "--import", "tsx", "scripts/parser-cpu-benchmark.ts"],
+    {
+      env,
+      encoding: "utf8",
+      timeout: 120000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
   await writeFile(join(directory, "parser.log"), `${parser.stdout ?? ""}\n${parser.stderr ?? ""}`);
   const report = await costReport(samples, join(directory, "cost-report.json"));
   const after = readCheckout();

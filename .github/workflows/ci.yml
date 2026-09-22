@@ -86,7 +86,7 @@ jobs:
       - name: Typecheck source
         if: needs.changes.outputs.application == 'true'
         run: vp run ci:typecheck
-      - name: Compare parser stages with relative CPU baselines
+      - name: Capture parser observations for the required paired CPU gate
         if: needs.changes.outputs.application == 'true'
         run: vp run ci:parser-benchmark
       - name: Preserve parser CPU cost samples

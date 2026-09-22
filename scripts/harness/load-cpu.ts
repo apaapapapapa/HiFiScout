@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { isRecord } from "../../src/types.js";
 import { readCheckout } from "./checkpoint.js";
-import { parseCostSample, readCostSamples } from "./cost.js";
+import { compareCosts, parseCostSample, readCostSamples } from "./cost.js";
 import type { CostSample } from "./cost.js";
 import { repositoryArtifact } from "./artifacts.js";
 import { reportExitCode } from "./report.js";
@@ -131,7 +131,9 @@ export function aggregateCpuRounds(
           s.profileHash !== first.profileHash ||
           s.environment !== "local-node" ||
           typeof s.metrics.cpuUs !== "number" ||
-          typeof s.metrics.cpuRelative !== "number",
+          typeof s.metrics.cpuRelative !== "number" ||
+          s.metrics.cpuUs <= 0 ||
+          s.metrics.cpuRelative <= 0,
       )
     )
       throw new Error("incomparable_cpu_rounds");
@@ -147,6 +149,51 @@ export function aggregateCpuRounds(
       notes: [...first.notes, METHOD],
     };
   });
+}
+
+/** Same host: compare work against one reference, not a ratio of two noisy control loops. */
+export function comparePairedCpu(before: CostSample, after: CostSample) {
+  const raw = compareCosts([before], [after]);
+  const comparable =
+    before.id === after.id &&
+    before.profileHash === after.profileHash &&
+    before.checkoutClean &&
+    after.checkoutClean &&
+    before.environment === "local-node" &&
+    after.environment === "local-node" &&
+    typeof before.metrics.cpuUs === "number" &&
+    before.metrics.cpuUs > 0 &&
+    typeof after.metrics.cpuUs === "number" &&
+    after.metrics.cpuUs > 0 &&
+    typeof before.metrics.cpuRelative === "number" &&
+    before.metrics.cpuRelative > 0;
+  const ratio = comparable ? after.metrics.cpuUs! / before.metrics.cpuUs! : null;
+  // The existing +0.5 reference-unit allowance, expressed against the shared baseline.
+  const maximumRatio = comparable ? 1.75 + 0.5 / before.metrics.cpuRelative! : null;
+  const status = !comparable
+    ? ("unknown" as const)
+    : ratio! > maximumRatio!
+      ? ("fail" as const)
+      : ("pass" as const);
+  return {
+    ...raw,
+    status,
+    rows: raw.rows.map((row) => ({
+      ...row,
+      status: "skipped" as const,
+      reason: "raw_cpu_observation_retained_for_diagnostics",
+    })),
+    paired: {
+      metric: "cpuUsageRatio",
+      unit: "ratio",
+      baselineCpuUs: before.metrics.cpuUs,
+      candidateCpuUs: after.metrics.cpuUs,
+      ratio,
+      maximumRatio,
+      status,
+      reason: "same_runner_medians_with_common_baseline_reference",
+    },
+  };
 }
 
 export async function readPairedCpu(directory: string, baseSha: string, sourceSha: string) {
