@@ -165,6 +165,7 @@ export class NotificationStore {
       (this.watches(device).length >= L.watchesPerDevice || this.watches().length >= L.watches)
     )
       return false;
+    const firstWatch = this.watches().length === 0;
     this.storage.transactionSync(() => {
       this.removeWatch(device, input.id);
       this.sql(
@@ -173,6 +174,16 @@ export class NotificationStore {
         input.id,
         JSON.stringify({ ...input, device, createdAt: now }),
       );
+      if (firstWatch) {
+        // An idle hub need not scan the months before this fresh opt-in. Preserve today's
+        // reservations so repeated stop/start cannot reset the daily budget.
+        const state = this.runtime(now);
+        state.cursor = { at: new Date(now - L.overlapMs).toISOString(), id: 0 };
+        state.windowActive = false;
+        state.work = null;
+        state.lastCheck = null;
+        this.put("runtime", state);
+      }
     });
     return true;
   }

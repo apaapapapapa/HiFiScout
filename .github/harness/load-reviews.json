@@ -336,8 +336,8 @@
       "id": "notification-outbox-replay",
       "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "fa89520f8c7cfded15cea4334a3021443fea8a921b1250e310894b6ca13e357f",
-      "reason": "Initial SQLite outbox replay observes 6 reads, zero physical writes and five statements including key/watch reads and constant-time capacity checks. Duplicate scans, interrupted transaction rollback, daily unknown-usage stops, delivery retry limits and unsubscribe cancellation pass in real workerd. No previous measurement is invented.",
+      "afterDigest": "4e02a520e8ea426f873fdc29006c0bd105145250300d1ceb9df01be7707a5064",
+      "reason": "Initial SQLite outbox replay observes 6 reads, zero physical writes and five statements including key/watch reads and constant-time capacity checks. Duplicate scans, interrupted transaction rollback, daily unknown-usage stops, delivery retry limits and unsubscribe cancellation pass in real workerd. The added idle-resume regression preserves same-day budgets and retains the same 6/0/5 observation. No previous measurement is invented.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
       ]

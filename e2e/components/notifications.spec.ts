@@ -49,51 +49,54 @@ async function setup(page: Page, permission: "granted" | "denied" = "granted") {
     failDelete: false,
     query: "",
   };
-  await page.route("**/api/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const method = route.request().method();
-    const reply = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (path.startsWith("/api/notifications/")) {
-      state.requests.push(`${method} ${path}`);
-      if (path.endsWith("/config")) return reply({ publicKey: "B" + "A".repeat(86) });
-      if (path.endsWith("/status"))
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const method = route.request().method();
+      const reply = (body: unknown, status = 200) =>
+        route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+      if (path.startsWith("/api/notifications/")) {
+        state.requests.push(`${method} ${path}`);
+        if (path.endsWith("/config")) return reply({ publicKey: "B" + "A".repeat(86) });
+        if (path.endsWith("/status"))
+          return reply({
+            registered: true,
+            watches: state.watches,
+            lastCheck: null,
+            delayed: false,
+            failed: 0,
+          });
+        if (path.endsWith("/watches") && method === "POST") {
+          const input = route.request().postDataJSON() as NotificationWatch;
+          state.query = input.query;
+          state.watches = [{ ...input, createdAt: Date.now() }];
+        }
+        if (method === "DELETE") {
+          if (state.failDelete) return reply({ error: "unavailable" }, 503);
+          state.watches = [];
+        }
+        return reply({ ok: true });
+      }
+      if (path === "/api/meta")
         return reply({
-          registered: true,
-          watches: state.watches,
-          lastCheck: null,
-          delayed: false,
-          failed: 0,
+          status: "healthy",
+          shops: [],
+          manufacturers: [],
+          manufacturerFacets: [],
+          categories: [],
+          categoryFacets: [],
         });
-      if (path.endsWith("/watches") && method === "POST") {
-        const input = route.request().postDataJSON() as NotificationWatch;
-        state.query = input.query;
-        state.watches = [{ ...input, createdAt: Date.now() }];
-      }
-      if (method === "DELETE") {
-        if (state.failDelete) return reply({ error: "unavailable" }, 503);
-        state.watches = [];
-      }
-      return reply({ ok: true });
-    }
-    if (path === "/api/meta")
       return reply({
-        status: "healthy",
-        shops: [],
-        manufacturers: [],
-        manufacturerFacets: [],
-        categories: [],
-        categoryFacets: [],
+        items: [],
+        hasMore: false,
+        nextCursor: null,
+        totalCount: 0,
+        totalPages: 0,
+        suggestions: [],
       });
-    return reply({
-      items: [],
-      hasMore: false,
-      nextCursor: null,
-      totalCount: 0,
-      totalPages: 0,
-      suggestions: [],
-    });
-  });
+    },
+  );
   return state;
 }
 

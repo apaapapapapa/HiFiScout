@@ -1,7 +1,7 @@
 # Saved-search notification initial load review
 
 Base: `c678e727ffe3cc20d351344a25f00cba87479504`.
-Measured fixture head: `af3478b34cbfe2a93e1a3fc457a982b33ba19c88` (clean checkout).
+Initial measured fixture head: `af3478b34cbfe2a93e1a3fc457a982b33ba19c88` (clean checkout).
 
 This feature adds an independent opt-in Web Push scheduler. Existing D1 workloads, ceilings and
 fixtures are retained. New cases use the pinned toolchain with real Miniflare D1 / workerd SQLite,
@@ -23,7 +23,7 @@ the whole ledger, and duplicate INSERTs preserve zero physical writes.
 Functional coverage checks wrong-shop/over-budget/sold-out offers, first observation independent
 of source publication date, stale price-history suppression, UTC budgets, missing D1 metadata,
 duplicate scans, failed transaction rollback, three-attempt retries, subscription expiry, ownership
-isolation and removal of queued deliveries. Cryptographic tests independently decrypt the payload
+isolation and removal of queued deliveries. The idle-resume regression was measured again at clean head `86d9ec4d55d2edbc8e0cb8ecf14a0aa06eee957c`: replay remains 6 / 0 / 5, and stopping/restarting preserves the same-day budget. Cryptographic tests independently decrypt the payload
 and verify VAPID; browser tests mock permission/subscription APIs without external delivery.
 
 These are new absolute baselines: there is no invented pre-feature notification measurement.

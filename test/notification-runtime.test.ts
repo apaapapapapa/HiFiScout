@@ -73,6 +73,16 @@ it("persists notices and suppresses duplicate scans, without querying when no wa
   expect(empty.next).toBeNull();
   expect(empty.deliveries).toHaveLength(0);
 });
+it("resumes an idle hub near the new opt-in without resetting its same-day budget", async () => {
+  await call("resume", { op: "register" });
+  await call("resume", { op: "budget", queries: 100 });
+  await call("resume", { op: "remove" });
+  const resumed = await call("resume", { op: "register", now: now + 3_600_000 });
+  expect(resumed.state.queries).toBe(100);
+  expect(resumed.state.cursor.at).toBe(new Date(now - 1_200_000).toISOString());
+  expect(resumed.state.work).toBeNull();
+  expect(resumed.state.windowActive).toBe(false);
+});
 it("replays a durable outbox insert without any data writes and rolls back interrupted inserts", async () => {
   await call("replay", { op: "register" });
   await call("replay", { op: "enqueue" });
