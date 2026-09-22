@@ -642,7 +642,7 @@ test("single-offer names and unconfigured shop links navigate without loading de
   page,
   context,
   mount,
-}) => {
+}, testInfo) => {
   const shopUrl = new URL(page.url()).origin + "/";
   const sourceUrl = new URL("/seller/products/1?stock=used", shopUrl).href;
   const single = product({ representative_offer: offer({ source_url: sourceUrl }) });
@@ -654,6 +654,15 @@ test("single-offer names and unconfigured shop links navigate without loading de
   );
   const title = page.locator(".card .product-title-link");
   const shop = page.locator(".card .shop");
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(title).toBeVisible();
+    expect((await title.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({
+      path: testInfo.outputPath(`single-offer-${width}.png`),
+      fullPage: true,
+    });
+  }
   for (const [link, expectedUrl] of [
     [title, sourceUrl],
     [shop, shopUrl],
