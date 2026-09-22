@@ -71,6 +71,7 @@ delivery skill when preparing or following a PR. Load additional skills only for
 | Public/admin UI behavior or layout | [hifiscout-ui-changes](.agents/skills/hifiscout-ui-changes/SKILL.md) |
 | Issue acceptance, updates or closure | [hifiscout-issue-triage](.agents/skills/hifiscout-issue-triage/SKILL.md) |
 | Runtime/bindings | `src/worker.ts`, `src/index.ts`, `wrangler.jsonc`, `wrangler.admin.jsonc` |
+| TypeSafe / Jev integration or experiments | [TypeSafe skill](.agents/skills/typesafe-ai/SKILL.md) and [project integration](docs/tooling.md#typesafe-jev-development) |
 | Test placement / evidence harness | [testing strategy](docs/testing-strategy.md), [harness guide](.github/harness/README.md) |
 | Documentation / agent instruction maintenance | [tooling](docs/tooling.md#ai-assisted-documentation-and-contributor-instructions) |
 
@@ -130,6 +131,7 @@ versions and inventories. Generated outputs are build/diagnostic evidence, not i
 inspect them or the lockfile only when relevant and permitted. Do not generate docs merely to read code.
 Git history holds retired plans/incidents; verify recurring responsibilities before removing automation.
 
-Keep `.agents/skills/archify/` byte-identical to `skills-lock.json`. Update its upstream pin, not vendored
-files. For Archify work or pin updates use the scoped [integration guide](docs/tooling.md#vendored-archify).
+Keep `.agents/skills/archify/` and `.agents/skills/typesafe-ai/` byte-identical to `skills-lock.json`.
+Update upstream pins, not vendored files. Use the scoped integration guides for
+[Archify](docs/tooling.md#vendored-archify) and [TypeSafe / Jev](docs/tooling.md#typesafe-jev-development).
 The CI generator's [.github/codex/docs-prompt.md](.github/codex/docs-prompt.md) owns its handoff to CI.

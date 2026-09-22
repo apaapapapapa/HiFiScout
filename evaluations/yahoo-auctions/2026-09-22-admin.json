@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "issue": 703,
-  "baseSha": "2180b8012101c728194d47b7765285f7e338c40f",
+  "baseSha": "3b0cc19cf52ade1a50b966b4cb31b75497a8ed94",
   "sourceSha": "7c61f9e4f09586e4a1f71c2a2cb8c02361dcd601",
   "treeSha": "bdba68da09fa65a14f6a24f9b581ee000f744a94",
   "command": "HARNESS_COST_OUTPUT=.generated/admin-cost-pinned-final vp test run test/auction-admin-runtime.test.ts",
@@ -42,6 +42,7 @@
     "Local lint/format/architecture/tsc/CPU and 427-file unit suite were executed during implementation; changed runtime/clear-halt regressions passed. Final head CI owns browser, generated Worker types and docs build.",
     "Local Wrangler generation was rejected by automatic approval review, browser download timed out and docs build encountered an IPC-listener restriction; these local aggregate checks are not represented as complete. Existing CI supplies the required evidence.",
     "A diagnostic measurement under the restored environment default Node 24 was not sealed; this artifact contains the remeasurement using the repository-pinned Node runtime.",
-    "SQL cursor counters, Alarm/KV attempts, Worker version and stored bytes are observations. Actual account requests/duration, caller Workers/D1/R2 and quality/latency window are unmeasured."
+    "SQL cursor counters, Alarm/KV attempts, Worker version and stored bytes are observations. Actual account requests/duration, caller Workers/D1/R2 and quality/latency window are unmeasured.",
+    "Base advanced through unrelated PR719 contributor tooling. Search and cost fixtures/policy are identical to the measured baseline; the admin-only reviews are rebound to the actual main SHA."
   ]
 }

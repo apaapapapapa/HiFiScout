@@ -16,8 +16,10 @@ type SkillLockFile = {
   version: number;
 };
 
-const skillName = "archify";
-const skillDirectory = resolve(".agents/skills/archify");
+const vendoredSkills = [
+  { name: "archify", source: "tt-a1i/archify", skillPath: "archify/SKILL.md" },
+  { name: "typesafe-ai", source: "typesafe-ai/skills", skillPath: "skills/typesafe-ai/SKILL.md" },
+] as const;
 const lockPath = resolve("skills-lock.json");
 
 async function collectFiles(
@@ -61,7 +63,7 @@ async function computeSkillFolderHash(directory: string): Promise<string> {
 }
 
 function verifyArchifyRuntime(): void {
-  execFileSync(process.execPath, [resolve(skillDirectory, "bin/archify.mjs"), "doctor"], {
+  execFileSync(process.execPath, [resolve(".agents/skills/archify/bin/archify.mjs"), "doctor"], {
     encoding: "utf8",
     stdio: "pipe",
   });
@@ -69,23 +71,27 @@ function verifyArchifyRuntime(): void {
 
 export async function verifyVendoredAgentSkills(): Promise<void> {
   const lock = JSON.parse(await readFile(lockPath, "utf8")) as SkillLockFile;
-  const entry = lock.skills[skillName];
+  for (const skill of vendoredSkills) {
+    const entry = lock.skills[skill.name];
+    if (!entry) {
+      throw new Error(`${skill.name} is missing from skills-lock.json`);
+    }
+    if (entry.source !== skill.source || entry.sourceType !== "github") {
+      throw new Error(`Unexpected ${skill.name} source in skills-lock.json`);
+    }
+    if (!entry.ref || entry.skillPath !== skill.skillPath) {
+      throw new Error(`${skill.name} must be pinned to an explicit upstream ref and skill path`);
+    }
+    if (skill.name === "typesafe-ai" && !/^[a-f0-9]{40}$/u.test(entry.ref)) {
+      throw new Error("typesafe-ai must be pinned to a full upstream commit SHA");
+    }
 
-  if (!entry) {
-    throw new Error(`${skillName} is missing from skills-lock.json`);
-  }
-  if (entry.source !== "tt-a1i/archify" || entry.sourceType !== "github") {
-    throw new Error(`Unexpected ${skillName} source in skills-lock.json`);
-  }
-  if (!entry.ref || entry.skillPath !== "archify/SKILL.md") {
-    throw new Error(`${skillName} must be pinned to an explicit upstream ref and skill path`);
-  }
-
-  const actualHash = await computeSkillFolderHash(skillDirectory);
-  if (actualHash !== entry.computedHash) {
-    throw new Error(
-      `${skillName} vendored content does not match skills-lock.json: expected ${entry.computedHash}, got ${actualHash}`,
-    );
+    const actualHash = await computeSkillFolderHash(resolve(".agents/skills", skill.name));
+    if (actualHash !== entry.computedHash) {
+      throw new Error(
+        `${skill.name} vendored content does not match skills-lock.json: expected ${entry.computedHash}, got ${actualHash}`,
+      );
+    }
   }
 
   verifyArchifyRuntime();
