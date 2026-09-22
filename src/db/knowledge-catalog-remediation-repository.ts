@@ -208,9 +208,14 @@ export async function selectListingsForCatalogRemediation(
   const result = await db
     .prepare(`
       SELECT id, shop_key, source_id
-      FROM products
+      FROM products INDEXED BY idx_products_exact_identity
       WHERE is_active = 1 AND id > ? AND canonical_manufacturer_id = ?
         AND normalized_model IN (${placeholders})
+        -- The catalog target guarantees non-empty identity values. Repeating the predicates here
+        -- makes SQLite's partial exact-identity index eligible instead of walking every active id
+        -- before applying the manufacturer/model filter.
+        AND COALESCE(canonical_manufacturer_id, '') <> ''
+        AND COALESCE(normalized_model, '') <> ''
       ORDER BY id
       LIMIT ?
     `)

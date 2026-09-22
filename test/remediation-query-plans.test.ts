@@ -7,7 +7,10 @@ import {
   seedDataQualityRemediationQueue,
   seedTargetedDataQualityRemediationQueue,
 } from "../src/db/data-quality-remediation-queue-repository.js";
-import { listUnresolvedIdentityGroups } from "../src/db/knowledge-catalog-remediation-repository.js";
+import {
+  listUnresolvedIdentityGroups,
+  selectListingsForCatalogRemediation,
+} from "../src/db/knowledge-catalog-remediation-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { listManufacturerAliasEvidence } from "../src/db/manufacturer-repository.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
@@ -191,6 +194,33 @@ test("replay seeding reaches every stage through that stage's own index", async 
         .join("\n")}`,
     );
   }
+});
+
+test("catalog remediation listing selection seeks the verified identity before its cursor", async () => {
+  const { sqlite, db: inner } = migratedSqlite();
+  seedListings(sqlite);
+  const { db, executed } = recordingDatabase(inner);
+
+  await selectListingsForCatalogRemediation(
+    db,
+    {
+      catalogProductId: 1,
+      manufacturerId: "tad",
+      canonicalModel: "D1001",
+      identityModels: ["D1001"],
+    },
+    { limit: 10 },
+  );
+
+  const [statement] = selects(executed);
+  assert.ok(statement, "catalog remediation should issue a listing selector");
+  const plan = queryPlan(sqlite, statement);
+  assert.ok(
+    readsThroughIndex(plan, "products", "idx_products_exact_identity"),
+    `catalog remediation must seek the verified identity before applying its cursor, got:\n${plan
+      .map((step) => step.detail)
+      .join("\n")}`,
+  );
 });
 
 test("targeted replay priority seeding stays on the migration request index", async () => {

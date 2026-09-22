@@ -4,10 +4,65 @@ import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { claimShopMembershipCleanupChunk } from "../src/db/crawl-run-continuation-repository.js";
 import { listStalledCrawlRuns } from "../src/db/crawl-run-repository.js";
 import { seedDataQualityRemediationQueue } from "../src/db/data-quality-remediation-queue-repository.js";
+import { selectListingsForCatalogRemediation } from "../src/db/knowledge-catalog-remediation-repository.js";
 import { deleteInactiveOfferSql } from "../src/db/product-search-entity-sql.js";
 import { auditInactiveSearchMemberships } from "../src/db/product-search-membership-audit.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
+
+test("catalog remediation identity selection stays bounded as unrelated listings grow", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`INSERT INTO products(
+        id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,is_active,
+        canonical_manufacturer_id,normalized_model,model_resolution_status
+      ) VALUES (1,'target','target','target','https://example.test/target','${AT}','${AT}','${AT}',
+        1,'target-maker','TARGET-MODEL','resolved')`)
+      .run();
+
+    let previous = 1;
+    const costs = [];
+    for (const size of [100, 1_000, 10_000]) {
+      await db
+        .prepare(`WITH RECURSIVE n(i) AS (
+          SELECT CAST(? AS INTEGER) UNION ALL SELECT i+1 FROM n WHERE i<?
+        ) INSERT INTO products(
+          id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,is_active,
+          canonical_manufacturer_id,normalized_model,model_resolution_status
+        ) SELECT i,'other',CAST(i AS TEXT),'other','https://example.test/'||i,
+          '${AT}','${AT}','${AT}',1,'other-maker-'||i,'OTHER-MODEL-'||i,'resolved' FROM n`)
+        .bind(previous + 1, size)
+        .run();
+
+      const measured = accountReads(db);
+      const selected = await selectListingsForCatalogRemediation(
+        measured.db,
+        {
+          catalogProductId: 1,
+          manufacturerId: "target-maker",
+          canonicalModel: "TARGET-MODEL",
+          identityModels: ["TARGET-MODEL"],
+        },
+        { limit: 10 },
+      );
+      assert.deepEqual(
+        selected.rows.map((row) => row.id),
+        [1],
+      );
+      assert.equal(selected.hasMore, false);
+      assert.equal(measured.rowsWritten(), 0);
+      assert.equal(measured.statementCount(), 1);
+      costs.push({ size, reads: measured.rowsRead() });
+      previous = size;
+    }
+
+    assert.ok(costs[2].reads <= costs[0].reads + 10, JSON.stringify(costs));
+    console.log(JSON.stringify({ event: "catalog_remediation_read_budget", costs }));
+  } finally {
+    await dispose();
+  }
+}, 60_000);
 
 test("scoped deletion and empty recovery stay bounded with stale statistics and growing history", async () => {
   const { db, dispose } = await database();
