@@ -10,7 +10,12 @@ for (const width of [1280, 390])
     await page.goto("/#auctions");
     const panel = page.getByRole("region", { name: "Yahoo!オークション管理" });
     await expect(panel).toContainText("実際の課金使用量は未計測");
-    await expect(panel).toContainText("取得の許可");
+    await expect(panel).not.toContainText("取得の許可");
+    await expect(panel).not.toContainText("再表示の許可");
+    await expect(panel).toContainText("robotsによる取得拒否（取得経路の見直しが必要）");
+    await expect(panel).not.toContainText("robotsの確認");
+    await expect(panel).toContainText("アカウント予算の確認");
+    await expect(panel).toContainText("取得元仕様の確認");
     await expect(panel).toContainText("予定停止中");
     await expect(panel.getByRole("button", { name: "収集を再開", exact: true })).toBeDisabled();
     await expect(panel.getByRole("button", { name: "公開を再開", exact: true })).toBeDisabled();

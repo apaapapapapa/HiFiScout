@@ -69,7 +69,14 @@ export interface AuctionAdminStatus {
     backoffUntil: number;
     nextFetchAt: number;
   };
-  access: { collect: boolean; search: boolean; display: boolean; blockers: string[] };
+  access: {
+    collect: boolean;
+    search: boolean;
+    display: boolean;
+    blockers: string[];
+    /** Older public Workers may omit status detail during a rolling deployment. */
+    deniedBlockers?: string[];
+  };
   limits: {
     retainedItems: number;
     newItemsPerUtcDay: number;
