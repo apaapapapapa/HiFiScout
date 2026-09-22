@@ -215,10 +215,8 @@ function detailPage(
     "status",
     "conditionName",
   ];
-  if (
-    keys.some((key) => JSON.stringify(item[key]) !== JSON.stringify(duplicate[key])) ||
-    JSON.stringify(record(item.category)?.path) !== JSON.stringify(record(duplicate.category)?.path)
-  )
+  // Expected values are primitives. Never recursively serialize unvalidated seller JSON.
+  if (keys.some((key) => item[key] !== duplicate[key]))
     return unsupported("conflicting_detail_state");
   const identity = yahooAuctionIdentity(item.auctionItemUrl);
   const title = string(item.title);
@@ -227,12 +225,26 @@ function detailPage(
     Array.isArray(categories) ? categories.map((value) => record(value)?.id) : null,
     bucket,
   );
+  const duplicateCategories = record(duplicate.category)?.path;
+  const duplicatePath = categoryPath(
+    Array.isArray(duplicateCategories)
+      ? duplicateCategories.map((value) => record(value)?.id)
+      : null,
+    bucket,
+  );
+  if (
+    path &&
+    duplicatePath &&
+    (path.length !== duplicatePath.length || path.some((id, index) => id !== duplicatePath[index]))
+  )
+    return unsupported("conflicting_detail_state");
   if (
     !identity ||
     identity.auctionId !== expected.auctionId ||
     item.auctionId !== expected.auctionId ||
     !title ||
-    !path
+    !path ||
+    !duplicatePath
   )
     return unsupported("invalid_detail_identity_or_category");
   const observation = baseObservation(title, identity, path, bucket, stamp);

@@ -227,6 +227,13 @@ describe("authorized Yahoo public-layout candidate", () => {
     expect(result.observations[0].live.bidCount).toBeNull();
   });
 
+  it("rejects deeply nested unexpected fields without recursively serializing source data", () => {
+    const nested = "[".repeat(12000) + "0" + "]".repeat(12000);
+    const html = doc(detail().replaceAll('"price":61000', `"price":${nested}`));
+    expect(() => parseDetail(html)).not.toThrow();
+    expect(parseDetail(html).status).toBe("unsupported");
+  });
+
   it("keeps numeric source IDs usable in continuation cursors while rejecting arbitrary paths", () => {
     const now = Date.parse(context.observedAt);
     const { key } = parseAuctionQuery(new URL("https://fixture.test/"), now);
