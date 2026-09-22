@@ -82,8 +82,9 @@ for admission/pacing fields; neither new field backfills historical samples.
 `backfillRecentPriceIndexes` is the maintained example:
 
 - A keyset cursor selects at most 25 products plus one lookahead. Indexed sample preflight reads
-  at most 501 recent asking samples per candidate, including null prices conservatively.
-- A page admits at most 500 samples for any one product and 1,000 across all admitted products.
+  at most 501 retained samples per candidate, including old, listing-end and null-price observations
+  conservatively: the rollup calculates both lifetime and recent independent-listing medians.
+- A page admits at most 500 samples for any one product and 500 across all admitted products.
   The counts are checked again inside the write transaction. A concurrent crawler that exceeds
   the admitted counts causes a retry instead of an unexpectedly large median calculation.
 - A unique page token, the projection writes, and the cursor update share one D1 batch. A stale
@@ -104,11 +105,13 @@ product and its query costs, then review a larger bounded configuration or a sep
 algorithm. Do not skip its ID, delete history, or run an unrestricted aggregate to clear the alert.
 
 Use the companion `scheduled_maintenance_d1_usage` event for actual `rowsRead`, `rowsWritten`,
-and statement counts, together with `general_cron_d1_usage` for invocation limits. The
-workerd regression fixture exercises 500 samples per product, caps a 1,000-sample page at 20,000
-reported reads and 40 writes, and verifies zero cooldown writes. Those thresholds are regression
-budgets for that fixture, not a prediction of total production usage. The same scheduled task's
-expiry refresh has its own 25-product bound and is included in the task's usage log.
+and statement counts, together with `general_cron_d1_usage` for invocation limits.
+`test/recent-backfill-d1-budget.test.ts` exercises 500 samples per product and admits one product
+per page under the current sample cap. It requires at most 20,000 reported reads and 40 writes,
+and verifies zero cooldown writes. Those thresholds are regression budgets for that fixture,
+not a prediction of total production usage. The limits are owned by
+`src/db/knowledge-catalog-price-index-recent-refresh.ts`. The same scheduled task's expiry refresh
+has its own 25-product bound and is included in the task's usage log.
 
 ## Command
 

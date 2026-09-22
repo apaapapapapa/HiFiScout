@@ -3,8 +3,10 @@
 Production SQL statistics are copied from **Cloudflare D1 Insights** to the dedicated, private R2
 bucket `hifiscout-d1-observations`. Collection runs outside the application in the
 `d1-sql-archive` job of `Production Operational Health`: every 15 minutes, on manual invocation,
-and after successful **or failed** `Deploy Cloudflare` runs. Scheduled runs do not run the other
-health jobs, crawl convergence checks, repairs, or queries against D1.
+and after successful **or failed** `Deploy Cloudflare` runs. A successful application-unchanged
+preflight with a skipped deployment skips this post-deploy job too; scheduled/manual collection
+is independent of that gate. Scheduled runs do not run the other health jobs, crawl convergence
+checks, repairs, or queries against D1.
 
 This deliberately adds **no SQL, instrumentation, storage calls, Queue messages, or CPU work to
 the application Worker**. Collection uses Cloudflare control-plane/Analytics APIs; the application

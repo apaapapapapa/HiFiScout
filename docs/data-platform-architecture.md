@@ -36,13 +36,17 @@ The existing Repository boundary remains the storage boundary. Domain logic must
 
 ### R2: evidence and export objects
 
-R2 stores retained HTML evidence for parser/crawl/classification/Knowledge Catalog investigation.
-D1 stores archive metadata and the R2 object key. Separately, resumable crawling temporarily stages
-fetched HTML in `crawl_fetch_pages.html_text` between fetch and parse steps; parsed listing pages
-clear that HTML and retain normalized products for finalization. Terminal cleanup clears staged
-payloads. This temporary recovery state is not the long-term Evidence Archive.
+R2 stores selected diagnostic HTML evidence; D1 stores archive metadata and the R2 object key.
+Normal DO listing collection fetches and parses one page in the same Alarm, committing parsed
+products, frontier changes and a recovery receipt without retaining successful HTML. New detail
+plans likewise retain extracted category evidence. The standalone split executor and older in-flight
+rows may still stage HTML in `crawl_fetch_pages.html_text`; terminal cleanup clears staged payloads.
+These recovery records are separate from the long-term Evidence Archive. See
+[bounded crawl persistence](./crawl-orchestration.md#bounded-work-and-persistence).
 
-Normal successful crawl HTML is not archived. Asynchronous Product Audit and Knowledge Catalog exports also store their bounded parts and final CSV objects in R2; D1 owns job state and object references. See [Asynchronous admin CSV generation](#asynchronous-admin-csv-generation).
+Normal successful crawl HTML is not archived. Asynchronous Product Audit and Knowledge Catalog
+exports also store bounded CSV/evidence chunks and archive metadata in R2; D1 owns job state and
+object references. See [Asynchronous admin CSV generation](#asynchronous-admin-csv-generation).
 
 ## Product search
 
@@ -131,7 +135,10 @@ Canonical membership requires a `matched` Product Identity resolution against a 
 
 Candidate/unresolved model results, fuzzy suggestions, equal titles, and equal model stems never authorize grouping. Revision, edition, and accessory evidence remains protected by the model/identity guards. Confirmed catalog membership always takes precedence over fallback grouping.
 
-An entity exists only while it holds at least one active offer, which is what retires a fallback entity when its listing becomes confirmed and what retires a canonical entity when every shop has sold out.
+An entity exists only while it holds at least one active offer. A fallback retires when its offers
+move to confirmed catalog membership; a canonical entity retires when its last active membership
+is removed. `sold_out` and `is_active = 0` are distinct: an active sold-out offer can remain visible
+when the search does not require in-stock inventory.
 
 `src/db/product-search-entity-sql.ts` and the exact-identity helpers own the derivation used by `syncProductSearchEntities` and `rebuildProductSearchEntities` in `src/db/product-search-entity-repository.ts`. Incremental sync and explicit rebuild share the current rules. Applied migrations retain the SQL needed for their original rollout; they are not edited to follow later runtime changes.
 
@@ -480,7 +487,8 @@ When the API caller does not request an explicit sort, text search applies a sma
 
 Ranking reads canonical entity columns only, so a product cannot climb the results merely by being listed in more shops.
 
-When the caller explicitly selects `newest`, `oldest`, `updated`, `priceAsc`, or `priceDesc`, that sort remains authoritative. No separate ranking engine is introduced.
+An explicit sort remains authoritative, including the persisted `dealScore` sort described in
+[Price-index projections](#price-index-projections). No separate ranking engine is introduced.
 
 ### Filters, sorting and pagination
 
@@ -495,8 +503,10 @@ Manufacturer aliases retain the existing compatibility matching and its document
 
 The public controls search the persisted metadata locally and expose individual removable choices.
 Their counts describe the whole metadata snapshot, not the current combination of filters. Local
-favorites match selected shops only against their saved representative offer, as before. Shared
-URLs retain repeated choices and typed facets through sanitization and reload.
+favorites use retained detail-offer observations, falling back to the representative offer when
+available. Incomplete multi-shop observations stay visible with an explicit note until a bounded
+refresh can confirm or exclude them; known shop, stock and price criteria must match the same offer.
+Shared URLs retain repeated choices and typed facets through sanitization and reload.
 
 - **Product-level** — `manufacturer`, `category`, `facet`, `feature` — restrict the entity. A group category expands to its descendants at query time.
   - `category` matches the entity's *membership*, not its one representative category. A listing is one sale and may hold several products — a transport and a DAC sold together — so it belongs to every category its component products are in, and to the ancestors they share, once each. Membership is projected from the listings currently offering the entity into `product_search_entity_categories`, which is also what the category facet counts, so the number beside a category and the cards that category returns are the same set read twice rather than two calculations that can drift.
@@ -505,7 +515,7 @@ URLs retain repeated choices and typed facets through sanitization and reload.
 
 When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
 
-Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0098 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Guarded triggers on changed listing facts and offer memberships maintain these dates within the affected entities, including writes from an older Worker during rollout or rollback. Unchanged dates add no writes. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering.
+Price and date sorts follow the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0098 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Guarded triggers on changed listing facts and offer memberships maintain these dates within the affected entities, including writes from an older Worker during rollout or rollback. Unchanged dates add no writes. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering. `dealScore` retains its persisted all-shop basis even when offer filters are active.
 
 | `?sort=` | ordering |
 | --- | --- |
@@ -513,6 +523,7 @@ Explicit sorting follows the same offer subset as the card whenever an offer fil
 | `oldest` | the same aggregate ascending — the exact inverse, not a different column |
 | `updated` | most recent meaningful listing activity across offers, descending |
 | `priceAsc` / `priceDesc` | lowest offer price; the lowest **in-stock** price when `inStock=true`, so "cheapest first" never orders by a price nobody can buy |
+| `dealScore` | persisted independent-listing price score, ascending with missing scores last; uses the all-shop price basis described above |
 
 The public UI defaults to `updated` (「新着・更新順」), so meaningful price and stock changes can
 appear ahead of older unchanged listings. `newest` and `oldest` remain explicit publication-date
@@ -667,16 +678,12 @@ Rows written before that rule reached every writer are collapsed by the review r
 
 ### Archive decisions
 
-`src/evidence/evidence-archive.ts` has an explicit allow-list of archiveable reasons. The crawler currently emits evidence for:
-
-- parser failure / zero parsed products
-- suspicious item-count validation failure
-- general crawl validation failure
-- unresolved category classification when a source page is available
-
-The archive module also supports the same controlled mechanism for future integrations such as unknown manufacturer/category, HTML structure changes, material product-content changes, temporary debug snapshots, and Knowledge Catalog verification evidence.
-
-No path archives every successful response.
+`src/evidence/evidence-archive.ts` owns the allow-list of archiveable reasons. Normal DO listing
+collection can archive the actual failed parser input; successful pages leave only structured
+staging data. The standalone crawler can also archive count/validation/classification diagnostics
+when it has original seller HTML. Staged publication never archives its synthetic HTML wrapper.
+An allowed reason alone does not mean an active caller emits that evidence. See
+[R2 evidence safety](./r2-evidence-safety.md) for the current capture boundaries and limits.
 
 ### Security and size controls
 
@@ -717,47 +724,30 @@ Evidence archival is best-effort. Missing bindings, hashing/database errors, and
 
 ### Asynchronous admin CSV generation
 
-The Access-protected Catalog Admin starts Product Audit and Knowledge Catalog CSV exports as
-persistent D1 jobs instead of reading an entire dataset in one HTTP request. Both job kinds share
-the existing `hifiscout-product-audit-export` Queue and DLQ. The physical name is retained for a
-backward-compatible rollout; the message `kind` selects the consumer. Its single-concurrency
-configuration is the aggregate CPU bound across both exports, so one job kind can wait behind the
-other but the two expensive readers cannot run concurrently.
+The Access-protected admin console offers two formats for both Product Audit and Knowledge Catalog:
 
-Each delivery processes one bounded page and enqueues its continuation with a delay. Each page
-becomes a deterministic R2 chunk below a job-kind-specific prefix; a completed download streams
-those already-generated chunks in order and performs no catalog joins or CSV re-encoding.
-Lifecycle state remains in the separate `product_audit_export_jobs` and
-`knowledge_catalog_export_jobs` tables so each domain keeps its own horizon and active-job
-constraint without weakening the established Product Audit schema.
+- **全情報ZIP** (`format: "complete"`) exports all retained rows and columns of the declared
+  product/catalog table families, plus retained R2 evidence. It uses indexed, byte-bounded pages
+  and downloadable ZIP volumes without sampling or truncating cells and collections. The CSV
+  format's overall row/chunk caps do not apply. See [Complete data exports](./listing-admin.md#complete-data-exports)
+  for scope, volume handling, unavailable evidence and schema guards.
+- **編集用CSV** (`format: "csv"`, also the omitted-format compatibility default) carries versioned
+  `edit_*` fields and original snapshots for corrections. Its diagnostic joins and text/JSON fields
+  retain explicit sample/truncation limits, and `src/export/csv-chunks.ts` caps its chunk count.
+  It is not the complete archival format. See [CSV export, edit, and import](./listing-admin.md#csv-export-edit-and-import)
+  for the editable contract.
 
-Product Audit jobs retain separate `active` and `all` scopes, capture a maximum listing-ID horizon,
-and write 250-row chunks under `product-audit-exports/{jobId}/`. Knowledge Catalog jobs have no
-scope and permit only one active export, capture a maximum catalog-product-ID horizon, and write
-100-row chunks under `knowledge-catalog-exports/{jobId}/`. The smaller catalog page bounds the
-additional category, alias, source, candidate, identity, and verification-attempt lookups.
-Category, alias, source, and identity collections also have per-product scan limits. Category,
-alias, and source count columns are named `*_count_capped`; the adjacent `*_truncated` flag
-distinguishes an exact count from the cap-plus-one lower bound. Identity counts are explicitly
-named `*_sampled`, because the exporter samples at most 101 identities before joining listing
-activity, and `identity_sample_truncated` identifies larger sets.
-Direct D1 text/JSON projections are length-bounded before they leave SQLite. CSV serialization also
-enforces per-cell and per-row character budgets; `csv_fields_truncated` names any affected columns
-instead of silently allowing a single pathological value to inflate an entire chunk. Oversized
-`*_json` cells remain valid JSON sentinel objects with truncation metadata.
+Both formats use persistent `product_audit_export_jobs` / `knowledge_catalog_export_jobs` state,
+the shared `hifiscout-product-audit-export` Queue/DLQ, and private R2 chunks. Queue deliveries are
+serialized and use cursor/chunk/lease compare-and-swap guards; downloads stream saved chunks
+without reading the product tables again. The general Cron re-enqueues stale work with bounded
+dispatch and throttling. The shared lifecycle is implemented in `src/export/consumer.ts`.
 
-Each job uses cursor, chunk, and lease compare-and-swap fields for at-least-once Queue delivery.
-Neither export is a transactional point-in-time snapshot: the ID horizon is fixed at creation, but
-mutable fields and joins are read when each page runs, so the CSV intentionally reflects bounded,
-eventually consistent interval semantics.
-
-Both job kinds have a 24-hour generation deadline, five-second continuation delay, and 900-chunk
-cap. That bounds Product Audit at 225,000 rows and Knowledge Catalog at 90,000 rows while keeping
-the later streaming download below an explicit R2-operation bound. The general five-minute cron
-re-enqueues stale cursors for both job tables, while compare-and-swap throttles prevent repeated
-POST or polling requests from flooding the Queue. Completed exports are available through the
-Access Worker for 7 days. Daily maintenance removes expired rows from both D1 job tables in bounded
-batches, while independent 10-day R2 lifecycle rules remove their private chunks.
+Generation has a 24-hour deadline; completed exports remain downloadable for seven days and
+private chunks have a separate ten-day R2 lifecycle. Daily maintenance removes expired job rows
+in bounded batches. These are live paginated exports, not transactionally consistent database
+backups: captured horizons bound the scan, while updates/deletes during generation can be reflected.
+Deadline, quota, schema and download failures must remain failures rather than successful partial exports.
 
 ## Observability and capacity monitoring
 
