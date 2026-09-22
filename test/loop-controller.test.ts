@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assessLoopRun,
+  assessLoopSource,
   beginLoopAttempt,
   finishLoopAttempt,
   recordLoopEvent,
@@ -12,6 +13,24 @@ import {
 import { createLoopRun, readLoopRun } from "../scripts/harness/loop/state.js";
 import { loopCheckout, loopReport, loopSpec, loopTime, loopScope } from "./helpers/loop.js";
 const free = { externalCalls: 0, reservedCostMicros: 0 };
+
+test("explicit comparison requirements remain one mandatory gate for pass, failure and missing evidence", () => {
+  const spec = loopSpec();
+  spec.comparisons = ["replay"];
+  spec.task.requirements.push({ id: "comparison:replay", scope: "source" });
+  for (const status of ["pass", "fail", "missing"] as const) {
+    const report = loopReport();
+    report.baselineSha = spec.baselineSha;
+    if (status !== "missing")
+      report.checks.push({ ...report.checks[0], id: "comparison:replay", status });
+    const assessed = assessLoopSource(spec, report, loopCheckout, loopScope);
+    const comparisons = assessed.checks.filter((item) => item.id === "comparison:replay");
+    assert.equal(comparisons.length, 1);
+    assert.equal(comparisons[0].required, true);
+    assert.equal(comparisons[0].status, status === "missing" ? "unknown" : status);
+    assert.equal(assessed.status, status === "missing" ? "unknown" : status);
+  }
+});
 
 test("a passing source attempt advances to review; missing, stale or skipped evidence blocks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "loop-controller-"));
