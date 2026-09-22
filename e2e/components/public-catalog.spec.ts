@@ -297,16 +297,20 @@ test("sale unit, voltage and installed options stay beside their own offer price
   await page.locator(".offers-button[data-offers]").click();
   const offers = page.locator("li.offer");
   await expect(offers.nth(0).locator(".offer-commerce")).toContainText("100,000");
-  await expect(offers.nth(0).locator(".offer-terms")).toContainText("DACボード搭載");
+  await expect(offers.nth(0).locator(".offer-terms:visible")).toContainText("DACボード搭載");
   await expect(offers.nth(1).locator(".offer-commerce")).toContainText("50,000");
-  await expect(offers.nth(1).locator(".offer-terms")).toContainText("単体（1台・1本）");
-  await expect(offers.nth(1).locator(".offer-terms")).toContainText("AC 230V");
+  await expect(offers.nth(1).locator(".offer-terms:visible")).toContainText("単体（1台・1本）");
+  await expect(offers.nth(1).locator(".offer-terms:visible")).toContainText("AC 230V");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
+  await offers
+    .nth(0)
+    .getByRole("button", { name: /詳細を見る/ })
+    .click();
   const priceBox = await offers.nth(0).locator(".offer-commerce").boundingBox();
-  const termBox = await offers.nth(0).locator(".offer-terms").boundingBox();
+  const termBox = await offers.nth(0).locator(".offer-terms:visible").boundingBox();
   const updatedBox = await offers.nth(0).locator(".offer-updated").boundingBox();
   expect(termBox!.y).toBeGreaterThanOrEqual(priceBox!.y + priceBox!.height);
   expect(termBox!.y + termBox!.height).toBeLessThanOrEqual(updatedBox!.y);
@@ -1049,37 +1053,90 @@ test("first selection shows its product name immediately and omits entirely miss
   );
 });
 
-test("unknown card terms stay compact and the overview exposes every shop before expanded facts", async ({
-  page,
-  mount,
-}) => {
-  await mockCatalog(page);
-  const offers = [offer(), offer({ listing_product_id: 2, shop_key: "shop-b", price_yen: 120000 })];
-  const grouped = product({ representative_offer: offers[0], offer_count: 2, shop_count: 2 });
-  await page.route("**/api/product-search?**", (route) =>
-    route.fulfill({ json: { ...results, items: [grouped] } }),
-  );
-  await page.route("**/api/product-search/c-1", (route) =>
-    route.fulfill({ json: { product: grouped, offers } }),
-  );
-  await mount("frontend/public-app/Default");
-  await expect(page.locator(".card")).toHaveCount(1);
-  await expect(page.locator(".card .offer-terms")).toHaveCount(0);
-  await page.locator(".offers-button[data-offers]").click();
-  const overview = page.getByRole("region", { name: "店舗ごとの価格・在庫一覧" });
-  await expect(overview.getByRole("row")).toHaveCount(3);
-  await expect(overview).toContainText("120,000");
-  await expect(overview.getByRole("link", { name: "別の販売店で確認" })).toBeInViewport();
-  await expect(page.locator(".offer-facts[open]")).toHaveCount(0);
-  await expect(page.locator(".offer-details[open]")).toHaveCount(0);
-  await overview.getByRole("link", { name: "出品詳細", exact: true }).first().click();
-  await expect(page.locator(".offer-details[open]")).toHaveCount(1);
-  await expect(page.locator(".offer-details > summary").first()).toBeFocused();
-  const terms = page.locator(".offer-details[open] .offer-terms");
-  await expect(terms.locator("dd")).toHaveText(["記載なし", "記載なし", "記載なし"]);
-  await page.locator(".offer-facts summary").first().click();
-  await expect(page.locator(".offer-facts[open]")).toContainText("記載なし");
-});
+for (const width of [390, 820, 1280]) {
+  test(`offer details and seller actions stay distinct at ${width}px`, async ({
+    page,
+    mount,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1100 });
+    await mockCatalog(page);
+    const offers = [
+      offer({ listing_product_id: 11 }),
+      offer({
+        listing_product_id: 22,
+        shop_key: "shop-b",
+        price_yen: 120000,
+        source_url: "https://example.com/products/22",
+        stock_status: "sold_out",
+      }),
+    ];
+    const grouped = product({ representative_offer: offers[0], offer_count: 2, shop_count: 2 });
+    await page.route("**/api/product-search?**", (route) =>
+      route.fulfill({ json: { ...results, items: [grouped] } }),
+    );
+    await page.route("**/api/product-search/c-1", (route) =>
+      route.fulfill({ json: { product: grouped, offers } }),
+    );
+    await mount("frontend/public-app/Default");
+    await expect(page.locator(".card .offer-terms")).toHaveCount(0);
+    await page.locator(".offers-button[data-offers]").click();
+    const list = page.getByRole("region", { name: "店舗ごとの価格・在庫一覧" });
+    const rows = list.locator("li.offer");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText("120,000");
+    await expect(rows.nth(1)).toContainText("売り切れ");
+    await expect(list.getByRole("link", { name: /販売ページへ/ })).toHaveCount(2);
+    await expect(list.locator(".offer-details:visible")).toHaveCount(0);
+    const toggle = rows.first().locator("button[aria-controls]");
+    const seller = rows.first().getByRole("link", { name: /販売ページへ/ });
+    await expect(seller).toHaveAttribute("href", offers[0].source_url);
+    await expect(seller).toHaveAttribute("target", "_blank");
+    await expect(seller).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(rows.nth(1).getByRole("link", { name: /販売ページへ/ })).toHaveAttribute(
+      "href",
+      offers[1].source_url,
+    );
+    await expect(
+      rows.first().getByRole("link", { name: "テスト販売店", exact: true }),
+    ).toHaveAttribute("href", "https://example.com/");
+    const toggleBox = await toggle.boundingBox();
+    const sellerBox = await seller.boundingBox();
+    expect(toggleBox!.height).toBeGreaterThanOrEqual(48);
+    expect(sellerBox!.height).toBeGreaterThanOrEqual(48);
+    if (width <= 480)
+      expect(sellerBox!.y - (toggleBox!.y + toggleBox!.height)).toBeGreaterThanOrEqual(16);
+    else expect(sellerBox!.x - (toggleBox!.x + toggleBox!.width)).toBeGreaterThanOrEqual(24);
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`offer-list-${width}.png`), fullPage: true });
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toBeFocused();
+    const panel = list.locator("#offer-details-11");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".offer-terms dd")).toHaveText(["記載なし", "記載なし", "記載なし"]);
+    await panel.locator(".offer-facts summary").click();
+    await expect(panel.locator(".offer-facts[open]")).toContainText("記載なし");
+    await expect(panel.getByRole("button", { name: "価格履歴", exact: true })).toHaveAttribute(
+      "data-history",
+      "11",
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`offer-expanded-${width}.png`),
+      fullPage: true,
+    });
+    const secondToggle = rows.nth(1).locator("button[aria-controls]");
+    await secondToggle.click();
+    await expect(panel).toBeHidden();
+    await expect(list.locator("#offer-details-22")).toBeVisible();
+    await expect(list.locator(".offer-details:visible")).toHaveCount(1);
+    await secondToggle.press("Space");
+    await expect(list.locator(".offer-details:visible")).toHaveCount(0);
+    await expect(secondToggle).toBeFocused();
+  });
+}
 
 test("correction targets distinguish identically titled offers even while details are collapsed", async ({
   page,

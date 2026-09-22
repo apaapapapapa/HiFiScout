@@ -334,9 +334,8 @@ test("detail separates stock states and discloses capped unfiltered offers", () 
   assert.match(markup, /在庫あり 12件・売り切れ 6件・未確認 1件/u);
   assert.match(markup, /全19件のうち2件を表示/u);
   assert.match(markup, /検索条件にかかわらず/u);
-  assert.match(markup, /<th scope="col">状態<\/th>/u);
-  assert.match(markup, /<td>ジャンク<\/td>/u);
-  assert.doesNotMatch(markup, /class="offer-details" open/u);
+  assert.match(markup, /class="offer-condition">ジャンク/u);
+  assert.equal((markup.match(/aria-expanded="false"/g) || []).length, 2);
 });
 
 test("a product with no price and no stock says so rather than inventing one", () => {
@@ -399,8 +398,18 @@ test("the offer list keeps what actually distinguishes two offers of the same mo
   assert.match(markup, /data-history="22"/u);
   assert.match(markup, /<del>￥1,000,000<\/del>/u);
   assert.match(markup, /売り切れ/u);
-  // Each offer has a dealer link in the compact overview and in its detailed row.
-  assert.equal((markup.match(/href="https:\/\/example\.test\/p1"/g) || []).length, 4);
+  // Each offer has one seller-page action; the shop name has its own listing-page URL.
+  assert.equal((markup.match(/href="https:\/\/example\.test\/p1"/g) || []).length, 2);
+});
+
+test("single-offer details stay open and unsafe seller links are unavailable", () => {
+  const markup = renderOffers(product(), [
+    offer({ shop_key: "unknown", source_url: "javascript:alert(1)" }),
+  ]);
+  assert.match(markup, /aria-expanded="true"/u);
+  assert.match(markup, /販売ページのURLなし/u);
+  assert.doesNotMatch(markup, /href="(?:#|javascript:)/u);
+  assert.match(markup, /data-history="1"/u);
 });
 
 test("an unresolved product says the comparison is unavailable, not that it failed", () => {
