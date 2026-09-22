@@ -14,7 +14,7 @@ export function auctionInstant(value: unknown): string | null {
   if (!match) return null;
   const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 31, 30, 31];
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (
     year < 2000 ||
     month < 1 ||
@@ -127,16 +127,17 @@ export function applyAuctionObservation(
     // Explicit later start is a new cycle. Never carry the previous cycle's price/outcome forward.
     return { status: "applied", snapshot: { ...next, stamp, cycle: previous.cycle + 1 } };
   }
+  const preserveEnd =
+    previous.live.sourceState?.value === "ended" && next.live.sourceState?.value !== "ended";
   const live: AuctionLiveFacts = {
     currentPrice: next.live.currentPrice ?? previous.live.currentPrice,
     buyNowPrice: next.live.buyNowPrice ?? previous.live.buyNowPrice,
     bidCount: next.live.bidCount ?? previous.live.bidCount,
     scheduledEndAt: next.live.scheduledEndAt ?? previous.live.scheduledEndAt,
     startedAt: next.live.startedAt ?? previous.live.startedAt,
-    sourceState:
-      previous.live.sourceState?.value === "ended"
-        ? previous.live.sourceState
-        : (next.live.sourceState ?? previous.live.sourceState),
+    sourceState: preserveEnd
+      ? previous.live.sourceState
+      : (next.live.sourceState ?? previous.live.sourceState),
     outcome: next.live.outcome ?? previous.live.outcome,
     shipping: next.live.shipping ?? previous.live.shipping,
   };
