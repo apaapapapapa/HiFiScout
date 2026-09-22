@@ -1,0 +1,115 @@
+# Yahoo! Auctions: gated audio pilot
+
+Status: offline foundation only; collection and public serving are **not approved or enabled**.
+Issue: [#703](https://github.com/apaapapapapa/HiFiScout/issues/703). Current scope is steps 1–2;
+DO persistence, scheduling, catalog integration and UI are later steps, not part of this change.
+
+## Review recorded 2026-09-22
+
+Baseline: main `419360658b04fcf0076fc674d13f37a76c8fe0ee` (e-earphone was added, disabled,
+after the original design). Existing shop data and search still belong to D1; per-shop DOs
+coordinate crawling. This foundation neither migrates that storage nor registers another shop.
+Follow [adding shops](adding-shops.md) and [crawl orchestration](crawl-orchestration.md) for shared
+parsing, URL, pacing and quiet-hour boundaries. Auction prices must not enter `SellerProduct.priceYen`
+or the existing retail price/history projections.
+
+During this implementation, [#706](https://github.com/apaapapapapa/HiFiScout/pull/706) advanced main
+to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that seller's consent was
+confirmed. That independent authorization does **not** satisfy any Yahoo acquisition/redistribution
+gate. Preserve the concurrent shop change; Yahoo remains disabled and unverified.
+
+### Acquisition and redistribution gate
+
+The following official references were retrieved on 2026-09-22. Search/page caches are not proof
+of the current raw HTML contract or a grant of access. No seller inventory was crawled by CI.
+
+| Evidence | Finding / remaining action |
+| --- | --- |
+| [Old API retirement](https://developer.yahoo.co.jp/changelog/2018-02-20-auction160.html) | The old public Auction Web API ended on 2018-02-22. Do not use the obsolete endpoint or assume a replacement. No contract/feed usable by HiFiScout was established in this review. |
+| [LINE Yahoo common terms](https://www.lycorp.co.jp/ja/company/terms/) | Sections 8.3 and 14 restrict uses beyond the intended service purpose. Public visibility is not permission for collection/redistribution. |
+| [Auction guidelines](https://auctions.yahoo.co.jp/special/html/guidelines.html) | Section 6(2) restricts collecting/using other users' posted content beyond transaction needs. Section 1 mentions partner publication; it does not establish HiFiScout as an authorized partner. Obtain and record an applicable permission/contract before enabling. |
+| [robots.txt](https://auctions.yahoo.co.jp/robots.txt) | The research fetch failed without usable content. This is **unknown**, not an empty/allow policy or a confirmed seller HTTP status. Fetch and evaluate the actual user-agent/path policy before launch. Robots permission is separate from redistribution permission. |
+| Account telemetry | No connected Cloudflare reader was available in this session. Account plan, DO usage and remaining shared headroom were not measured. Do not mark an allocation or free-tier fit as verified. |
+| Raw source contract | Current seller HTML/authorized feed fixture has not been established. Synthetic regressions cannot satisfy this launch gate. |
+
+The gates in `src/auctions/yahoo/policy.ts` stay `unverified`. Approval needs dated evidence,
+authorization scope, allowed fields/paths, review owner and recheck conditions recorded here and
+reviewed in a PR. Do not put private contracts, seller personal data or credentials in this public file.
+No permission request, agreement, paid-plan change or production mutation was made by this review.
+
+## Initial discovery scope
+
+Only these exact buckets are pilot candidates. Category ancestry is provenance, not permission
+to discover every descendant. New links, brand buckets and related categories need explicit review.
+
+| Bucket | Verified source hierarchy | HiFiScout hint |
+| --- | --- | --- |
+| [2084037425](https://auctions.yahoo.co.jp/list3/2084037425-category.html) | Audio 23764 → Amplifiers 23792 → General 2084037425 | None: this contains different amplifier types, kits and accessories. |
+| [2084024118](https://auctions.yahoo.co.jp/category/list/2084024118/) | Audio 23764 → CD decks [23772](https://auctions.yahoo.co.jp/category/list/23772/) → General 2084024118 | `SRC.DISC`, corroborative only; never proof of the sold subject. |
+
+The source category remains distinct from the canonical category. Keep unresolved, junk, parts,
+empty boxes, compatible accessories and bundles distinct; do not drop or merge them into a main unit.
+After measured pilot acceptance, expand to speakers/analog, then headphones/earphones/DAP, then
+accessories/parts. This is not a promise of full category coverage at any pilot stage.
+
+Future transport candidates are HTTPS on `auctions.yahoo.co.jp`, exact allowlisted category/list
+paths and `/jp/auction/<id>` detail paths. Arbitrary redirects, alternate origins, login/captcha,
+credentials and nonstandard ports are outside the candidate contract. Revalidate every redirect.
+Use an honest user agent identifying `HiFiScout` and the project; do not spoof a browser or rotate
+identity/IP to circumvent restrictions. Actual User-Agent and approved pacing must be recorded
+with the grant before transport is wired. Existing global user-agent/pacing/robots infrastructure
+must be reused rather than bypassed.
+
+## Provisional resource ceilings, not measured entitlement
+
+[DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) retrieved on
+2026-09-22 documents Free limits of 100,000 requests/day, 13,000 GB-s/day, 5 million SQLite rows
+read/day, 100,000 rows written/day and 5 GB total storage. These are shared account constraints,
+not multiplied by creating DOs. Requests include alarms/RPC; storage includes index/FTS work,
+KV operations, `setAlarm` writes and deletes. Also account for caller Workers, D1 catalog reads,
+R2 evidence and retries. Limits reset at 00:00 UTC (09:00 JST), not local midnight.
+See also [DO limits](https://developers.cloudflare.com/durable-objects/platform/limits/).
+
+`YAHOO_AUCTION_PILOT_LIMITS` is the single code definition of proposed ceilings: 2,000 retained
+items, 500 new items and 500 seller requests per UTC day (including retries/robots/redirects),
+100 listing pages/day, at least 60 seconds between seller requests, 1 MiB responses and 100 items
+per page. It proposes 5,000 DO requests, 250,000 rows read, 10,000 rows written, 1,000 GB-s/day and
+100 MB stored. These are conservative planning choices, not measurements or permission to fetch.
+
+Reserve 20% of the allocated request/read/write/duration budget for recovery, stopping and bounded
+retention. Stop ordinary admissions before that reserve; no operation may exceed the hard ceiling.
+Before launch, replace/reduce the proposed allocation using the account's actual plan and recent
+complete usage intervals, leaving explicit headroom for existing crawl DOs. Record UTC interval,
+namespace/account scope, observation age, missing dimensions and the accepted allocation. Missing,
+sampled, quota-deferred or stale evidence is not zero. If usable headroom is unknown, admission
+remains disabled. Stage 3 owns persistence, metering and enforcement; these constants alone do not
+implement a runtime quota limiter or prove free-tier compliance.
+
+## Independent switches and failure policy
+
+The offline policy accepts `YAHOO_AUCTIONS_COLLECT_ENABLED`, `YAHOO_AUCTIONS_SEARCH_ENABLED` and
+`YAHOO_AUCTIONS_DISPLAY_ENABLED`. Only the exact string `true` requests enablement; unset/invalid
+values are false. Flags cannot approve collection, redistribution, robots, account budget or the
+source contract. Collection requires its acquisition/robots/budget/contract gates; serving requires
+redistribution/budget/contract gates. Stopping collection does not inherently disable serving
+already authorized stored facts. All three are off with the committed evidence.
+
+These controls are **not deployed bindings or implemented routes yet**. Stage 3 must wire every
+scheduled/manual/recovery entry through collection admission, the shared 23:00–08:00 JST quiet
+window and durable manual pause. Stage 5 must gate both API and UI independently. No public request
+may fetch Yahoo. Unknown source layouts and responses beyond bounds stop parsing, not report an
+empty successful inventory. No successful HTML, images, full descriptions, seller profiles or bid
+histories should be retained/re-published by this pilot.
+
+401/403/authentication challenges halt for review. 429 backs off and respects `Retry-After`;
+repeated throttling halts. Network/5xx errors get bounded exponential retries after normal pacing.
+404/410 means unavailable-unconfirmed, not sold or ended. Time expiry means end-check-pending,
+not a completed sale. Stage 3 persists attempt caps and backoff state; the offline classification
+helper performs no retry itself.
+
+## Required evidence before advancing to live collection
+
+Obtain acquisition/redistribution scope and actual robots policy; validate an authorized current
+source fixture; measure account headroom; implement stage-3 bounded storage, pacing and budget
+admission; run offline regression/CI and review. Keep unresolved prerequisites unchecked in #703.
+A merged foundation or a green source/deployment run is not authorization to start collecting.
