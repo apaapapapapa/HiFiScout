@@ -135,6 +135,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/product-audit-export-job-repository.ts",
       "src/db/knowledge-catalog-export-job-repository.ts",
       "src/db/data-export-job-lifecycle.ts",
+      "src/export/complete-csv.ts",
     ],
     suites: [
       "test/queue-routing.test.ts",
@@ -176,6 +177,24 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     },
     reason:
       "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences.",
+  },
+  {
+    id: "catalog-photos",
+    sources: [
+      "src/db/catalog-photo-repository.ts",
+      "src/db/catalog-product-detail-repository.ts",
+      "src/db/knowledge-catalog-admin-operations.ts",
+      "src/http/product-permalink.ts",
+    ],
+    suites: ["test/catalog-photo.test.ts", "test/catalog-photo-budget.test.ts"],
+    samples: {
+      "catalog-photo-search-100": d1(200, 0, 8),
+      "catalog-photo-search-10000": d1(200, 0, 8),
+      "catalog-photo-replay": d1(20, 0, 1),
+      "catalog-photo-update": d1(20, 1, 3),
+    },
+    reason:
+      "Manufacturer photos use primary-key lookups in the existing page query. Unrelated photo growth stays bounded; identical edits write zero; revision guards and atomic merges preserve concurrent work.",
   },
   {
     id: "catalog-hydration",

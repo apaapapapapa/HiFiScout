@@ -92,6 +92,18 @@ function leaveProductRoute(): void {
 }
 
 function install(): void {
+  for (const image of document.querySelectorAll<HTMLImageElement>(
+    "#product-permalink-page .catalog-photo img",
+  )) {
+    const unavailable = () => {
+      const text = document.createElement("p");
+      text.className = "catalog-photo-unavailable";
+      text.textContent = "写真を読み込めませんでした";
+      image.replaceWith(text);
+    };
+    image.addEventListener("error", unavailable, { once: true });
+    if (image.complete && image.naturalWidth === 0) unavailable();
+  }
   document.addEventListener(
     "click",
     (event) => {

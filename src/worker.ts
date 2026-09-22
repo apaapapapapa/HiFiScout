@@ -20,6 +20,9 @@ import {
   updateCatalogSpecifications,
 } from "./db/catalog-specification-repository.js";
 import type { CatalogSpecifications } from "./catalog/types.js";
+import { readCatalogPhoto, updateCatalogPhoto } from "./db/catalog-photo-repository.js";
+import type { CatalogPhotoUpdate } from "./api/catalog-photo-contracts.js";
+import { fetchPhotoCandidates } from "./catalog/knowledge-verification/photo-candidates.js";
 import { adminAiCatalog } from "./ai-suggestions/admin.js";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
@@ -194,6 +197,23 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async getSpecifications(productId: number) {
     return readCatalogSpecifications(this.env.DB, productId);
+  }
+
+  async getPhoto(productId: number) {
+    return readCatalogPhoto(this.env.DB, productId);
+  }
+
+  async updatePhoto(productId: number, input: CatalogPhotoUpdate) {
+    return updateCatalogPhoto(this.env.DB, productId, input);
+  }
+
+  async photoCandidates(productId: number, sourceUrl: string) {
+    const product = await this.env.DB.prepare(
+      "SELECT manufacturer_id FROM knowledge_catalog_products WHERE id = ?",
+    )
+      .bind(productId)
+      .first<{ manufacturer_id: string }>();
+    return product ? fetchPhotoCandidates(product.manufacturer_id, sourceUrl, this.env) : null;
   }
 
   async updateSpecifications(productId: number, input: CatalogSpecifications) {

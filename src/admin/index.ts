@@ -1,4 +1,5 @@
 import { parseCatalogSpecifications } from "../api/catalog-specification-contracts.js";
+import { parseCatalogPhotoUpdate, safePhotoUrl } from "../api/catalog-photo-contracts.js";
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import { SHOP_DEFINITIONS } from "../config.js";
@@ -149,7 +150,8 @@ function manualOperationError(error: unknown): Response {
   }
   if (
     message === "catalog_admin_merge_manufacturer_mismatch" ||
-    message === "catalog_admin_merge_specifications_conflict"
+    message === "catalog_admin_merge_specifications_conflict" ||
+    message === "catalog_admin_merge_photos_conflict"
   ) {
     return json({ error: message }, { status: 409 });
   }
@@ -410,6 +412,45 @@ export async function handleAuthenticatedCatalogAdminRequest(
       return result ? json(result) : json({ error: "not_found" }, { status: 404 });
     } catch (error) {
       return manualOperationError(error);
+    }
+  }
+
+  const photoMatch = url.pathname.match(
+    /^\/api\/admin\/knowledge-catalog\/products\/([0-9]+)\/photo(\/candidates)?$/u,
+  );
+  if (photoMatch) {
+    const id = Number(photoMatch[1]);
+    if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "invalid_id" }, { status: 400 });
+    const candidates = Boolean(photoMatch[2]);
+    if (
+      (!candidates && !["GET", "PATCH"].includes(request.method)) ||
+      (candidates && request.method !== "POST")
+    )
+      return json({ error: "method_not_allowed" }, { status: 405 });
+    try {
+      if (request.method === "GET") {
+        const result = await env.CATALOG_ADMIN.getPhoto(id);
+        return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+      }
+      const body = await mutationBody(request, url);
+      if (isResponse(body)) return body;
+      const sourceUrl =
+        body && typeof body === "object"
+          ? safePhotoUrl((body as Record<string, unknown>).sourceUrl)
+          : null;
+      const input = parseCatalogPhotoUpdate(body);
+      if (candidates ? !sourceUrl : !input)
+        return json({ error: "invalid_catalog_photo" }, { status: 400 });
+      const result = candidates
+        ? await env.CATALOG_ADMIN.photoCandidates(id, sourceUrl!)
+        : await env.CATALOG_ADMIN.updatePhoto(id, input!);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message === "catalog_photo_conflict") return json({ error: message }, { status: 409 });
+      if (message === "catalog_photo_source_not_official")
+        return json({ error: message }, { status: 400 });
+      return json({ error: "catalog_photo_unavailable" }, { status: 503 });
     }
   }
 

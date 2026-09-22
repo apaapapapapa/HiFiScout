@@ -122,6 +122,7 @@ export function favoriteSnapshot(product: FavoriteProduct): FavoriteProduct {
     key: product.key,
     identity_kind: product.identity_kind,
     catalog_product_id: product.catalog_product_id,
+    ...(product.photo !== undefined ? { photo: product.photo ? { ...product.photo } : null } : {}),
     manufacturer: product.manufacturer,
     manufacturer_id: product.manufacturer_id,
     model: product.model,
