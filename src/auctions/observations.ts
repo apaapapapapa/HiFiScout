@@ -147,16 +147,24 @@ export function applyAuctionObservation(
 /** Passing time never mutates source state or proves a sale. */
 export function auctionPresentation(snapshot: AuctionSnapshot, now: string, maxAgeMs: number) {
   const instant = auctionInstant(now);
-  if (!instant || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0)
+  if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0)
     throw new Error("Invalid auction freshness parameters");
   const state = snapshot.live.sourceState;
   const end = snapshot.live.scheduledEndAt?.value;
-  const age = state ? Date.parse(instant) - Date.parse(state.observedAt) : null;
-  const freshness = age === null || age < 0 ? "unknown" : age > maxAgeMs ? "stale" : "fresh";
-  const phase =
-    state?.value === "ended" || state?.value === "unavailable"
+  const snapshotAt = auctionInstant(snapshot.stamp.observedAt);
+  const stateAt = state ? auctionInstant(state.observedAt) : null;
+  const invalidClock =
+    !instant ||
+    !snapshotAt ||
+    snapshotAt > instant ||
+    (state !== null && (!stateAt || stateAt > instant));
+  const age = instant && stateAt ? Date.parse(instant) - Date.parse(stateAt) : null;
+  const freshness = invalidClock || age === null ? "unknown" : age > maxAgeMs ? "stale" : "fresh";
+  const phase = invalidClock
+    ? "unknown"
+    : state?.value === "ended" || state?.value === "unavailable"
       ? state.value
-      : end && end <= instant
+      : end && instant && end <= instant
         ? "end_check_pending"
         : (state?.value ?? "unknown");
   return {
@@ -164,5 +172,5 @@ export function auctionPresentation(snapshot: AuctionSnapshot, now: string, maxA
     freshness,
     sourceState: state?.value ?? "unknown",
     outcome: snapshot.live.outcome?.value ?? "unknown",
-  };
+  } as const;
 }

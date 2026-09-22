@@ -165,3 +165,23 @@ Tests use fictional IDs and products. They exercise adjacency, missing/explicitl
 hidden raw markup, unknown layouts, zero bids, tax/shipping, sale units/subjects, price changes,
 extensions, stale/replayed observations and confirmed versus scheduled ends. They make no seller
 requests and establish neither production parser compatibility nor actual Cloudflare costs.
+
+## Public offer boundary
+
+The canonical observation, reducer and parser above remain the only internal model. The explicit
+`AuctionOffer` in `src/api/auction-contracts.ts` does not inherit observations or retained item facts.
+`src/auctions/public-offer.ts` copies approved public fields and normalized catalog identity at each
+nesting level; seller titles, raw manufacturer/model/category/condition text, internal stamps and
+extra runtime properties do not enter public responses. Future routes must use this mapper after
+source validation and the existing serving admission gates. No route is activated by this contract.
+
+The public buy-now union preserves all three existing source meanings: `set` carries the price,
+tax evidence and its observation time; `none` carries the explicit absence's observation time;
+`unknown` carries no invented value or timestamp. Current and buy-now price evidence remain
+independent, including after partial rechecks. Public reads do not replace their times with now or
+with the latest unrelated observation, and they do not calculate guessed tax/fee-inclusive prices.
+
+Presentation checks the current clock, snapshot time and source-state evidence time before deriving
+any phase. Invalid times or future evidence yield unknown phase/freshness, including for ended and
+unavailable states. Saved source facts remain untouched. The existing freshness threshold, expiry,
+confirmed-ending and relisting rules continue to use the canonical reducer/presentation helpers.
