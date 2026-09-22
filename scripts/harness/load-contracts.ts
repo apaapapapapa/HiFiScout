@@ -106,8 +106,21 @@ export const LOAD_CONTRACTS: LoadContract[] = [
   },
   {
     id: "queue-redelivery",
-    sources: ["src/worker.ts", "src/product-audit-export/*", "src/knowledge-catalog-export/*"],
-    suites: ["test/queue-routing.test.ts"],
+    sources: [
+      "src/worker.ts",
+      "src/product-audit-export/*",
+      "src/knowledge-catalog-export/*",
+      "src/db/product-audit-export-job-repository.ts",
+      "src/db/knowledge-catalog-export-job-repository.ts",
+      "src/db/data-export-job-lifecycle.ts",
+    ],
+    suites: [
+      "test/queue-routing.test.ts",
+      "test/product-audit-export-job.test.ts",
+      "test/knowledge-catalog-export-core.test.ts",
+      "test/complete-data-export.test.ts",
+      "test/export-chunk-recovery.test.ts",
+    ],
     samples: {
       "queue-export-redelivery": {
         environment: "local-mock",
