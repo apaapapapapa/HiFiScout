@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { searchProducts } from "../src/db/product-search-repository.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
 import { productQuery } from "./helpers/product-query.js";
@@ -48,10 +50,18 @@ test("new in-stock totals use the projected date index as stale inventory grows"
     assert.equal(oldCount.results?.[0].total, recent);
 
     const recorded = recordingDatabase(db);
-    const measured = accountReads(recorded.db);
+    const boundary = measureD1Cost(recorded.db);
+    const measured = accountReads(boundary.db);
     const result = await searchProducts(
       measured.db,
       productQuery("?inStock=true&newOnly=true&includeTotal=true&limit=5"),
+    );
+    await recordCostSample(
+      "search-new-total",
+      "local-workerd",
+      boundary.metrics(),
+      ["test/filtered-search-read-budget.test.ts"],
+      ["Complete selective count, page and offer loaders; 10,000 rows, 12 matches."],
     );
     assert.equal(result.totalCount, recent);
     assert.equal(result.items.length, 5);
@@ -121,12 +131,20 @@ test("price-drop totals use the existing active-price index before entity member
     assert.equal(oldCount.results?.[0].total, discounted);
 
     const recorded = recordingDatabase(db);
-    const measured = accountReads(recorded.db);
+    const boundary = measureD1Cost(recorded.db);
+    const measured = accountReads(boundary.db);
     const result = await searchProducts(
       measured.db,
       productQuery(
         "?inStock=true&priceDropped=true&minPrice=75000&maxPrice=125000&sort=priceAsc&includeTotal=true&limit=5",
       ),
+    );
+    await recordCostSample(
+      "search-price-drop-total",
+      "local-workerd",
+      boundary.metrics(),
+      ["test/filtered-search-read-budget.test.ts"],
+      ["Complete selective count, page and offer loaders; 10,000 rows, 12 discounts."],
     );
     assert.equal(result.totalCount, discounted);
     assert.equal(result.items.length, 5);
@@ -338,7 +356,8 @@ test("filtered price pages bound reads as the matching shops grow", async () => 
         .bind(previous)
         .run();
       const recorded = recordingDatabase(db);
-      const measured = accountReads(recorded.db);
+      const boundary = measureD1Cost(recorded.db);
+      const measured = accountReads(boundary.db);
       const result = await searchProducts(
         measured.db,
         productQuery(

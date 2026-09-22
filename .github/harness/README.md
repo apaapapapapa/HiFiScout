@@ -307,18 +307,18 @@ must come from that checkout's CI graph; the import mode does not authenticate a
 ## Cost evidence and comparison
 
 The existing parser benchmark and selected budget tests write source-bound samples when
-`HARNESS_COST_OUTPUT` is set. CI collects 13 required samples without re-running those tests:
-split/inline D1 checkpoints, indexed category pruning (including EXPLAIN details), a DO retry,
-Queue redelivery, and eight parser stages. Measurement-producing task cache keys include
+`HARNESS_COST_OUTPUT` is set. CI collects the required samples from `scripts/harness/cost.ts` without re-running those tests:
+split/inline D1 checkpoints, indexed category pruning, selective searches, unchanged publication,
+catalog/history growth, complete-day scheduling, maintenance continuation, a DO retry, Queue
+redelivery, and eight parser stages. The registered ceilings in `load-contracts.ts` are enforced by
+`cost-report`; see [load prevention](../../docs/load-regression-prevention.md) and `load-capture`. Measurement-producing task cache keys include
 `GITHUB_SHA`, so a previous commit's samples cannot be restored as this commit's observations.
 
 For a local capture on a clean checkout:
 
 ```bash
-HARNESS_COST_OUTPUT=.generated/cost vp test run test/d1-crawl-checkpoint-budget.test.ts test/observed-sql-read-budget.test.ts test/crawl-do-collection-progress.test.ts test/queue-routing.test.ts
-HARNESS_COST_OUTPUT=.generated/cost vp run benchmark:parser
-vp run harness cost-report .generated/cost .generated/cost-report.json
-vp run harness compare-cost <baseline-samples-dir> <candidate-samples-dir>
+vp run harness load-capture .generated/load-candidate
+vp run harness compare-cost <baseline-capture-dir>/samples .generated/load-candidate/samples
 ```
 
 Use fresh directories and retain failed test/benchmark output as well as samples. A sample's
