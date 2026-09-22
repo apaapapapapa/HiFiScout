@@ -13,6 +13,11 @@ Follow [adding shops](adding-shops.md) and [crawl orchestration](crawl-orchestra
 parsing, URL, pacing and quiet-hour boundaries. Auction prices must not enter `SellerProduct.priceYen`
 or the existing retail price/history projections.
 
+During this implementation, [#706](https://github.com/apaapapapapa/HiFiScout/pull/706) advanced main
+to `2ea9bc2a3e45f102856bfbd311d24f5feb53545a` and enabled e-earphone after that seller's consent was
+confirmed. That independent authorization does **not** satisfy any Yahoo acquisition/redistribution
+gate. Preserve the concurrent shop change; Yahoo remains disabled and unverified.
+
 ### Acquisition and redistribution gate
 
 The following official references were retrieved on 2026-09-22. Search/page caches are not proof
@@ -137,8 +142,25 @@ reopen the same external ID as a new cycle; the old cycle's live facts are not c
 A new external ID is a separate listing. State/outcome are not inferred from transport failures,
 prices or bid counts. Expiring an end timestamp derives `end_check_pending` for presentation only;
 it does not mutate the observed source state or prove a winner. End extensions are new observations.
-Partial field updates never refresh the source state's own freshness timestamp.
+Partial field updates never refresh the source state's own freshness timestamp. An explicit second
+confirmation of the same terminal state does refresh that state's evidence time.
 
+### Visibility boundary and regression coverage
+
+After the shared raw-text/comment filter, `visible-markup.ts` removes complete explicitly hidden
+subtrees before any card, title or labelled field is extracted. It covers hidden ancestors as well
+as attributes directly on a card or value: boolean `hidden`, `aria-hidden=true` and explicit inline
+`display:none` / `visibility:hidden`. Attribute scanning respects quoted `>` characters and void
+elements; CSS comments and HTML character references do not hide those explicit declarations.
+Structural placeholders prevent removed labels from pairing with an unrelated neighboring value.
+Unterminated hidden subtrees or quoted attributes reject the candidate layout rather than exposing
+unknown fallback content. This is a conservative bounded filter, **not an HTML5/CSS renderer**;
+external stylesheets, media queries and browser-repaired malformed structures are not established
+by this contract. Validate actual source visibility under the source-contract gate before enabling.
+
+The offline suite contains the policy tests, 16 observation/parser cases, two self-review regressions
+and five visibility/calendar cases. The latter reproduce the hidden-ancestor review finding, protect
+against inherited object-property labels, and check the last valid/first invalid day in all 12 months.
 Tests use fictional IDs and products. They exercise adjacency, missing/explicitly absent facts,
 hidden raw markup, unknown layouts, zero bids, tax/shipping, sale units/subjects, price changes,
 extensions, stale/replayed observations and confirmed versus scheduled ends. They make no seller
