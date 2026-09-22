@@ -161,7 +161,7 @@ export function parseAuctionQuery(
       !Number.isSafeInteger(c.expires) ||
       c.expires > now + AUCTION_CURSOR_MS ||
       typeof c.id !== "string" ||
-      !/^[a-z][a-z0-9]{5,31}$/u.test(c.id) ||
+      !/^(?:[a-z][a-z0-9]{5,31}|[1-9]\d{9})$/u.test(c.id) ||
       !(
         c.value === null ||
         (query.sort === "ending" || query.sort === "newest"
