@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { recordCostSample } from "../scripts/harness/cost.js";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { claimShopMembershipCleanupChunk } from "../src/db/crawl-run-continuation-repository.js";
 import { listStalledCrawlRuns } from "../src/db/crawl-run-repository.js";
@@ -65,6 +66,19 @@ test("catalog remediation identity selection stays bounded as matching and unrel
       assert.equal(selected.hasMore, true);
       assert.equal(measured.rowsWritten(), 0);
       assert.equal(measured.statementCount(), 1);
+      await recordCostSample(
+        `catalog-remediation-${size}`,
+        "local-workerd",
+        {
+          rowsRead: measured.rowsRead(),
+          rowsWritten: measured.rowsWritten(),
+          sqlStatements: measured.statementCount(),
+        },
+        ["test/maintenance-read-budget.test.ts"],
+        [
+          `${size} matching identities and ${size} unrelated listings; setup excluded; page size 10.`,
+        ],
+      );
       costs.push({ size, reads: measured.rowsRead() });
       previousUnrelated = size;
       previousMatching = size;

@@ -207,6 +207,20 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "40 requested IDs remain bounded with 100, 1,000 and 10,000 unrelated verified products; duplicate IDs and result semantics are preserved.",
   },
   {
+    id: "catalog-remediation",
+    sources: ["src/db/knowledge-catalog-remediation-repository.ts"],
+    suites: [
+      "test/knowledge-catalog-remediation.test.ts",
+      "test/maintenance-read-budget.test.ts",
+      "test/remediation-query-plans.test.ts",
+    ],
+    samples: Object.fromEntries(
+      [100, 1000, 10000].map((size) => [`catalog-remediation-${size}`, d1(60, 0, 1)]),
+    ),
+    reason:
+      "Verified catalog replay seeks complete exact-identity index prefixes and merges page-bounded streams. Matching and unrelated identity growth retain constant read cost, cursor order and zero writes.",
+  },
+  {
     id: "retention-and-schema",
     sources: ["src/maintenance.ts", "migrations/*"],
     suites: [
