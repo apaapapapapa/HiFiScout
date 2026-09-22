@@ -38,7 +38,7 @@
     "types:worker": "node --import tsx scripts/ensure-directories.ts .generated && node --import tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
     "build": "vp run build:frontend && vp run build:worker && vp run build:admin-worker && vp run build:lambda",
     "build:frontend": "vp run build:frontend:public && vp run build:frontend:admin",
-    "build:frontend:public": "vp build --mode public",
+    "build:frontend:public": "vp build --mode public && vp build --mode notification-worker",
     "build:frontend:admin": "vp build --mode admin",
     "build:worker": "vp exec wrangler deploy --dry-run --outdir dist/worker",
     "build:admin-worker": "vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",

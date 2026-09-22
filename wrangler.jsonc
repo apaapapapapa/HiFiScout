@@ -11,10 +11,11 @@
     "PublicSearchCache": { "type": "worker", "cache": { "enabled": true } },
     "CrawlScheduler": { "type": "durable-object", "storage": "sqlite" },
     "AdminJobs": { "type": "durable-object", "storage": "sqlite" },
-    "YahooAuctions": { "type": "durable-object", "storage": "sqlite" }
+    "YahooAuctions": { "type": "durable-object", "storage": "sqlite" },
+    "NotificationHub": { "type": "durable-object", "storage": "sqlite" }
   },
   "durable_objects": {
-    "bindings": [{ "name": "CRAWL_SCHEDULER", "class_name": "CrawlScheduler" }, { "name": "ADMIN_JOBS", "class_name": "AdminJobs" }, { "name": "YAHOO_AUCTIONS", "class_name": "YahooAuctions" }]
+    "bindings": [{ "name": "CRAWL_SCHEDULER", "class_name": "CrawlScheduler" }, { "name": "ADMIN_JOBS", "class_name": "AdminJobs" }, { "name": "YAHOO_AUCTIONS", "class_name": "YahooAuctions" }, { "name": "NOTIFICATIONS", "class_name": "NotificationHub" }]
   },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "browser": { "binding": "BROWSER" },
@@ -38,6 +39,7 @@
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
+    "NOTIFICATIONS_ENABLED": "true",
     "YAHOO_AUCTIONS_COLLECT_ENABLED": "false",
     "YAHOO_AUCTIONS_SEARCH_ENABLED": "false",
     "YAHOO_AUCTIONS_DISPLAY_ENABLED": "false",

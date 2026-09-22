@@ -17,6 +17,28 @@ const d1 = (rowsRead: number, rowsWritten: number, sqlStatements: number) => ({
 /** Reviewed ceilings, not observations or estimates of account-wide production consumption. */
 export const LOAD_CONTRACTS: LoadContract[] = [
   {
+    id: "saved-search-notifications",
+    sources: [
+      "src/notifications/*",
+      "src/db/notification-candidates.ts",
+      "src/db/specification-search.ts",
+      "src/http/notifications.ts",
+    ],
+    suites: [
+      "test/notification-query.test.ts",
+      "test/notification-runtime.test.ts",
+      "test/notification-policy.test.ts",
+      "test/notification-crypto.test.ts",
+    ],
+    samples: {
+      "notification-candidates": d1(50, 0, 1),
+      "notification-matches": d1(1000, 0, 1),
+      "notification-outbox-replay": d1(10, 0, 5),
+    },
+    reason:
+      "Twenty indexed listing changes and same-offer matching among 10,000 unrelated rows write no D1 data. Durable SQLite outbox replays write zero rows. Daily persisted budgets and limited retries bound the independent scheduler; offline observations do not certify production capacity.",
+  },
+  {
     id: "hifido-parser",
     sources: ["src/crawler/shops/hifido.ts"],
     suites: [

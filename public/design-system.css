@@ -1056,6 +1056,13 @@ body.filters-open { overflow: hidden; }
 .saved-searches li { padding-block: 12px; border-top: 1px solid #e5e5e5; }
 .saved-searches input { max-width: 100%; min-height: 44px; font: inherit; }
 .saved-searches button { min-height: 44px; }
+.notification-settings[open] { flex-basis: 100%; }
+.notification-settings-content { max-width: 680px; padding: 12px 0; }
+.notification-settings-content p, .notification-status p { font-size: 14px; color: #555; }
+.notification-settings-content label { display: inline-flex; align-items: center; gap: 8px; margin: 8px 12px 8px 0; }
+.notification-settings-content input[type="text"] { width: 140px; }
+.notification-settings-content small { display: block; margin-bottom: 12px; }
+.notification-settings-content button + button { margin-left: 12px; }
 .model-relations { line-height: 1.7; overflow-wrap: anywhere; }
 .model-relations ul { padding-left: 20px; }
 .model-relations li { margin-bottom: 8px; }

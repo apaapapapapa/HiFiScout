@@ -19,6 +19,7 @@ import { meta } from "./meta.js";
 import { handlePublicContractRoute } from "./public-routes.js";
 import { yahooAuctionAccess } from "../auctions/yahoo/policy.js";
 import { handleAuctionRoute } from "./auctions.js";
+import { handleNotificationRoute } from "./notifications.js";
 import {
   cachedAtom,
   cachedJson,
@@ -45,6 +46,8 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   // The limiter could not decide. Reads an existing cache entry already answers stay available;
   // every other route refuses rather than reaching D1 with no limit in force.
   const cacheOnly = rate.decision === "unavailable";
+  const notificationResponse = await handleNotificationRoute(request, env, cacheOnly);
+  if (notificationResponse) return notificationResponse;
   const auctionResponse = await handleAuctionRoute(request, env, cacheOnly);
   if (auctionResponse) return auctionResponse;
 
