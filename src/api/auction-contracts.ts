@@ -1,10 +1,15 @@
-import type {
-  AuctionSaleSubject,
-  AuctionSaleUnit,
-  AuctionShipping,
-  AuctionSourceState,
-  AuctionTax,
-} from "../auctions/types.js";
+export type AuctionSourceState = "open" | "ended" | "unavailable" | "unknown";
+export type AuctionOutcome = "winner_reported" | "no_winner_reported" | "unknown";
+export type AuctionTax = "inclusive" | "exclusive" | "exempt" | "unknown";
+export type AuctionShipping = "free" | "separate" | "collect" | "unknown";
+export type AuctionSaleUnit = "single" | "pair" | "set" | "unknown";
+export type AuctionSaleSubject =
+  | "main_unit"
+  | "accessory"
+  | "parts"
+  | "empty_box"
+  | "bundle"
+  | "unknown";
 
 /** Public factual vocabulary only; never inherit the retained observation or item shape. */
 export interface AuctionOfferFact<T extends string | number> {
@@ -45,11 +50,14 @@ export interface AuctionOffer {
   observedAt: string;
   displayState: AuctionDisplayState;
   freshness: "fresh" | "stale" | "unknown";
+  freshUntil: string | null;
 }
 
 export interface AuctionSearchResult {
   items: AuctionOffer[];
   nextCursor: string | null;
+  hasMore: boolean;
   observedAt: string;
+  validUntil: string;
   coverage: "partial" | "unknown";
 }

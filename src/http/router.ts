@@ -17,6 +17,8 @@ import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
 import { meta } from "./meta.js";
 import { handlePublicContractRoute } from "./public-routes.js";
+import { yahooAuctionAccess } from "../auctions/yahoo/policy.js";
+import { handleAuctionRoute } from "./auctions.js";
 import {
   cachedAtom,
   cachedJson,
@@ -43,6 +45,8 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   // The limiter could not decide. Reads an existing cache entry already answers stay available;
   // every other route refuses rather than reaching D1 with no limit in force.
   const cacheOnly = rate.decision === "unavailable";
+  const auctionResponse = await handleAuctionRoute(request, env, cacheOnly);
+  if (auctionResponse) return auctionResponse;
 
   const contractResponse = await handlePublicContractRoute(request, env, ctx, { cacheOnly });
   if (contractResponse) return contractResponse;
@@ -112,5 +116,13 @@ export async function handleHttp(
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/admin/")) return json({ error: "not_found" }, { status: 404 });
   if (url.pathname.startsWith("/api/")) return handleApi(request, env, ctx);
+  if (url.pathname === "/auctions") {
+    const access = yahooAuctionAccess(env);
+    if (!access.search || !access.display) return json({ error: "not_found" }, { status: 404 });
+    const asset = new URL(url);
+    asset.pathname = "/";
+    asset.search = "";
+    return env.ASSETS.fetch(new Request(asset, request));
+  }
   return env.ASSETS.fetch(request);
 }

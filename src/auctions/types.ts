@@ -1,16 +1,20 @@
 /** Auction observations are not retail offers or confirmed transaction prices. */
-export type AuctionSourceState = "open" | "ended" | "unavailable" | "unknown";
-export type AuctionOutcome = "winner_reported" | "no_winner_reported" | "unknown";
-export type AuctionTax = "inclusive" | "exclusive" | "exempt" | "unknown";
-export type AuctionShipping = "free" | "separate" | "collect" | "unknown";
-export type AuctionSaleUnit = "single" | "pair" | "set" | "unknown";
-export type AuctionSaleSubject =
-  | "main_unit"
-  | "accessory"
-  | "parts"
-  | "empty_box"
-  | "bundle"
-  | "unknown";
+import type {
+  AuctionSourceState,
+  AuctionOutcome,
+  AuctionTax,
+  AuctionShipping,
+  AuctionSaleUnit,
+  AuctionSaleSubject,
+} from "../api/auction-contracts.js";
+export type {
+  AuctionSourceState,
+  AuctionOutcome,
+  AuctionTax,
+  AuctionShipping,
+  AuctionSaleUnit,
+  AuctionSaleSubject,
+} from "../api/auction-contracts.js";
 
 export interface AuctionPrice {
   amountYen: number;

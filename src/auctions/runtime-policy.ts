@@ -19,6 +19,7 @@ export interface AuctionTask {
 }
 export interface AuctionCharge {
   requests: number;
+  publicRequests: number;
   sellerRequests: number;
   pages: number;
   newItems: number;
@@ -48,6 +49,7 @@ export interface AuctionRuntimeState {
 }
 export const emptyAuctionCharge = (): AuctionCharge => ({
   requests: 0,
+  publicRequests: 0,
   sellerRequests: 0,
   pages: 0,
   newItems: 0,
@@ -89,6 +91,7 @@ export function reserveAuctionBudget(
   const used = day > state.utcDay ? emptyAuctionCharge() : state.reserved;
   const maxima: AuctionCharge = {
     requests: limits.doRequestsPerUtcDay,
+    publicRequests: limits.publicRequestsPerUtcDay,
     sellerRequests: limits.sellerRequestsPerUtcDay,
     pages: limits.listingPagesPerUtcDay,
     newItems: limits.newItemsPerUtcDay,
@@ -99,7 +102,7 @@ export function reserveAuctionBudget(
   const reserved = { ...used };
   for (const key of Object.keys(maxima) as (keyof AuctionCharge)[]) {
     if (!Number.isFinite(charge[key]) || charge[key] < 0) return null;
-    reserved[key] += charge[key];
+    reserved[key] = (used[key] ?? 0) + charge[key];
     if (reserved[key] > maxima[key] * (recovery ? 1 : 1 - limits.recoveryReserveRatio)) return null;
   }
   return { ...state, reserved, utcDay: Math.max(day, state.utcDay) };

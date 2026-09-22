@@ -78,5 +78,5 @@ test("Cloudflare routes the catalog root through the Worker before serving stati
     readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ) as { assets?: { run_worker_first?: unknown } };
 
-  assert.deepEqual(config.assets?.run_worker_first, ["/api/*", "/"]);
+  assert.deepEqual(config.assets?.run_worker_first, ["/api/*", "/", "/auctions"]);
 });

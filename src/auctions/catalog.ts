@@ -203,15 +203,17 @@ export class AuctionCatalogMaintenance {
     row: { auction_id: string; item: string; fingerprint: string },
     entry: AuctionCatalogEntry,
   ): void {
-    const identity = auctionCatalogIdentity(JSON.parse(row.item) as AuctionItemFacts, entry);
+    const item = JSON.parse(row.item) as AuctionItemFacts;
+    const identity = auctionCatalogIdentity(item, entry);
     this.store.sql(
       "catalog",
-      `UPDATE auction_items SET identity=?,catalog_id=?,manufacturer=?,model=?,category=?,match_revision=?
+      `UPDATE auction_items SET identity=?,catalog_id=?,manufacturer=?,model=?,model_key=?,category=?,match_revision=?
       WHERE auction_id=? AND fingerprint=? AND (match_revision IS NOT ? OR identity IS NOT ?)`,
       JSON.stringify(identity),
       identity.catalogProductId,
       auctionSearchText(identity.manufacturer),
       identity.model,
+      auctionSearchText(item.rawModel || identity.model),
       identity.categoryId,
       entry.revision,
       row.auction_id,

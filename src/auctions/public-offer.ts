@@ -5,7 +5,7 @@ import type {
   AuctionOfferPrice,
 } from "../api/auction-contracts.js";
 import type { AuctionObservedFact, AuctionPrice, AuctionSnapshot } from "./types.js";
-import { auctionPresentation } from "./observations.js";
+import { auctionPresentation, auctionInstant } from "./observations.js";
 
 /** Normalized catalog identity, never an automatic fallback to raw seller text. */
 export interface AuctionPublicIdentity {
@@ -60,5 +60,9 @@ export function toAuctionOffer(
     observedAt: snapshot.stamp.observedAt,
     displayState: presentation.phase,
     freshness: presentation.freshness,
+    freshUntil:
+      snapshot.live.sourceState && auctionInstant(snapshot.live.sourceState.observedAt)
+        ? new Date(Date.parse(snapshot.live.sourceState.observedAt) + maxAgeMs).toISOString()
+        : null,
   };
 }

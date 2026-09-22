@@ -282,3 +282,42 @@ The `auction-catalog` load contract measures shared D1 reads for one versus 2,00
 and SQLite zero-write replay after a price update. Workerd tests exercise bounded continuation,
 negative-cache recovery, revision/expiry exclusion and pause during a delayed lookup. These are
 synthetic, local results; live acquisition and public rollout remain blocked by the evidence gates.
+
+## Offline public search and detail (step 5)
+
+`/api/auctions` validates bounded filters before invoking the single stable DO. The DO reads only
+stored SQLite data; public requests never query D1 or Yahoo. `/api/auction-features` exposes only
+configured serving availability, without a DO lookup. The existing public rate limiter applies;
+when it cannot decide, the auction route returns unavailable (there is no permitted edge cache).
+Every response is `no-store`, with at most 25 rows plus one lookahead and a 96 KiB payload ceiling.
+Current/buy-now price ranges and sorts use separate tax-comparable columns, nulls last and auction
+ID ties. There is no exact total count. Filters are conjunctive on the same offer.
+
+FTS5 uses normalized NFKC letters/digits and quoted AND terms, up to four terms of at least three
+characters. Short keywords produce an explicit input error; the model filter supports short codes
+through an indexed normalized prefix range. Manufacturer/category/catalog filters require a current
+catalog candidate revision. Catalog expiry removes confirmed product links even without another
+seller observation; expired or unmatched offers remain available through unfiltered search.
+Cursors bind all normalized conditions, sort and null position, expire after 15 minutes, and fail
+explicitly if invalid or expired. This is a live listing, not an immutable snapshot: price/time
+updates can move records across pages. The client deduplicates IDs and offers an explicit new search.
+
+`/auctions` displays current and instant-buy prices separately, known absence versus unknown values,
+unit/subject, shipping uncertainty, bid counts including zero, observation time and end-check-pending.
+The browser advances its clock without fetching and hides a response after at most 60 seconds (or
+earlier catalog expiry); an end time crossing removes the open claim immediately. Returning to a
+visible tab also rechecks the clock. Public pause applies on every API read; an already displayed
+response expires within this bound. The deployment switch also blocks API access before the DO.
+
+Verified `c-<id>` details request at most eight offers independently. Failure or quota does not replace
+the retail detail with an empty list, and auction bids never feed retail minima, history or Price Index.
+Cards in the retail results do not fan out auction requests. Source links contain only allowlisted
+auction IDs, React escapes all labels, and full seller descriptions/images are not republished.
+
+Public admission reserves 15,100 SQLite reads, 20 writes and 0.25 GB-s per call against the shared
+ledger plus its own request dimension. These are conservative bounds, not billing measurements:
+with no other work, the current ordinary 200,000-read allocation admits only 13 such reservations,
+well before the independent public request ceiling. Do not treat that ceiling as a supported traffic
+forecast. The mixed-load regression proves confirmation/stopping can still use the reserved headroom.
+Before live enablement, measure actual sorted/filtered workloads, invocation/Alarm/storage costs and
+account headroom, then review a sustainable traffic allocation and numeric freshness/p95 criteria.
