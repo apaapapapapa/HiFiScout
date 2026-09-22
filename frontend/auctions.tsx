@@ -535,20 +535,20 @@ export function AuctionSearchApp() {
                     <input
                       type="datetime-local"
                       value={
-                        fields.endBefore && Number.isFinite(Date.parse(fields.endBefore))
+                        instant(fields.endBefore)
                           ? new Date(Date.parse(fields.endBefore) + 9 * 60 * 60_000)
                               .toISOString()
                               .slice(0, 16)
                           : ""
                       }
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        const parsed = value ? Date.parse(`${value}+09:00`) : Number.NaN;
                         update(
                           "endBefore",
-                          event.target.value
-                            ? new Date(`${event.target.value}:00+09:00`).toISOString()
-                            : "",
-                        )
-                      }
+                          Number.isFinite(parsed) ? new Date(parsed).toISOString() : "",
+                        );
+                      }}
                     />
                   </label>
                 </div>
