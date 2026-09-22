@@ -242,14 +242,15 @@ test("paging re-renders under connect-src, and the price history graphic draws",
   await catalogPage.offerButton(key!).click();
   await expect(catalogPage.offersDialog).toBeVisible();
 
-  // Multi-offer products keep actions inside closed disclosures. Use each disclosure id to find
-  // a listing with history, then open that offer before interacting with its action.
-  const offerDetails = catalogPage.offersDialog.locator("details.offer-details");
+  // Read the visible disclosure controls to find a listing with history, then expand it.
+  const offerDetails = catalogPage.offersDialog.locator(
+    ".offer-primary-actions button[aria-controls]",
+  );
   await expect(offerDetails.first()).toBeVisible();
   let charted = "";
   for (let index = 0; index < (await offerDetails.count()); index += 1) {
     const details = offerDetails.nth(index);
-    const detailId = await details.getAttribute("id");
+    const detailId = await details.getAttribute("aria-controls");
     const listingId = detailId?.replace(/^offer-details-/u, "") ?? "";
     if (!listingId) continue;
 
@@ -258,9 +259,8 @@ test("paging re-renders under connect-src, and the price history graphic draws",
     if ((body.history ?? []).length === 0) continue;
 
     charted = listingId;
-    if ((await details.getAttribute("open")) === null)
-      await details.locator(":scope > summary").click();
-    const historyButton = details.locator(`[data-history="${listingId}"]`);
+    if ((await details.getAttribute("aria-expanded")) !== "true") await details.click();
+    const historyButton = catalogPage.offersDialog.locator(`[data-history="${listingId}"]`);
     await expect(historyButton).toBeVisible();
     await historyButton.click();
     break;

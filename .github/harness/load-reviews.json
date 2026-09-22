@@ -359,7 +359,7 @@
     },
     {
       "id": "load-contracts",
-      "baseSha": "2aaefbe5cbcef8e5037e061fdcf1dcf032d038f4",
+      "baseSha": "8fe4479b9f9b3bba7f5a18f7f190139ab506b895",
       "beforeDigest": "8a39c84f60a8fb30bedc199e31e31ec703236e315e5249177fe330a07ebe1446",
       "afterDigest": "59c15f08e75b5c9ad23d903b1fe7842fdb42944f2506e9a8892d37c344d4ffb5",
       "reason": "Register the independent opt-in notification scheduler, bounded D1 candidate and matching reads, and SQLite outbox replay. Reviewed initial observations are 20/0/1, 78/0/1 and 6/0/5 on real workerd, with the specified measured-fixture head in the committed evaluation. Existing cases and ceilings are unchanged; production CPU and arrival-rate capacity remain unknown.",
@@ -369,7 +369,7 @@
     },
     {
       "id": "notification-candidates",
-      "baseSha": "2aaefbe5cbcef8e5037e061fdcf1dcf032d038f4",
+      "baseSha": "8fe4479b9f9b3bba7f5a18f7f190139ab506b895",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "eb01d088a0a97c146b697d8b96dfe4a31edbedf7bdb8a2fb1a44c9deff1e8f1f",
       "reason": "Initial observed 20 reads, zero writes and one D1 statement for twenty recent candidates among 10,000 listings, including old publication dates. The existing indexed changed-at range avoids unrelated old listings. This is a new measured baseline, with no fabricated pre-feature sample or existing ceiling relaxation.",
@@ -379,7 +379,7 @@
     },
     {
       "id": "notification-matches",
-      "baseSha": "2aaefbe5cbcef8e5037e061fdcf1dcf032d038f4",
+      "baseSha": "8fe4479b9f9b3bba7f5a18f7f190139ab506b895",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "898d764aa1c96097616bb79c14938a9d055f37c84dc166da8d6ef6059287e2f7",
       "reason": "Initial observed 78 reads, zero writes and one D1 statement for a bounded twenty-ID match with FTS, same-offer shop/price/stock and latest price history. The initial 1000-row ceiling leaves room for correlated facets/specifications while preserving a finite regression gate. This is not an account-wide production cost claim.",
@@ -389,7 +389,7 @@
     },
     {
       "id": "notification-outbox-replay",
-      "baseSha": "2aaefbe5cbcef8e5037e061fdcf1dcf032d038f4",
+      "baseSha": "8fe4479b9f9b3bba7f5a18f7f190139ab506b895",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "4e02a520e8ea426f873fdc29006c0bd105145250300d1ceb9df01be7707a5064",
       "reason": "Initial SQLite outbox replay observes 6 reads, zero physical writes and five statements including key/watch reads and constant-time capacity checks. Duplicate scans, interrupted transaction rollback, daily unknown-usage stops, delivery retry limits and unsubscribe cancellation pass in real workerd. The added idle-resume regression preserves same-day budgets and retains the same 6/0/5 observation. No previous measurement is invented.",

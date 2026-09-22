@@ -112,8 +112,13 @@ search uses the same Japanese and Latin aliases as catalog search. Comparison se
 product name from the first selection. Omit specification rows missing for every compared product,
 with one explanation; retain missing values when another product has a confirmed value.
 
-For multi-store products, show a compact price/availability overview before the individual offers.
-Condition details start collapsed and share one explanation of unknown facts. Result cards show
+Product details use one list of offers, with shop, price, condition and stock visible per offer.
+Keep recorded sale-unit/voltage/options visible while details are collapsed. The outline disclosure
+button opens details directly below that offer; a separate dark seller-page link opens a new tab.
+Use 48px action targets with at least 24px horizontal separation, or stack them with a 16px gap on
+narrow screens. Multi-offer details start collapsed and only one opens at a time; a single offer
+starts expanded. Preserve the listing title, reference, observation date, facts and price history
+inside the disclosure, and share one explanation of unknown facts. Result cards show
 only recorded sale-unit, voltage and option facts; offer details retain explicit unknown wording.
 Favorite watch scope resets on membership or applied-filter changes, while price snapshot updates
 retain the current observation baseline and do not trigger another automatic refresh.
