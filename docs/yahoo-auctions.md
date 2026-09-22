@@ -32,7 +32,7 @@ of the current raw HTML contract or a grant of access. No seller inventory was c
 | [Old API retirement](https://developer.yahoo.co.jp/changelog/2018-02-20-auction160.html) | The old public Auction Web API ended on 2018-02-22. Do not use the obsolete endpoint or assume a replacement. No contract/feed usable by HiFiScout was established in this review. |
 | [LINE Yahoo common terms](https://www.lycorp.co.jp/ja/company/terms/) | Sections 8.3 and 14 restrict uses beyond the intended service purpose. Public visibility is not permission for collection/redistribution. |
 | [Auction guidelines](https://auctions.yahoo.co.jp/special/html/guidelines.html) | Section 6(2) restricts collecting/using other users' posted content beyond transaction needs. Section 1 mentions partner publication; it does not establish HiFiScout as an authorized partner. Obtain and record an applicable permission/contract before enabling. |
-| [robots.txt](https://auctions.yahoo.co.jp/robots.txt) | The research fetch failed without usable content. This is **unknown**, not an empty/allow policy or a confirmed seller HTTP status. Fetch and evaluate the actual user-agent/path policy before launch. Robots permission is separate from redistribution permission. |
+| [robots.txt](https://auctions.yahoo.co.jp/robots.txt) | A bounded follow-up GET on 2026-09-22 returned HTTP 200 with `HiFiScoutBot/1.0 (+https://github.com/apaapapapapa/HiFiScout)`. The `User-agent: *` rule `Disallow: /category/list/*?*n=` rejects all six current pilot discovery URLs because they contain `n=20`. The runtime robots check confirms denial; discovery stays blocked. Permission and the actual pagination/source contract must be reviewed before changing URLs or enabling collection. |
 | Account telemetry | The follow-up on 2026-09-22 found a connected Cloudflare reader, but its read-only account-subscription request failed with API error `10000: Authentication error`. Account plan, DO usage and remaining shared headroom remain unmeasured. Restore the connector's authorized access before collecting telemetry; do not substitute another credential path or treat an unavailable metric as zero. |
 | Raw source contract | Current seller HTML/authorized feed fixture has not been established. Synthetic regressions cannot satisfy this launch gate. |
 
@@ -40,6 +40,14 @@ The gates in `src/auctions/yahoo/policy.ts` stay `unverified`. Approval needs da
 authorization scope, allowed fields/paths, review owner and recheck conditions recorded here and
 reviewed in a PR. Do not put private contracts, seller personal data or credentials in this public file.
 No permission request, agreement, paid-plan change or production mutation was made by this review.
+
+The retrieved robots body has SHA-256
+`4c6cb4296e26809d74226ffa597046ced06f50f222ba01862c1a281341aa342d`.
+Its response Date was `2026-09-22T07:11:25Z`; retrieval was observed at
+`2026-09-22T07:28:39Z`. This records that response, not an immutable origin policy.
+The 60-second interval is a conservative implementation floor, not an interval granted by Yahoo.
+Dropping the blocked page-size parameter would leave page size, offsets, overlap and workload
+unverified, so this review does not substitute a different URL to claim a working source contract.
 
 ## Initial discovery scope
 
