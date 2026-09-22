@@ -317,7 +317,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 2000,
       defaultMaxPages: 10,
-      // Terms of service §15 require the seller's consent before automated collection.
+      // Deployments opt in explicitly after obtaining the seller consent required by §15.
       defaultEnabled: false,
     },
     {

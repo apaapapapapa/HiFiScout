@@ -1,7 +1,11 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { auctionFixture } from "./helpers/auction-fixture.js";
-import { acceptsAuctionObservation, parseAuctionObservation } from "../src/auctions/observation.js";
+import {
+  acceptsAuctionObservation,
+  auctionDisplayState,
+  parseAuctionObservation,
+} from "../src/auctions/observation.js";
 
 test("unknown or unavailable observations cannot erase a confirmed ending", () => {
   const ended = auctionFixture({ sourceStatus: "ended" });
@@ -31,4 +35,17 @@ test("future starts and end-before-start timestamps fail observation validation"
     null,
   );
   assert.notEqual(parseAuctionObservation(auctionFixture({ sourceStartedAt: null })), null);
+});
+
+test("every source status stays unknown until its observation clock is valid", () => {
+  for (const sourceStatus of ["active", "ended", "unavailable", "unknown"] as const) {
+    const item = parseAuctionObservation(auctionFixture({ sourceStatus }));
+    assert.ok(item);
+    const observedAt = Date.parse(item.observedAt);
+    for (const now of [NaN, Infinity, -Infinity, observedAt - 1]) {
+      assert.equal(auctionDisplayState(item, now), "unknown", `${sourceStatus}: ${now}`);
+    }
+    assert.equal(auctionDisplayState(item, observedAt), sourceStatus);
+    assert.equal(auctionDisplayState({ ...item, observedAt: "invalid" }, observedAt), "unknown");
+  }
 });

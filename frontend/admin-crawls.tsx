@@ -15,14 +15,20 @@ const STAGES: Record<string, string> = {
 export function AdminCrawls() {
   const [data, setData] = useState<AdminCrawlOverview | null>(null);
   const [busy, setBusy] = useState(false);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  async function refresh() {
+    setData(await adminJson<AdminCrawlOverview>("/api/admin/crawls"));
+    setStale(false);
+  }
   async function load() {
     setBusy(true);
     setError("");
     try {
-      setData(await adminJson<AdminCrawlOverview>("/api/admin/crawls"));
+      await refresh();
     } catch (reason) {
+      setStale(true);
       setError(genericErrorText(reason));
     } finally {
       setBusy(false);
@@ -41,10 +47,16 @@ export function AdminCrawls() {
         body: JSON.stringify({ shopKey, action }),
       });
       setMessage(result.message);
-      await load();
     } catch (reason) {
       setError(genericErrorText(reason));
     } finally {
+      // A lost response may follow a saved change. Always reconcile before another operation.
+      try {
+        await refresh();
+      } catch (reason) {
+        setStale(true);
+        setError((previous) => [previous, genericErrorText(reason)].filter(Boolean).join(" "));
+      }
       setBusy(false);
     }
   }
@@ -57,7 +69,10 @@ export function AdminCrawls() {
         </button>
       </div>
       <p>
-        毎日23:00〜翌8:00（日本時間）は予定停止します。一時停止は途中位置を保持し、現在の1ステップが完了する場合があります。
+        収集スイッチの変更はすぐに保存されます。オフは再度オンにするまで維持され、定期収集と実行中の続きの処理を停止します。途中位置は保持し、現在の1ステップが完了する場合があります。
+      </p>
+      <p>
+        オンに戻すと保留中の処理または次回予定から再開します。毎日23:00〜翌8:00（日本時間）は、オンでも予定停止します。
       </p>
       {data ? (
         <p>
@@ -70,11 +85,15 @@ export function AdminCrawls() {
       {busy ? <p role="status">状態を確認しています…</p> : null}
       {message ? <p role="status">{message}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
+      {stale ? (
+        <p role="alert">最新の収集設定を確認できません。状態を再読み込みしてください。</p>
+      ) : null}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>ショップ / 状態</th>
+              <th>収集</th>
               <th>実行段階 / 次回予定</th>
               <th>最終成功 / 取得件数</th>
               <th>失敗理由</th>
@@ -85,93 +104,117 @@ export function AdminCrawls() {
             {data?.items.map((item) => {
               const paused = !!item.control?.paused || item.pausedIntent;
               const configured = item.enabled && item.configured;
+              const known = !stale && !!item.control;
+              const collectionEnabled = configured && !paused;
               return (
                 <tr key={item.shopKey}>
-                  <td>
-                    {item.name}
-                    <br />
-                    {!item.enabled
-                      ? "設定で無効"
-                      : !item.configured
-                        ? "接続未設定"
-                        : paused
-                          ? "手動停止中"
-                          : data.quietHours
-                            ? "夜間停止中"
-                            : item.control?.running
-                              ? "実行中"
-                              : "待機"}
+                  <td data-label="ショップ / 状態">
+                    <div>
+                      {item.name}
+                      <br />
+                      {!item.enabled
+                        ? "設定で無効"
+                        : !item.configured
+                          ? "接続未設定"
+                          : !known
+                            ? "状態不明"
+                            : paused
+                              ? "収集オフ"
+                              : data.quietHours
+                                ? "夜間停止中"
+                                : item.control?.running
+                                  ? "実行中"
+                                  : "待機"}
+                    </div>
                   </td>
-                  <td>
-                    {item.error ? (
-                      <p role="alert">{item.error}</p>
+                  <td data-label="収集">
+                    {known ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-label={`${item.name}の収集`}
+                        aria-checked={collectionEnabled}
+                        className="secondary-button crawl-collection-switch"
+                        disabled={busy || !configured}
+                        onClick={() =>
+                          void control(item.shopKey, collectionEnabled ? "pause" : "resume")
+                        }
+                      >
+                        <span className="crawl-switch-track" aria-hidden="true" />
+                        {collectionEnabled ? "オン" : "オフ"}
+                      </button>
                     ) : (
-                      <>
-                        {STAGES[item.control?.stage ?? "idle"] ?? item.control?.stage}
-                        {item.control?.pagesFetched != null ? (
-                          <p>
-                            取得 {item.control.pagesFetched}ページ / 解析{" "}
-                            {item.control.pagesParsed ?? "不明"}ページ
-                            <br />
-                            進捗日時 {dateText(item.control.progressAt)}
-                          </p>
-                        ) : null}
-                        {item.control?.jobId ? (
-                          <details>
-                            <summary>実行ID</summary>
-                            <code>{item.control.jobId}</code>
-                          </details>
-                        ) : null}
-                      </>
+                      "未確認"
                     )}
-                    <p>
-                      {paused || !configured ? "再開後の定期枠" : "次の定期枠"}:{" "}
-                      {dateText(item.nextScheduledAt)}
-                    </p>
-                    {item.control?.nextAlarmAt ? (
-                      <p>次ステップ: {dateText(item.control.nextAlarmAt)}</p>
-                    ) : null}
                   </td>
-                  <td>
-                    {dateText(item.lastSuccessAt)}
-                    <br />
-                    {item.lastItemCount === null ? "取得件数は未記録" : `${item.lastItemCount}件`}
-                    {item.lastItemCount !== null && item.previousItemCount !== null ? (
+                  <td data-label="実行段階 / 次回予定">
+                    <div>
+                      {item.error ? (
+                        <p role="alert">{item.error}</p>
+                      ) : (
+                        <>
+                          {STAGES[item.control?.stage ?? "idle"] ?? item.control?.stage}
+                          {item.control?.pagesFetched != null ? (
+                            <p>
+                              取得 {item.control.pagesFetched}ページ / 解析{" "}
+                              {item.control.pagesParsed ?? "不明"}ページ
+                              <br />
+                              進捗日時 {dateText(item.control.progressAt)}
+                            </p>
+                          ) : null}
+                          {item.control?.jobId ? (
+                            <details>
+                              <summary>実行ID</summary>
+                              <code>{item.control.jobId}</code>
+                            </details>
+                          ) : null}
+                        </>
+                      )}
                       <p>
-                        前回比 {item.lastItemCount - item.previousItemCount > 0 ? "+" : ""}
-                        {item.lastItemCount - item.previousItemCount}件
+                        {paused || !configured ? "再開後の定期枠" : "次の定期枠"}:{" "}
+                        {dateText(item.nextScheduledAt)}
                       </p>
-                    ) : null}
-                    <p>検索への反映完了: {dateText(item.lastProjectionAt)}</p>
+                      {item.control?.nextAlarmAt ? (
+                        <p>次ステップ: {dateText(item.control.nextAlarmAt)}</p>
+                      ) : null}
+                    </div>
                   </td>
-                  <td>
-                    {item.lastError ? (
-                      <>
-                        {item.lastError}
+                  <td data-label="最終成功 / 取得件数">
+                    <div>
+                      {dateText(item.lastSuccessAt)}
+                      <br />
+                      {item.lastItemCount === null ? "取得件数は未記録" : `${item.lastItemCount}件`}
+                      {item.lastItemCount !== null && item.previousItemCount !== null ? (
                         <p>
-                          {dateText(item.lastErrorAt)} · 連続 {item.consecutiveFailures}回
+                          前回比 {item.lastItemCount - item.previousItemCount > 0 ? "+" : ""}
+                          {item.lastItemCount - item.previousItemCount}件
                         </p>
-                        {item.backoffUntil ? (
-                          <p>再試行待機の目安: {dateText(item.backoffUntil)}</p>
-                        ) : null}
-                      </>
-                    ) : (
-                      "記録なし"
-                    )}
+                      ) : null}
+                      <p>検索への反映完了: {dateText(item.lastProjectionAt)}</p>
+                    </div>
                   </td>
-                  <td>
+                  <td data-label="失敗理由">
+                    <div>
+                      {item.lastError ? (
+                        <>
+                          {item.lastError}
+                          <p>
+                            {dateText(item.lastErrorAt)} · 連続 {item.consecutiveFailures}回
+                          </p>
+                          {item.backoffUntil ? (
+                            <p>再試行待機の目安: {dateText(item.backoffUntil)}</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        "記録なし"
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="操作">
                     <button
                       type="button"
                       className="secondary-button"
-                      disabled={busy || !item.control}
-                      onClick={() => void control(item.shopKey, paused ? "resume" : "pause")}
-                    >
-                      {paused ? "再開" : "一時停止"}
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={busy || !item.control || paused || !configured}
+                      disabled={busy || !known || !collectionEnabled}
                       onClick={() => void control(item.shopKey, "run")}
                     >
                       {item.control?.running ? "途中から再実行" : "再実行"}
@@ -184,7 +227,7 @@ export function AdminCrawls() {
         </table>
       </div>
       <p>
-        定期枠は予定です。手動停止・夜間停止・既存の実行・接続設定によって開始が遅れる場合があります。自動更新は行わず、再読み込みと操作後に状態を取得します。
+        定期枠は予定です。収集オフ・夜間停止・既存の実行・接続設定によって開始が遅れる場合があります。自動更新は行わず、再読み込みと操作後に状態を取得します。
       </p>
     </section>
   );

@@ -74,6 +74,20 @@ Explicit merge-by-ID is a secondary disclosure requiring the existing identity p
 confirmation. CSV input presents file selection, diff review, and apply as three labelled steps;
 the complete ZIP and versioned editable CSV remain distinct formats.
 
+## Per-shop collection flags
+
+Open **稼働管理 → ショップ別クロール** (`/#crawls`) to change each shop's **収集** switch.
+Changes save immediately. Off persists across page reloads and deployments until switched on again;
+it blocks scheduled/manual dispatch and pauses the saved execution after any in-flight bounded step.
+On resumes that execution or waits for the next scheduled slot. The daily 23:00–08:00 JST pause
+still applies while the switch is on. Existing listings are retained.
+
+The switch reuses the persistent admin pause flag and its DO alarm gate, with no additional table,
+polling or inventory scan. Deployment-disabled/unconfigured shops show a disabled off switch;
+the admin flag cannot override those prerequisites. Unavailable state is shown as unknown, with
+controls blocked until a successful refresh. After a control request, including a lost response,
+the console reads saved state before accepting another change.
+
 ## Seller offer decisions
 
 The listing row's **出品条件** action opens the title, original condition label and seller-derived

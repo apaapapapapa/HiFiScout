@@ -1,4 +1,5 @@
 import type { AuctionDisplayState, AuctionObservation } from "../api/auction-contracts.js";
+import { yahooAuctionIdentity } from "./yahoo/policy.js";
 
 const OBSERVATION_KEYS = new Set([
   "source",
@@ -13,6 +14,7 @@ const OBSERVATION_KEYS = new Set([
   "saleSubject",
   "saleUnit",
   "currentPriceYen",
+  "buyNowPriceStatus",
   "buyNowPriceYen",
   "bidCount",
   "taxStatus",
@@ -24,30 +26,12 @@ const OBSERVATION_KEYS = new Set([
   "observedAt",
 ]);
 
-export function auctionId(value: unknown): string | null {
-  return typeof value === "string" && /^[a-zA-Z0-9]{1,32}$/u.test(value) ? value : null;
-}
-
-/** Only official detail paths; discard tracking parameters without accepting other origins. */
+/** Reuse the reviewed source identity policy; tracking parameters are not auction identity. */
 export function canonicalAuctionUrl(value: unknown, expectedId?: string): string | null {
-  if (typeof value !== "string" || value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.port ||
-      !["auctions.yahoo.co.jp", "page.auctions.yahoo.co.jp"].includes(url.hostname)
-    ) {
-      return null;
-    }
-    const id = auctionId(url.pathname.match(/^\/jp\/auction\/([a-zA-Z0-9]{1,32})$/u)?.[1]);
-    if (!id || (expectedId !== undefined && id !== expectedId)) return null;
-    return `https://auctions.yahoo.co.jp/jp/auction/${id}`;
-  } catch {
-    return null;
-  }
+  const identity = yahooAuctionIdentity(value);
+  return identity && (expectedId === undefined || identity.auctionId === expectedId)
+    ? identity.sourceUrl
+    : null;
 }
 
 export function isAuctionInstant(value: unknown): value is string {
@@ -94,8 +78,9 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
   ) {
     return null;
   }
-  const id = auctionId(input.auctionId);
+  const id = typeof input.auctionId === "string" ? input.auctionId : null;
   const sourceUrl = id ? canonicalAuctionUrl(input.sourceUrl, id) : null;
+  const buyNowPriceStatus = member(input.buyNowPriceStatus, ["set", "none", "unknown"] as const);
   const condition = member(input.condition, ["new", "used", "junk", "unknown"] as const);
   const saleSubject = member(input.saleSubject, [
     "product",
@@ -132,6 +117,8 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
     !sourceStatus ||
     !nullableInteger(input.currentPriceYen) ||
     !nullableInteger(input.buyNowPriceYen) ||
+    !buyNowPriceStatus ||
+    (buyNowPriceStatus === "set") !== (input.buyNowPriceYen !== null) ||
     !nullableInteger(input.bidCount) ||
     observedAt < requestedAt ||
     (sourceStartedAt !== null && sourceStartedAt > observedAt) ||
@@ -152,6 +139,7 @@ export function parseAuctionObservation(value: unknown): AuctionObservation | nu
     saleSubject,
     saleUnit,
     currentPriceYen: input.currentPriceYen,
+    buyNowPriceStatus,
     buyNowPriceYen: input.buyNowPriceYen,
     bidCount: input.bidCount,
     taxStatus,
@@ -170,14 +158,15 @@ export function auctionDisplayState(
   now: number,
   staleAfterMs = 2 * 60 * 60_000,
 ): AuctionDisplayState {
+  const observedAt = Date.parse(item.observedAt);
+  if (!Number.isFinite(now) || !Number.isFinite(observedAt) || now < observedAt) return "unknown";
   if (item.sourceStatus === "ended" || item.sourceStatus === "unavailable")
     return item.sourceStatus;
-  if (!Number.isFinite(now) || now < Date.parse(item.observedAt)) return "unknown";
   if (item.scheduledEndAt !== null && Date.parse(item.scheduledEndAt) <= now) {
     return "end_confirmation_pending";
   }
   if (item.sourceStatus !== "active") return "unknown";
-  return now - Date.parse(item.observedAt) > staleAfterMs ? "stale" : "active";
+  return now - observedAt > staleAfterMs ? "stale" : "active";
 }
 
 /** Ordering uses request start, not delayed delivery time. Terminal state needs proven relisting. */

@@ -1,4 +1,18 @@
-/** Factual auction observations; deliberately independent of retail prices and stock. */
+export type AuctionCondition = "new" | "used" | "junk" | "unknown";
+export type AuctionSaleSubject =
+  | "product"
+  | "accessory"
+  | "parts"
+  | "empty_box"
+  | "bundle"
+  | "unknown";
+export type AuctionSaleUnit = "single" | "pair" | "set" | "unknown";
+export type AuctionTaxStatus = "included" | "excluded" | "unknown";
+export type AuctionShipping = "free" | "additional" | "collect" | "unknown";
+/** `none` requires explicit source evidence; missing information remains `unknown`. */
+export type AuctionBuyNowPriceStatus = "set" | "none" | "unknown";
+
+/** Retained source observations; never serialize this shape as a public response. */
 export interface AuctionObservation {
   source: "yahoo-auctions";
   auctionId: string;
@@ -8,14 +22,15 @@ export interface AuctionObservation {
   rawModel: string;
   sourceCategoryId: string;
   rawCategoryPath: string;
-  condition: "new" | "used" | "junk" | "unknown";
-  saleSubject: "product" | "accessory" | "parts" | "empty_box" | "bundle" | "unknown";
-  saleUnit: "single" | "pair" | "set" | "unknown";
+  condition: AuctionCondition;
+  saleSubject: AuctionSaleSubject;
+  saleUnit: AuctionSaleUnit;
   currentPriceYen: number | null;
+  buyNowPriceStatus: AuctionBuyNowPriceStatus;
   buyNowPriceYen: number | null;
   bidCount: number | null;
-  taxStatus: "included" | "excluded" | "unknown";
-  shipping: "free" | "additional" | "collect" | "unknown";
+  taxStatus: AuctionTaxStatus;
+  shipping: AuctionShipping;
   sourceStatus: "active" | "ended" | "unavailable" | "unknown";
   sourceStartedAt: string | null;
   scheduledEndAt: string | null;
@@ -31,11 +46,26 @@ export type AuctionDisplayState =
   | "unavailable"
   | "unknown";
 
-export interface AuctionOffer extends AuctionObservation {
+/** Explicit public facts, independent of retained seller text and future observation fields. */
+export interface AuctionOffer {
+  source: "yahoo-auctions";
+  auctionId: string;
+  sourceUrl: string;
   catalogProductId: number | null;
   manufacturer: string;
   model: string;
   categoryId: string;
+  condition: AuctionCondition;
+  saleSubject: AuctionSaleSubject;
+  saleUnit: AuctionSaleUnit;
+  currentPriceYen: number | null;
+  buyNowPriceStatus: AuctionBuyNowPriceStatus;
+  buyNowPriceYen: number | null;
+  bidCount: number | null;
+  taxStatus: AuctionTaxStatus;
+  shipping: AuctionShipping;
+  scheduledEndAt: string | null;
+  observedAt: string;
   priceObservedAt: string | null;
   displayState: AuctionDisplayState;
 }

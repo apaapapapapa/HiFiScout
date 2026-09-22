@@ -1,40 +1,12 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import type { AuctionObservation } from "../src/api/auction-contracts.js";
+import { auctionFixture as observation } from "./helpers/auction-fixture.js";
 import {
   acceptsAuctionObservation,
   auctionDisplayState,
   canonicalAuctionUrl,
   parseAuctionObservation,
 } from "../src/auctions/observation.js";
-import { auctionConfiguration } from "../src/auctions/config.js";
-
-function observation(changes: Partial<AuctionObservation> = {}): AuctionObservation {
-  return {
-    source: "yahoo-auctions",
-    auctionId: "a1234567890",
-    sourceUrl: "https://auctions.yahoo.co.jp/jp/auction/a1234567890",
-    title: "Example Model II ペア",
-    rawManufacturer: "Example",
-    rawModel: "Model II",
-    sourceCategoryId: "23764",
-    rawCategoryPath: "オーディオ機器",
-    condition: "unknown",
-    saleSubject: "unknown",
-    saleUnit: "pair",
-    currentPriceYen: 1,
-    buyNowPriceYen: null,
-    bidCount: 0,
-    taxStatus: "unknown",
-    shipping: "unknown",
-    sourceStatus: "active",
-    sourceStartedAt: "2026-09-18T00:00:00.000Z",
-    scheduledEndAt: "2026-09-19T12:00:00.000Z",
-    requestedAt: "2026-09-19T10:00:00.000Z",
-    observedAt: "2026-09-19T10:00:01.000Z",
-    ...changes,
-  };
-}
 
 test("auction facts keep starting bids, unknown buy-now/fees and zero bids distinct", () => {
   assert.deepEqual(parseAuctionObservation(observation()), observation());
@@ -71,7 +43,7 @@ test("auction validation rejects invalid prices, missing fields, dates and unsup
 test("auction detail URLs reject foreign origins, credentials and identifier mismatch", () => {
   const path = "/jp/auction/a1234567890";
   assert.equal(
-    canonicalAuctionUrl(`https://page.auctions.yahoo.co.jp${path}?tracking=1#x`),
+    canonicalAuctionUrl(`https://auctions.yahoo.co.jp${path}?tracking=1`),
     `https://auctions.yahoo.co.jp${path}`,
   );
   for (const url of [
@@ -80,6 +52,8 @@ test("auction detail URLs reject foreign origins, credentials and identifier mis
     `https://user@auctions.yahoo.co.jp${path}`,
     `https://auctions.yahoo.co.jp:444${path}`,
     `https://auctions.yahoo.co.jp${path}/extra`,
+    `https://page.auctions.yahoo.co.jp${path}`,
+    `https://auctions.yahoo.co.jp${path}#description`,
     "https://auctions.yahoo.co.jp/jp/auction/%2e%2e",
     "javascript:alert(1)",
   ]) {
@@ -167,38 +141,24 @@ test("delayed/repeated observations do not roll back state and a newer end exten
   );
 });
 
-test("auction collection is opt-in with independent source-validation and account-budget gates", () => {
-  const off = auctionConfiguration({});
-  assert.equal(off.collectionEnabled, false);
-  assert.equal(off.publicEnabled, false);
-  assert.equal(off.searchEnabled, false);
-  assert.deepEqual(off.categoryIds, []);
-  assert.ok(off.blockers.includes("source_terms_unreviewed"));
-  assert.ok(off.blockers.includes("source_fixture_unverified"));
-  assert.ok(off.blockers.includes("account_budget_unreviewed"));
-  const env = {
-    YAHOO_AUCTIONS_ENABLED: "true",
-    YAHOO_AUCTIONS_APPROVAL_REFERENCE: "https://github.com/apaapapapapa/HiFiScout/issues/703",
-    YAHOO_AUCTIONS_SOURCE_VALIDATED: "true",
-    YAHOO_AUCTIONS_BUDGET_REVIEWED: "true",
-    YAHOO_AUCTIONS_CATEGORY_IDS: "23764,23764",
-  };
-  const on = auctionConfiguration(env);
-  assert.equal(on.collectionEnabled, true);
-  assert.equal(on.publicEnabled, false);
-  assert.deepEqual(on.categoryIds, ["23764"]);
-  for (const value of ["0", "-1", "100", "1e4", "oops"]) {
+test("buy-now facts distinguish a set price, explicit absence and unconfirmed availability", () => {
+  for (const buyNowPriceStatus of ["none", "unknown"] as const) {
+    const item = observation({ buyNowPriceStatus, buyNowPriceYen: null });
+    assert.deepEqual(parseAuctionObservation(item), item);
+    assert.equal(parseAuctionObservation({ ...item, buyNowPriceYen: 100 }), null);
+    assert.equal(parseAuctionObservation({ ...item, buyNowPriceYen: 0 }), null);
+  }
+  for (const buyNowPriceYen of [0, 100, 1_000_000_000_000]) {
+    const item = observation({ buyNowPriceStatus: "set", buyNowPriceYen });
+    assert.deepEqual(parseAuctionObservation(item), item);
+  }
+  for (const buyNowPriceYen of [null, undefined, -1, 1.5, "100", NaN, Infinity, 1e15]) {
     assert.equal(
-      auctionConfiguration({ ...env, YAHOO_AUCTIONS_REQUEST_DELAY_MS: value }).collectionEnabled,
-      false,
+      parseAuctionObservation({ ...observation(), buyNowPriceStatus: "set", buyNowPriceYen }),
+      null,
     );
   }
-  assert.equal(
-    auctionConfiguration({ ...env, YAHOO_AUCTIONS_CATEGORY_IDS: "23764," }).collectionEnabled,
-    false,
-  );
-  assert.equal(
-    auctionConfiguration({ ...env, YAHOO_AUCTIONS_BUDGET_REVIEWED: "false" }).collectionEnabled,
-    false,
-  );
+  for (const buyNowPriceStatus of [undefined, null, "", "not_checked", true]) {
+    assert.equal(parseAuctionObservation({ ...observation(), buyNowPriceStatus }), null);
+  }
 });

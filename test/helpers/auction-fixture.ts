@@ -15,6 +15,7 @@ export function auctionFixture(changes: Partial<AuctionObservation> = {}): Aucti
     saleSubject: "unknown",
     saleUnit: "pair",
     currentPriceYen: 1,
+    buyNowPriceStatus: "unknown",
     buyNowPriceYen: null,
     bidCount: 0,
     taxStatus: "unknown",
