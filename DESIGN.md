@@ -166,6 +166,10 @@ condition. Missing photos add no empty frame. Failed images retain readable prod
 the source link. Load images lazily without sending a referrer. Unresolved listings never inherit a
 nearby model's photo.
 
+In search results and favorites, place the compact reference photo to the right of the model name
+in both list and card views, including narrow screens. Keep its source credit below the photo and
+let long model names wrap within the remaining width. Cards without photos use the full name width.
+
 ## Conflict resolution
 
 When the Refero sources disagree:
