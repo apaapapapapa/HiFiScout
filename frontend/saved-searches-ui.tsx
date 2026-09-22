@@ -12,6 +12,13 @@ import {
   savedSearchQuery,
 } from "./saved-searches.js";
 import type { SavedSearch } from "./saved-searches.js";
+import type { NotificationStatus } from "../src/api/contracts.js";
+import { NotificationSettings } from "./notification-settings.js";
+import {
+  disableNotification,
+  disableAllNotifications,
+  notificationStatus,
+} from "./notifications.js";
 
 export function SavedSearches({
   filters,
@@ -27,6 +34,16 @@ export function SavedSearches({
   const [editing, setEditing] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationStatus | null>(null);
+  const refreshNotifications = async () => {
+    setNotifications(await notificationStatus());
+  };
+  useEffect(() => {
+    void refreshNotifications().catch(() => {
+      setError(true);
+      setMessage("通知設定を確認できませんでした。再確認してください。");
+    });
+  }, []);
   const query = savedSearchQuery(filters);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -123,6 +140,19 @@ export function SavedSearches({
           ) : null}
         </form>
         <p role={error ? "alert" : "status"}>{message}</p>
+        {!notifications ? (
+          <button
+            type="button"
+            onClick={() =>
+              void refreshNotifications().catch(() => {
+                setError(true);
+                setMessage("通知設定を確認できませんでした。通信状態をご確認ください。");
+              })
+            }
+          >
+            通知設定を再確認
+          </button>
+        ) : null}
         <ul>
           {entries.map((entry) => (
             <li key={entry.id}>
@@ -147,8 +177,25 @@ export function SavedSearches({
               <button
                 type="button"
                 aria-label={`${entry.name}を削除`}
-                onClick={() => {
+                onClick={async () => {
                   if (!window.confirm(`「${entry.name}」を削除しますか？`)) return;
+                  try {
+                    await disableNotification(entry.id);
+                  } catch {
+                    setError(true);
+                    setMessage(
+                      "通知の解除を確認できないため、保存検索を残しました。通信状態を確認して再度お試しください。",
+                    );
+                    return;
+                  }
+                  setNotifications((previous) =>
+                    previous
+                      ? {
+                          ...previous,
+                          watches: previous.watches.filter((watch) => watch.id !== entry.id),
+                        }
+                      : previous,
+                  );
                   const next = parseSavedSearches(readPreference(SAVED_SEARCHES_KEY)).filter(
                     (value) => value.id !== entry.id,
                   );
@@ -161,9 +208,51 @@ export function SavedSearches({
                 削除
               </button>
               <FeedSubscription path={savedSearchFeedPath(savedSearchFilters(entry.query))} />
+              <NotificationSettings
+                entry={entry}
+                watch={notifications?.watches.find((watch) => watch.id === entry.id)}
+                known={notifications !== null}
+                refresh={refreshNotifications}
+              />
             </li>
           ))}
         </ul>
+        {notifications?.watches.length ? (
+          <div className="notification-status">
+            <p>
+              通知はこの端末で最大5件です。設定は90日間有効で、通知の有効化・更新時に延長されます。
+            </p>
+            {notifications.lastCheck ? (
+              <p>確認処理の最終完了：{new Date(notifications.lastCheck).toLocaleString("ja-JP")}</p>
+            ) : (
+              <p>最初の確認を待っています。</p>
+            )}
+            {notifications.delayed ? (
+              <p role="status">通知の確認が遅れています。検索画面で最新の出品もご確認ください。</p>
+            ) : null}
+            {notifications.failed ? (
+              <p role="status">
+                配信できなかった通知があります。端末の通知許可を確認してください。
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await disableAllNotifications();
+                  await refreshNotifications();
+                  setError(false);
+                  setMessage("この端末の通知をすべて停止しました。");
+                } catch {
+                  setError(true);
+                  setMessage("通知の停止を確認できませんでした。再度お試しください。");
+                }
+              }}
+            >
+              この端末の通知をすべて停止
+            </button>
+          </div>
+        ) : null}
       </div>
     </details>
   );

@@ -127,31 +127,38 @@ export default defineConfig(({ mode }) => ({
   },
   ...(mode === "public"
     ? browserBundle("./frontend/app.tsx", "public", "app.js", "HiFiScoutApp")
-    : mode === "admin"
+    : mode === "notification-worker"
       ? browserBundle(
-          "./frontend/admin-console.tsx",
-          "admin-public",
-          "admin-console.js",
-          "HiFiScoutAdmin",
+          "./frontend/notification-worker.ts",
+          "public",
+          "notification-worker.js",
+          "HiFiScoutNotifications",
         )
-      : mode === "lambda"
-        ? {
-            build: {
-              outDir: "dist/audiounion-lambda",
-              emptyOutDir: true,
-              target: "node22",
-              minify: false,
-              ssr: fromRoot("./infra/audiounion-lambda/index.ts"),
-              rolldownOptions: {
-                external: [/^node:/u],
-                output: {
-                  entryFileNames: "index.mjs",
+      : mode === "admin"
+        ? browserBundle(
+            "./frontend/admin-console.tsx",
+            "admin-public",
+            "admin-console.js",
+            "HiFiScoutAdmin",
+          )
+        : mode === "lambda"
+          ? {
+              build: {
+                outDir: "dist/audiounion-lambda",
+                emptyOutDir: true,
+                target: "node22",
+                minify: false,
+                ssr: fromRoot("./infra/audiounion-lambda/index.ts"),
+                rolldownOptions: {
+                  external: [/^node:/u],
+                  output: {
+                    entryFileNames: "index.mjs",
+                  },
                 },
               },
-            },
-            ssr: {
-              noExternal: true,
-            },
-          }
-        : {}),
+              ssr: {
+                noExternal: true,
+              },
+            }
+          : {}),
 }));

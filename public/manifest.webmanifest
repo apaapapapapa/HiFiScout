@@ -1,0 +1,12 @@
+{
+  "id": "/",
+  "name": "HiFiScout",
+  "short_name": "HiFiScout",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#191817",
+  "icons": [{ "src": "/hifiscout-mark.jpg", "sizes": "256x256", "type": "image/jpeg" }]
+}

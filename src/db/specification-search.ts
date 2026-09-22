@@ -18,28 +18,49 @@ export function addSpecificationFilters(
   filters: SpecificationFilterQuery | undefined,
   where: string[],
   binds: unknown[],
+  bounded = false,
 ): void {
   if (!filters) return;
   for (const [id, field, index] of dimensions) {
     const value = filters[id];
     if (value === undefined) continue;
-    where.push(`e.catalog_product_id IN (
+    where.push(
+      bounded
+        ? `EXISTS (
+      SELECT 1 FROM catalog_product_specifications s
+      JOIN knowledge_catalog_products kp ON kp.id = s.catalog_product_id
+      WHERE s.catalog_product_id = e.catalog_product_id
+        AND json_type(s.specification_json, '$.${field}') IN ('integer','real')
+        AND json_extract(s.specification_json, '$.${field}') > 0
+        AND json_extract(s.specification_json, '$.${field}') <= ? AND kp.verification_status = 'verified'
+    )`
+        : `e.catalog_product_id IN (
       SELECT s.catalog_product_id FROM catalog_product_specifications s INDEXED BY idx_catalog_specs_${index}
       JOIN knowledge_catalog_products kp ON kp.id = s.catalog_product_id
       WHERE json_type(s.specification_json, '$.${field}') IN ('integer','real')
         AND json_extract(s.specification_json, '$.${field}') > 0
         AND json_extract(s.specification_json, '$.${field}') <= ? AND kp.verification_status = 'verified'
-    )`);
+    )`,
+    );
     binds.push(value);
   }
   for (const [id, direction, connector] of ports) {
     const value = filters[id];
     if (value === undefined) continue;
-    where.push(`e.catalog_product_id IN (
+    where.push(
+      bounded
+        ? `EXISTS (
+      SELECT 1 FROM catalog_specification_ports sp
+      JOIN knowledge_catalog_products kp ON kp.id = sp.catalog_product_id
+      WHERE sp.catalog_product_id = e.catalog_product_id
+        AND sp.direction = ? AND sp.connector = ? AND sp.port_count >= ? AND kp.verification_status = 'verified'
+    )`
+        : `e.catalog_product_id IN (
       SELECT sp.catalog_product_id FROM catalog_specification_ports sp INDEXED BY idx_catalog_spec_ports_filter
       JOIN knowledge_catalog_products kp ON kp.id = sp.catalog_product_id
       WHERE sp.direction = ? AND sp.connector = ? AND sp.port_count >= ? AND kp.verification_status = 'verified'
-    )`);
+    )`,
+    );
     binds.push(direction, connector, value);
   }
 }

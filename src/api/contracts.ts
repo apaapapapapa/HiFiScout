@@ -247,6 +247,21 @@ export interface ProductSearchResponse {
   totalPages?: number;
 }
 
+export interface NotificationWatch {
+  id: string;
+  query: string;
+  newListings: boolean;
+  priceDrops: boolean;
+  createdAt: number;
+}
+export interface NotificationStatus {
+  registered: boolean;
+  watches: NotificationWatch[];
+  lastCheck: number | null;
+  delayed: boolean;
+  failed: number;
+}
+
 /** `/api/product-search/:key`: the product plus every eligible active offer under it. */
 export interface ProductSearchDetailResponse {
   product: ProductSearchItem;

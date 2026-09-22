@@ -74,6 +74,50 @@ import type {
  */
 export const MAX_DETAIL_OFFERS = 200;
 
+/** Notification matching starts at a fixed set of changed listing IDs, never a whole saved search.
+ * Reuses the public predicates and binds every offer condition to that very listing. */
+export async function matchNotificationListings(
+  db: QueryableDatabase,
+  query: ProductQuery,
+  listingIds: number[],
+) {
+  if (!listingIds.length) return [];
+  if (listingIds.length > 20) throw new Error("notification_batch_too_large");
+  const where = ["p.is_active = 1", "p.stock_status = 'in_stock'"];
+  const binds: unknown[] = [JSON.stringify(listingIds)];
+  addSearchPlan(query.q, where, binds, true);
+  addProductFilters(query, where, binds, true);
+  addSpecificationFilters(query.specificationFilters, where, binds, true);
+  const filter = offerFilter(query);
+  if (filter.sql) where.push(filter.sql.slice(5));
+  binds.push(...filter.binds);
+  const result = await db
+    .prepare(`SELECT p.id, p.price_yen, p.previous_price_yen, p.first_seen_at,
+      e.entity_key AS product_key, e.manufacturer, e.model,
+      CASE WHEN ph.price_yen IS p.price_yen THEN ph.observed_at END AS price_observed_at
+    FROM json_each(?) wanted
+    CROSS JOIN products p ON p.id = wanted.value
+    CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id
+    CROSS JOIN product_search_entities e ON e.id = m.entity_id
+    LEFT JOIN price_history ph ON ph.id = (SELECT latest.id FROM price_history latest
+      WHERE latest.product_id = p.id ORDER BY latest.observed_at DESC LIMIT 1)
+    WHERE ${where.join(" AND ")}`)
+    .bind(...binds)
+    .all<NotificationListing>();
+  return result.results ?? [];
+}
+
+export interface NotificationListing {
+  id: number;
+  price_yen: number | null;
+  previous_price_yen: number | null;
+  first_seen_at: string;
+  price_observed_at: string | null;
+  product_key: string;
+  manufacturer: string;
+  model: string;
+}
+
 /**
  * Entity ids per offer query.
  *
@@ -126,13 +170,24 @@ interface ProductSearchPageRow extends ProductSearchEntityRow {
  * the trigram tokenizer and fall back to bounded LIKE scans over the same entity columns, so a
  * short model name still returns results instead of nothing.
  */
-function addSearchPlan(q: string, where: string[], binds: unknown[]): SearchPlanResult {
+function addSearchPlan(
+  q: string,
+  where: string[],
+  binds: unknown[],
+  bounded = false,
+): SearchPlanResult {
   if (!q) return { join: "", plan: null };
   const plan = parseFtsSearchQuery(q);
   let join = "";
   if (plan.ftsQuery) {
-    join = " JOIN product_search_entities_fts ON product_search_entities_fts.rowid = e.id";
-    where.push("product_search_entities_fts MATCH ?");
+    join = bounded
+      ? ""
+      : " JOIN product_search_entities_fts ON product_search_entities_fts.rowid = e.id";
+    where.push(
+      bounded
+        ? "EXISTS (SELECT 1 FROM product_search_entities_fts WHERE rowid = e.id AND product_search_entities_fts MATCH ?)"
+        : "product_search_entities_fts MATCH ?",
+    );
     binds.push(plan.ftsQuery);
   }
   for (const value of plan.shortTerms) {
@@ -180,7 +235,12 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
 }
 
 /** Product-level filters: they describe the product, so they never look at an individual offer. */
-function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
+function addProductFilters(
+  query: ProductQuery,
+  where: string[],
+  binds: unknown[],
+  bounded = false,
+): void {
   addManufacturerFilter(query.manufacturer, where, binds);
   if (query.category) {
     // Membership, not the one representative category. A listing that sells a transport and a DAC
@@ -190,10 +250,17 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     // than a join through the offers on every filtered query.
     const categoryIds = categoryFilterIds(query.category);
     const wanted = categoryIds.length ? categoryIds : [query.category];
-    where.push(`e.id IN (
+    where.push(
+      bounded
+        ? `EXISTS (
+      SELECT 1 FROM product_search_entity_categories ec
+      WHERE ec.entity_id = e.id AND ec.category_id IN (${wanted.map(() => "?").join(",")})
+    )`
+        : `e.id IN (
       SELECT ec.entity_id FROM product_search_entity_categories ec
       WHERE ec.category_id IN (${wanted.map(() => "?").join(",")})
-    )`);
+    )`,
+    );
     binds.push(...wanted);
   }
   for (const feature of query.features) {

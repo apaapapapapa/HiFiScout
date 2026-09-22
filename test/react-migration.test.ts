@@ -35,7 +35,10 @@ test("the public catalog mounts through the native React entrypoint", async () =
   assert.match(html, /<div id="root"><\/div>/u);
   assert.match(html, /<script type="module" src="\/app\.js"><\/script>/u);
   assert.doesNotMatch(html, /catalog-url-state\.js|shop-filter-order\.js|shop-links\.js/u);
-  assert.equal(packageJson.scripts?.["build:frontend:public"], "vp build --mode public");
+  assert.equal(
+    packageJson.scripts?.["build:frontend:public"],
+    "vp build --mode public && vp build --mode notification-worker",
+  );
   assert.match(viteConfig, /\.\/frontend\/app\.tsx/u);
   assert.match(viteConfig, /"public"/u);
   assert.match(viteConfig, /"app\.js"/u);

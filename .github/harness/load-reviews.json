@@ -301,6 +301,46 @@
       "afterDigest": "80d24c36e5873fd9e00612454fb421eac652e1da13d7ae7de6018bf85b5a06c8",
       "reason": "Initial admin status baseline on pinned Node 22.23.2 with real workerd SQLite; retained counts, unknown production usage, separate stopping, recovery reserve, saturated Alarm budgets and malformed actions are covered. Admission/schema/receipt writes are reserved and logged separately. No prior measurement is fabricated and no existing ceiling is relaxed.",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/718"]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
+      "beforeDigest": "5c0f167bf3c7caa2ac4300c07e79ad0099fbed6f23f7a359aebf790fe37312dc",
+      "afterDigest": "e334fcbf67125c623d6c3b7c941de4a9169c920178f517b8574356a9574429d3",
+      "reason": "Register the independent opt-in notification scheduler, bounded D1 candidate and matching reads, and SQLite outbox replay. Reviewed initial observations are 20/0/1, 78/0/1 and 6/0/5 on real workerd, with the specified measured-fixture head in the committed evaluation. Existing cases and ceilings are unchanged; production CPU and arrival-rate capacity remain unknown.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
+      ]
+    },
+    {
+      "id": "notification-candidates",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "eb01d088a0a97c146b697d8b96dfe4a31edbedf7bdb8a2fb1a44c9deff1e8f1f",
+      "reason": "Initial observed 20 reads, zero writes and one D1 statement for twenty recent candidates among 10,000 listings, including old publication dates. The existing indexed changed-at range avoids unrelated old listings. This is a new measured baseline, with no fabricated pre-feature sample or existing ceiling relaxation.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
+      ]
+    },
+    {
+      "id": "notification-matches",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "898d764aa1c96097616bb79c14938a9d055f37c84dc166da8d6ef6059287e2f7",
+      "reason": "Initial observed 78 reads, zero writes and one D1 statement for a bounded twenty-ID match with FTS, same-offer shop/price/stock and latest price history. The initial 1000-row ceiling leaves room for correlated facets/specifications while preserving a finite regression gate. This is not an account-wide production cost claim.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
+      ]
+    },
+    {
+      "id": "notification-outbox-replay",
+      "baseSha": "c678e727ffe3cc20d351344a25f00cba87479504",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "fa89520f8c7cfded15cea4334a3021443fea8a921b1250e310894b6ca13e357f",
+      "reason": "Initial SQLite outbox replay observes 6 reads, zero physical writes and five statements including key/watch reads and constant-time capacity checks. Duplicate scans, interrupted transaction rollback, daily unknown-usage stops, delivery retry limits and unsubscribe cancellation pass in real workerd. No previous measurement is invented.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/feat/saved-search-push-notifications/evaluations/2026-09-22-saved-search-notifications.md"
+      ]
     }
   ]
 }
