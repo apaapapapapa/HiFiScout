@@ -1,6 +1,6 @@
 # Saved-search notification initial load review
 
-Base: `8fe4479b9f9b3bba7f5a18f7f190139ab506b895`.
+Base: `0bf6c90345a12ff30605bca576c8295bbafe8e96`.
 Initial measured fixture head: `af3478b34cbfe2a93e1a3fc457a982b33ba19c88` (clean checkout).
 
 This feature adds an independent opt-in Web Push scheduler. Existing D1 workloads, ceilings and

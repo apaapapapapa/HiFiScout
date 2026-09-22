@@ -50,6 +50,8 @@ async function setup(page: Page, permission: "granted" | "denied" = "granted") {
     watches: [] as NotificationWatch[],
     requests: [] as string[],
     failDelete: false,
+    failWatch: false,
+    registered: false,
     query: "",
   };
   await page.route(
@@ -64,20 +66,23 @@ async function setup(page: Page, permission: "granted" | "denied" = "granted") {
         if (path.endsWith("/config")) return reply({ publicKey: "B" + "A".repeat(86) });
         if (path.endsWith("/status"))
           return reply({
-            registered: true,
+            registered: state.registered,
             watches: state.watches,
             lastCheck: null,
             delayed: false,
             failed: 0,
           });
         if (path.endsWith("/watches") && method === "POST") {
+          if (state.failWatch) return reply({ error: "notification_watch_limit" }, 409);
           const input = route.request().postDataJSON() as NotificationWatch;
           state.query = input.query;
           state.watches = [{ ...input, createdAt: Date.now() }];
         }
+        if (path.endsWith("/device") && method === "POST") state.registered = true;
         if (method === "DELETE") {
           if (state.failDelete) return reply({ error: "unavailable" }, 503);
           state.watches = [];
+          if (path.endsWith("/device")) state.registered = false;
         }
         return reply({ ok: true });
       }
@@ -157,4 +162,23 @@ test("permission denial leaves notification registration untouched and shows rec
   await page.getByRole("button", { name: "通知を有効にする", exact: true }).click();
   await expect(page.getByText(/通知が許可されていません/)).toBeVisible();
   expect(state.requests).toEqual([]);
+});
+
+test("a partially registered device can be removed after condition capacity is exhausted", async ({
+  page,
+  mount,
+}) => {
+  const state = await setup(page);
+  state.failWatch = true;
+  await mount("frontend/public-app/Default");
+  await page.getByText("保存した検索 (1/20)", { exact: true }).click();
+  await page.getByText("新着・値下げを通知", { exact: true }).click();
+  await page.getByRole("button", { name: "通知を有効にする", exact: true }).click();
+  await expect(page.getByText(/通知の登録上限に達したか/)).toBeVisible();
+  await expect(page.getByText("通知対象の検索はありません。", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "この端末の通知をすべて停止", exact: true }).click();
+  await expect(
+    page.getByText("この端末の通知をすべて停止しました。", { exact: true }),
+  ).toBeVisible();
+  expect(state.registered).toBe(false);
 });

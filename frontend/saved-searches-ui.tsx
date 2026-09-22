@@ -36,7 +36,12 @@ export function SavedSearches({
   const [error, setError] = useState(false);
   const [notifications, setNotifications] = useState<NotificationStatus | null>(null);
   const refreshNotifications = async () => {
-    setNotifications(await notificationStatus());
+    try {
+      setNotifications(await notificationStatus());
+    } catch (cause) {
+      setNotifications(null);
+      throw cause;
+    }
   };
   useEffect(() => {
     void refreshNotifications().catch(() => {
@@ -221,12 +226,14 @@ export function SavedSearches({
             </li>
           ))}
         </ul>
-        {notifications?.watches.length ? (
+        {notifications && (notifications.registered || notifications.watches.length > 0) ? (
           <div className="notification-status">
             <p>
               通知はこの端末で最大5件です。設定は90日間有効で、通知の有効化・更新時に延長されます。
             </p>
-            {notifications.lastCheck ? (
+            {!notifications.watches.length ? (
+              <p>通知対象の検索はありません。</p>
+            ) : notifications.lastCheck ? (
               <p>確認処理の最終完了：{new Date(notifications.lastCheck).toLocaleString("ja-JP")}</p>
             ) : (
               <p>最初の確認を待っています。</p>

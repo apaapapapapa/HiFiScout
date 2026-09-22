@@ -113,7 +113,8 @@ export function yahooAuctionIdentity(
   ) {
     return null;
   }
-  const match = url.pathname.match(/^\/jp\/auction\/([a-z][a-z0-9]{5,31})$/u);
+  // Current category pages also contain ten-digit numeric auction IDs.
+  const match = url.pathname.match(/^\/jp\/auction\/([a-z][a-z0-9]{5,31}|[1-9]\d{9})$/u);
   if (!match) return null;
   return { auctionId: match[1], sourceUrl: `${YAHOO_AUCTION_ORIGIN}/jp/auction/${match[1]}` };
 }

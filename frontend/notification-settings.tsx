@@ -52,6 +52,9 @@ export function NotificationSettings({
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : "通知設定を更新できませんでした。");
+      // Registration may have succeeded before saving the condition failed. Keep full removal
+      // available for that partial state without deleting other active watches on this device.
+      await refresh().catch(() => undefined);
     } finally {
       setBusy(false);
     }

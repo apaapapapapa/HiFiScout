@@ -1,0 +1,993 @@
+{
+  "schemaVersion": 1,
+  "issue": 703,
+  "baselineSha": "c678e727ffe3cc20d351344a25f00cba87479504",
+  "source": "Cloudflare connector: read-only REST and GraphQL Analytics; account identifiers replaced with resource names",
+  "plan": null,
+  "planEvidence": {
+    "endpoint": "GET /accounts/{account_id}/subscriptions",
+    "result": "10000: Authentication error",
+    "retrievalDate": "2026-09-22"
+  },
+  "inventory": {
+    "workers": [
+      "hifiscout",
+      "hifiscout-admin"
+    ],
+    "sqliteNamespaces": [
+      "CrawlScheduler",
+      "AdminJobs",
+      "YahooAuctions"
+    ],
+    "databases": [
+      "hifiscout-db"
+    ],
+    "r2Buckets": [
+      "hifiscout-d1-observations",
+      "hifiscout-evidence"
+    ]
+  },
+  "observations": [
+    {
+      "collectedAt": "2026-09-22T09:18:12.508Z",
+      "from": "2026-09-15T00:00:00Z",
+      "to": "2026-09-22T00:00:00Z",
+      "query": "query { viewer { accounts(filter: { accountTag: \"{account_id}\" }) { durableObjectsPeriodicGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,namespaceId_ASC]) {count dimensions {date namespaceId} sum {rowsRead rowsWritten duration cpuTime exceededCpuErrors exceededMemoryErrors subrequests}} durableObjectsInvocationsAdaptiveGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,namespaceId_ASC]) { dimensions {date namespaceId} sum {requests errors} } } } }",
+      "success": true,
+      "status": 200,
+      "result": {
+        "viewer": {
+          "accounts": [
+            {
+              "durableObjectsInvocationsAdaptiveGroups": [
+                {
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 11,
+                    "requests": 1286
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 14,
+                    "requests": 1276
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 9,
+                    "requests": 1290
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 13,
+                    "requests": 1286
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 7,
+                    "requests": 1257
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "sum": {
+                    "errors": 0,
+                    "requests": 1
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 8,
+                    "requests": 1288
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "errors": 12,
+                    "requests": 1224
+                  }
+                }
+              ],
+              "durableObjectsPeriodicGroups": [
+                {
+                  "count": 115,
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 33532372,
+                    "duration": 666.0884675840001,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1886,
+                    "rowsWritten": 1556,
+                    "subrequests": 917
+                  }
+                },
+                {
+                  "count": 121,
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 32281150,
+                    "duration": 653.78427392,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1875,
+                    "rowsWritten": 1542,
+                    "subrequests": 908
+                  }
+                },
+                {
+                  "count": 117,
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 36854949,
+                    "duration": 673.492033152,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1901,
+                    "rowsWritten": 1567,
+                    "subrequests": 923
+                  }
+                },
+                {
+                  "count": 116,
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 32760835,
+                    "duration": 648.9730030079999,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1892,
+                    "rowsWritten": 1558,
+                    "subrequests": 915
+                  }
+                },
+                {
+                  "count": 115,
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 31198485,
+                    "duration": 643.0440684799999,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1824,
+                    "rowsWritten": 1513,
+                    "subrequests": 893
+                  }
+                },
+                {
+                  "count": 1,
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "sum": {
+                    "cpuTime": 2729,
+                    "duration": 0.014933632,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 10,
+                    "rowsWritten": 2,
+                    "subrequests": 0
+                  }
+                },
+                {
+                  "count": 114,
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 30746040,
+                    "duration": 653.5205676800002,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1875,
+                    "rowsWritten": 1545,
+                    "subrequests": 911
+                  }
+                },
+                {
+                  "count": 118,
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "sum": {
+                    "cpuTime": 31685650,
+                    "duration": 640.822345472,
+                    "exceededCpuErrors": 0,
+                    "exceededMemoryErrors": 0,
+                    "rowsRead": 1779,
+                    "rowsWritten": 1465,
+                    "subrequests": 858
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "errors": [],
+      "messages": []
+    },
+    {
+      "collectedAt": "2026-09-22T09:19:52.252Z",
+      "from": "2026-09-15T00:00:00Z",
+      "to": "2026-09-22T00:00:00Z",
+      "query": "{ viewer { accounts(filter:{accountTag:\"{account_id}\"}) { settings { durableObjectsPeriodicGroups {enabled maxDuration maxPageSize notOlderThan} durableObjectsInvocationsAdaptiveGroups {enabled maxDuration maxPageSize notOlderThan} durableObjectsSqlStorageGroups {enabled maxDuration maxPageSize notOlderThan} } durableObjectsSqlStorageGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,namespaceId_ASC]) {dimensions {date namespaceId} max {storedBytes}} d1AnalyticsAdaptiveGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,databaseId_ASC]) {dimensions {date databaseId} sum {rowsRead rowsWritten readQueries writeQueries} avg {sampleInterval}} workersInvocationsAdaptive(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,scriptName_ASC]){ dimensions{date scriptName} sum{requests errors cpuTimeUs} avg{sampleInterval}} } } }",
+      "success": true,
+      "status": 200,
+      "result": {
+        "viewer": {
+          "accounts": [
+            {
+              "d1AnalyticsAdaptiveGroups": [
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-15"
+                  },
+                  "sum": {
+                    "readQueries": 31748,
+                    "rowsRead": 3367282,
+                    "rowsWritten": 133842,
+                    "writeQueries": 19329
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-16"
+                  },
+                  "sum": {
+                    "readQueries": 27791,
+                    "rowsRead": 4337999,
+                    "rowsWritten": 125811,
+                    "writeQueries": 22533
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-17"
+                  },
+                  "sum": {
+                    "readQueries": 20387,
+                    "rowsRead": 1885207,
+                    "rowsWritten": 101090,
+                    "writeQueries": 15792
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-18"
+                  },
+                  "sum": {
+                    "readQueries": 24222,
+                    "rowsRead": 3898580,
+                    "rowsWritten": 121746,
+                    "writeQueries": 20992
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-19"
+                  },
+                  "sum": {
+                    "readQueries": 20146,
+                    "rowsRead": 2160812,
+                    "rowsWritten": 96778,
+                    "writeQueries": 14655
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-20"
+                  },
+                  "sum": {
+                    "readQueries": 23853,
+                    "rowsRead": 3499666,
+                    "rowsWritten": 115630,
+                    "writeQueries": 19485
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "databaseId": "hifiscout-db",
+                    "date": "2026-09-21"
+                  },
+                  "sum": {
+                    "readQueries": 18387,
+                    "rowsRead": 1712608,
+                    "rowsWritten": 92646,
+                    "writeQueries": 15019
+                  }
+                }
+              ],
+              "durableObjectsSqlStorageGroups": [
+                {
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "AdminJobs"
+                  },
+                  "max": {
+                    "storedBytes": 192512
+                  }
+                },
+                {
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "CrawlScheduler"
+                  },
+                  "max": {
+                    "storedBytes": 290816
+                  }
+                }
+              ],
+              "settings": {
+                "durableObjectsInvocationsAdaptiveGroups": {
+                  "enabled": true,
+                  "maxDuration": 2764800,
+                  "maxPageSize": 10000,
+                  "notOlderThan": 7776000
+                },
+                "durableObjectsPeriodicGroups": {
+                  "enabled": true,
+                  "maxDuration": 2764800,
+                  "maxPageSize": 10000,
+                  "notOlderThan": 7776000
+                },
+                "durableObjectsSqlStorageGroups": {
+                  "enabled": true,
+                  "maxDuration": 2764800,
+                  "maxPageSize": 10000,
+                  "notOlderThan": 7776000
+                }
+              },
+              "workersInvocationsAdaptive": [
+                {
+                  "avg": {
+                    "sampleInterval": 1.1799065420560748
+                  },
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 13798627,
+                    "errors": 0,
+                    "requests": 1010
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.159847764034253
+                  },
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 51119805,
+                    "errors": 0,
+                    "requests": 1219
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.1285714285714286
+                  },
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 20741823,
+                    "errors": 0,
+                    "requests": 395
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.1832579185520362
+                  },
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 48924017,
+                    "errors": 0,
+                    "requests": 523
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.114963503649635
+                  },
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 19644290,
+                    "errors": 0,
+                    "requests": 611
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.1313868613138687
+                  },
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 53697194,
+                    "errors": 0,
+                    "requests": 465
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1.0671641791044777
+                  },
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "scriptName": "hifiscout"
+                  },
+                  "sum": {
+                    "cpuTimeUs": 17146701,
+                    "errors": 0,
+                    "requests": 429
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "errors": [],
+      "messages": []
+    },
+    {
+      "collectedAt": "2026-09-22T09:20:37.343Z",
+      "query": "{viewer{accounts(filter:{accountTag:\"{account_id}\"}){durableObjectsPeriodicGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,namespaceId_ASC]){dimensions{date namespaceId} avg{sampleInterval}} durableObjectsInvocationsAdaptiveGroups(limit:100,filter:{datetime_geq:\"2026-09-15T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[date_ASC,namespaceId_ASC]){dimensions{date namespaceId} avg{sampleInterval}} r2OperationsAdaptiveGroups(limit:100,filter:{datetime_geq:\"2026-09-01T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[bucketName_ASC,actionType_ASC]){dimensions{bucketName actionType}sum{requests}} r2StorageAdaptiveGroups(limit:100,filter:{datetime_geq:\"2026-09-21T00:00:00Z\",datetime_lt:\"2026-09-22T00:00:00Z\"},orderBy:[bucketName_ASC]){dimensions{bucketName}max{payloadSize metadataSize objectCount}}}}}",
+      "success": true,
+      "status": 200,
+      "result": {
+        "viewer": {
+          "accounts": [
+            {
+              "durableObjectsInvocationsAdaptiveGroups": [
+                {
+                  "avg": {
+                    "sampleInterval": 1.0015576323987538
+                  },
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "AdminJobs"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                }
+              ],
+              "durableObjectsPeriodicGroups": [
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-15",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-16",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-17",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-18",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-19",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "AdminJobs"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-20",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                },
+                {
+                  "avg": {
+                    "sampleInterval": 1
+                  },
+                  "dimensions": {
+                    "date": "2026-09-21",
+                    "namespaceId": "CrawlScheduler"
+                  }
+                }
+              ],
+              "r2OperationsAdaptiveGroups": [
+                {
+                  "dimensions": {
+                    "actionType": "ListBuckets",
+                    "bucketName": ""
+                  },
+                  "sum": {
+                    "requests": 18
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "GetBucketLifecycleConfiguration",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 314
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "GetObject",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 7410
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "HeadBucket",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 432
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "ListMultipartUploads",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 6
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "ListObjects",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 31
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "PutBucket",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 1
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "PutBucketLifecycleConfiguration",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 1
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "PutObject",
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "sum": {
+                    "requests": 1367
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "GetBucketLifecycleConfiguration",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 720
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "GetObject",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 53
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "HeadBucket",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 431
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "HeadObject",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 124
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "ListMultipartUploads",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 2
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "ListObjects",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 2
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "PutBucketLifecycleConfiguration",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 540
+                  }
+                },
+                {
+                  "dimensions": {
+                    "actionType": "PutObject",
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "sum": {
+                    "requests": 118
+                  }
+                }
+              ],
+              "r2StorageAdaptiveGroups": [
+                {
+                  "dimensions": {
+                    "bucketName": "hifiscout-d1-observations"
+                  },
+                  "max": {
+                    "metadataSize": 6656,
+                    "objectCount": 104,
+                    "payloadSize": 1004750
+                  }
+                },
+                {
+                  "dimensions": {
+                    "bucketName": "hifiscout-evidence"
+                  },
+                  "max": {
+                    "metadataSize": 291431,
+                    "objectCount": 1485,
+                    "payloadSize": 252001186
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "errors": [],
+      "messages": []
+    }
+  ],
+  "limitsOfEvidence": [
+    "Rows absent from an account query are not synthesized as zero. Yahoo has no row in the completed-day interval; this is not a Yahoo pilot result.",
+    "Requested UTC days are complete and disjoint. These queries are below their group limits; overlapping sampling metadata is joined, not added.",
+    "DO periodic sampleInterval is 1. DO invocation sampleInterval is above 1 on September 15; Worker requests/CPU are adaptively sampled. D1 sampleInterval is 1.",
+    "Namespace storedBytes and R2 storage are maxima within groups, not averages for billing; do not sum maxima across days.",
+    "September 1-22 R2 operations are an incomplete calendar month, not a verified subscription billing period.",
+    "Recent main versions changed repeatedly. These account/database/namespace results are not attributable to the candidate or a single prior deployment.",
+    "D1 writes exceed the documented Free daily ceiling on five of seven observed days. This does not prove the plan, bill, quota enforcement or a new regression.",
+    "Contract plan and billing period remain unknown. No verified allocation, monthly free-tier fit, production p95, Yahoo quality or approval to collect is claimed.",
+    "No application SQL scans, writes, collection controls or paused production audits were run."
+  ],
+  "references": [
+    "https://developers.cloudflare.com/durable-objects/platform/pricing/",
+    "https://developers.cloudflare.com/durable-objects/observability/graphql-analytics/",
+    "https://developers.cloudflare.com/d1/platform/pricing/",
+    "https://developers.cloudflare.com/r2/pricing/"
+  ]
+}

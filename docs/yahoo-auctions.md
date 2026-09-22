@@ -35,8 +35,8 @@ of the current raw HTML contract or a grant of access. No seller inventory was c
 | [Auction guidelines](https://auctions.yahoo.co.jp/special/html/guidelines.html) | Section 6(2) restricts collecting/using other users' posted content beyond transaction needs. Section 1 mentions partner publication; it does not establish HiFiScout as an authorized partner. The operator confirmation below is the acquisition/redistribution evidence for this pilot. |
 | [Operator confirmation, 2026-09-22](https://github.com/apaapapapapa/HiFiScout/issues/703#issuecomment-5773381002) | In the development conversation, the operator confirmed that Yahoo permission has been obtained and instructed continuation. Accept this as confirmation of automatic acquisition, storage and redistribution within #703's agreed pilot scope. The review owner is the HiFiScout operator; no separate legal review or inspected private agreement is claimed. |
 | [robots.txt](https://auctions.yahoo.co.jp/robots.txt) | A bounded follow-up GET on 2026-09-22 returned HTTP 200 with `HiFiScoutBot/1.0 (+https://github.com/apaapapapapa/HiFiScout)`. The `User-agent: *` rule `Disallow: /category/list/*?*n=` rejects all six current pilot discovery URLs because they contain `n=20`. The runtime robots check confirms denial; discovery stays blocked. Permission and the actual pagination/source contract must be reviewed before changing URLs or enabling collection. |
-| Account telemetry | The same read-only account-subscription request was checked once again after the operator confirmation and still returned `10000: Authentication error`. Account plan, DO usage and remaining shared headroom remain unmeasured. Restore the connector's authorized access before collecting telemetry; do not substitute another credential path or treat an unavailable metric as zero. |
-| Raw source contract | The authorized bounded checks below obtained a 50-card category page and a separate detail-page layout. The current parser rejects the category page, and the scheduler only reserves/adopts 20 observations per request. Pagination overlap, the second category and a compatible adapter/budget have not been verified. Synthetic regressions cannot satisfy this launch gate. |
+| Account telemetry | The operator-selected Cloudflare connector can read Workers, DO namespaces, D1/R2 inventory and GraphQL Analytics. The subscription endpoint alone still returns `10000: Authentication error`; do not describe this as a failed connection to every resource. The dated account observation below records actual usage with sampling and coverage limits. Plan/billing-period evidence and the final allocation remain unknown. |
+| Raw source contract | Both authorized category entry pages contain 50 cards. The separate `live-parser.ts` candidate parses those pages and the observed detail layout; the production scheduler still selects the synthetic adapter and reserves/adopts 20 observations per request. Pagination, 50-item workload reservations and candidate integration remain unverified. Offline regressions cannot satisfy this launch gate. |
 
 The dated operator confirmation changes `collection` and `redistribution` in
 `src/auctions/yahoo/policy.ts` to `verified`. The committed discovery URLs are demonstrably rejected,
@@ -78,12 +78,48 @@ a pilot release or an account-usage measurement. No inventory was written to pro
 | Next page | The observed `?b=51` link timed out after 20 seconds without HTTP status/body (`curl` exit 28). Offset behavior, overlap and page-size stability therefore remain unverified. Do not reuse the old 20-item offsets or infer successful pagination from the link alone. |
 | Detail layout | One linked, robots-allowed `/jp/auction/<id>` page completed HTTP 200, 51,106 transferred / 233,117 decoded bytes; origin Date `2026-09-22T08:27:29Z`, SHA-256 `ad34220c9cc39e5331b670130391953481c16789a0b890acc449eccd5064836a`. It has no `li.Product` cards. Its public `__NEXT_DATA__` contains item facts including explicit-zone start/end times and status; the existing listing adapter does not implement this detail contract. Do not retain/re-publish the whole embedded state, descriptions or seller/bidder data. |
 
-Before transport can be enabled, implement and validate both actual layouts using minimal sanitized
-fixtures, confirm pagination and the CD bucket, and size the scheduler's reservation for the chosen
-page workload. A 50-card page exceeds its current 20-observation contract; merely dropping `n=20`,
-truncating accepted items or marking the gate verified would hide that mismatch. The account
-allocation must be measured before approving a larger per-page workload. Keep the existing URLs,
-request/row ceilings and all three deployment flags unchanged until that review is complete.
+### Source candidate after the Cloudflare follow-up
+
+The CD entry completed HTTP 200 in 11.62 seconds (72,077 transferred / 806,290 decoded bytes),
+response Date `2026-09-22T09:21:19Z`, SHA-256
+`16f9c8b7b218d9c288ecdfc2269c974f9fdeda0fb8c5a2964c759911702fba77`.
+It contains 50 cards in bucket `2084024118` and an explicit `?b=51` next link. The amplifier next
+page was retried once with the same 20-second bound: HTTP 200, but an incomplete 143,738-byte decoded
+document with no cards, response Date `2026-09-22T09:20:04Z`, SHA-256
+`ec9fc205283cfaa40b2ed17b6f956ed14979964b29eca376298929dda314d608`.
+The timeout is still a failed acquisition, not an empty page or a verified pagination contract.
+These two diagnostics were more than 60 seconds apart; no production collection was started.
+
+`src/auctions/yahoo/live-parser.ts` implements a separate, exchangeable **offline candidate**:
+
+- It reads the observed price spans and bid fields, binds `Product__bonus` metadata to the title
+  link's ID, and reads its explicit epoch end time. It does not derive exact times or source state
+  from relative countdowns or list membership.
+- The actual leaf category/path survives. Amplifier cards have brand descendants of the admitted
+  bucket; their listing provenance does not authorize fetching those descendant category URLs.
+- Numeric ten-digit IDs occurred in two cards in each captured listing. Shared detail-URL and
+  continuation-cursor validation now accept that observed form alongside the existing letter IDs.
+- Detail extraction requires the requested source URL, matching query/item IDs, one typed
+  `__NEXT_DATA__` script and agreement between the two observed item roots. Only approved item/live
+  fields leave the parser. Seller/bidder data and descriptions are not copied.
+- Missing instant-buy values, tax, physical sale units and terminal statuses remain unobserved.
+  Only the observed explicit `open` detail status is recognized; a real terminal-layout contract
+  still needs evidence. `quantity=1` means a lot, not proof of one physical unit.
+- Complete bounded documents, explicit source kind, hidden/inert markup, identity/category
+  contradictions, duplicate cards, field ambiguity and the 50-card limit have regressions in
+  `test/yahoo-auction-live-parser.test.ts`. Fixtures use fictional facts and IDs.
+
+Running this candidate on the three complete retained responses produced 50 amplifier observations,
+50 CD observations and one detail observation, each with current price, bid count and exact end
+time. Coverage stays partial; only the detail has explicit source state. The incomplete next page
+was rejected. These are development replays, not production freshness or accuracy measurements.
+
+Before selecting the candidate in the scheduler, verify pagination and terminal details, provide
+source kind/request URL in parser context, validate leaf ancestry at the scheduler boundary, and
+measure/reserve the full 50-item workload. A 50-card page exceeds the current 20-observation
+contract; merely dropping `n=20`, truncating accepted items or marking the gate verified would hide
+that mismatch. The account allocation must also be reviewed. The existing scheduler, URLs,
+request/row ceilings and all three deployment flags remain unchanged.
 
 ## Initial discovery scope
 
@@ -117,6 +153,38 @@ not multiplied by creating DOs. Requests include alarms/RPC; storage includes in
 KV operations, `setAlarm` writes and deletes. Also account for caller Workers, D1 catalog reads,
 R2 evidence and retries. Limits reset at 00:00 UTC (09:00 JST), not local midnight.
 See also [DO limits](https://developers.cloudflare.com/durable-objects/platform/limits/).
+
+### Account observation, 2026-09-22
+
+Baseline source: `c678e727ffe3cc20d351344a25f00cba87479504`. The operator-selected connector returned
+HTTP 200 for the two Workers, all three SQLite namespaces (`CrawlScheduler`, `AdminJobs`,
+`YahooAuctions`), the single `hifiscout-db` database and the two R2 buckets. The Workers usage model
+`standard` does **not** establish the subscription plan. The subscription GET still returned
+`10000: Authentication error`; no alternate credential or denied-resource route was used.
+
+The [recorded GraphQL queries/results](../evaluations/yahoo-auctions/2026-09-22-cloudflare.json)
+cover `[2026-09-15T00:00:00Z, 2026-09-22T00:00:00Z)` for DO/D1/Workers, collected at
+09:18–09:20 UTC. Resource IDs are replaced with names. Queries include the whole account rather
+than only Yahoo. Each result has fewer than its 100-group limit; sampling metadata is joined to
+the same groups, never added as another usage interval.
+
+| Observed dimension | Result / interpretation |
+| --- | --- |
+| DO requests | Largest reported daily total: 1,290. September 15 invocation sampling interval was about 1.00156; other returned invocation groups were 1. This is Analytics usage, not an invoice. |
+| DO SQLite / duration | Largest reported daily values: 1,901 rows read, 1,567 written, 673.492 GB-s. Periodic `sampleInterval=1`; returned groups report zero exceeded-CPU/memory errors. CPU totals are not per-invocation p95. |
+| DO storage | Namespace daily maxima: CrawlScheduler 290,816 bytes; AdminJobs 192,512 bytes. Do not sum daily maxima across dates. No Yahoo group appears in this earlier interval; missing data is not a measured zero or a Yahoo pilot. |
+| D1 | Daily reads 1,712,608–4,337,999; writes 92,646–133,842, `sampleInterval=1`. Five days report more than the documented Free limit of 100,000 writes/day. Plan, billing and quota enforcement cannot be inferred from this discrepancy. |
+| Workers | Returned `hifiscout` daily requests 395–1,219, adaptively sampled (`sampleInterval` about 1.067–1.183). Absence of an admin group is not an invented zero. |
+| R2 | September 21 per-bucket payload maxima: observations 1,004,750 bytes; evidence 252,001,186 bytes. Operation counts cover September 1–21 by bucket/action. This is an incomplete calendar month, not a confirmed billing period; storage maxima do not establish GB-month billing. |
+
+The DO measurements support comparing the provisional allocation with observed existing workload;
+they do not approve an account allocation. [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
+uses daily limits on Free and a subscription renewal period on Paid. Contract plan/period evidence,
+current complete usage and the shared D1/catalog allowance must be reconciled before activation.
+[R2 pricing](https://developers.cloudflare.com/r2/pricing/) also needs storage class and billable
+operation interpretation. No account-wide free-tier fit or zero additional bill is claimed.
+The historical intervals contain changing deployed versions and cannot attribute costs to this
+candidate. No production SQL scans/writes, audit activation or collection control changes were made.
 
 `YAHOO_AUCTION_PILOT_LIMITS` is the single code definition of proposed ceilings: 2,000 retained
 items, 500 new items and 500 seller requests per UTC day (including retries/robots/redirects),
@@ -171,8 +239,9 @@ A merged foundation or a green source/deployment run is not authorization to sta
 is exchangeable and performs no I/O, pagination, persistence or registration. The candidate HTML
 adapter accepts only bounded `li.Product` cards with one validated `Product__titleLink` and explicit
 `dt`/`dd` labels. This is a deliberately narrow **synthetic fixture contract, not verified current
-Yahoo markup**. Do not turn on collection based on these tests. Obtain an authorized raw fixture
-and adjust/replace the adapter before changing `sourceContract` to verified. Unknown layouts,
+Yahoo markup**. The separate live-layout candidate above now has authorized source evidence, but
+is not selected by the scheduler. Complete its integration and outstanding source/budget checks
+before changing `sourceContract` to verified. Unknown layouts,
 empty pages, inert templates, duplicate labels and oversized responses never prove empty inventory.
 Parsed pages always have partial coverage; malformed fields/cards retain diagnostics.
 
@@ -270,8 +339,9 @@ admin wake after the UTC reset, subject to its ordinary admission and all other 
 
 Robots is its own paced/charged request with a maximum 64 KiB body. One external HTTP request uses
 one permit; redirects and authentication challenges stop for review. Existing robots parsing and
-bounded response decoding are reused. The candidate listing/detail adapter still requires an
-**authorized real fixture**; a synthetic parser pass does not approve its live URL/markup contract.
+bounded response decoding are reused. The selected adapter remains the synthetic candidate;
+the separate observed-layout adapter still needs pagination, terminal-layout and workload review
+before integration. A parser pass does not approve its live URL/markup contract.
 Unknown layouts stop the scheduler. No HTML response is persisted. Retry-After is honored; repeated
 429s, authentication failures, or delays exceeding thirty days halt for review.
 
