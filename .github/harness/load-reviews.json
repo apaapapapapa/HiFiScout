@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "reviews": [
     {
+      "id": "load-contracts",
+      "baseSha": "51ff05194b0477a6d8acb3dfc465eabb350a26e3",
+      "beforeDigest": "71c71a6c3cf0c0d208d007c63fa11130fcbfb2b199c2c0db98b00fc3115ab29e",
+      "afterDigest": "b7fe9a5639c0c8cc9fd32b80964cbcf2b45118426e041e04603848be43dfeb3e",
+      "reason": "Register the new scoped-search-sort-budget suite under search-and-projection so load-capture executes its full workerd inventory-growth and SQLite semantics regressions. Reviewed clean capture at 13d605fd passes 199 tests (baseline 197), all 41 existing profiles and 33 deterministic metrics remain identical. The integration with prerequisite Undici patch at 5292aa53 also passes the complete 199-test capture, retaining all dependency-candidate profiles and deterministic metrics. The policy change only adds this suite; no sample, fixture, query budget or CPU ceiling is removed or relaxed. PR #753 records the baseline inventory-dependent read failure and complete before/after cost evidence.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/753"
+      ]
+    },
+    {
       "id": "auction-admin-status",
       "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
       "beforeDigest": "80d24c36e5873fd9e00612454fb421eac652e1da13d7ae7de6018bf85b5a06c8",
