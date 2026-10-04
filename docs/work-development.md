@@ -5,6 +5,11 @@ GitHub connector alone establishes none of those. Install the personal `hifiscou
 in Work; it reads this repository's current `AGENTS.md` and relevant `.agents/skills` before acting.
 Repository skills remain canonical; the personal skill is a small routing/bootstrap entrypoint.
 
+Use this setup when changing repository files, including documentation and project skills. For
+data-only manufacturer-photo planning or registration, the personal `hifiscout-catalog-photos`
+entrypoint reads the current repository photo skill and uses authorized data tools. That operation
+does not require a coding checkout, dependency installation or a repair loop unless code must change.
+
 ## Prepare the session
 
 Reuse a verified HiFiScout checkout or clone `https://github.com/apaapapapapa/HiFiScout.git` into a
@@ -28,7 +33,8 @@ The harness and aggregate-check TypeScript entrypoints use `node --import tsx`, 
 opening the tsx CLI's control socket in environments that prohibit local socket listeners.
 This preserves TypeScript loading and does not change the checks or their results.
 Confirm the GitHub connector through a read of this repository. Connector authentication does not
-populate `gh` or Git push credentials. Use the native handoff below when shell authentication is absent.
+populate `gh` or Git push credentials. Use the native connector flow below when shell authentication
+is absent; select normal delivery or loop handoff according to the task.
 Report an actual access/install failure with its evidence; do not work around enforced denials.
 
 Initialize a loop only for a concrete task that fits its scope. Freeze its target and budgets after
@@ -38,6 +44,13 @@ engineering PR workflow and applicable harness checks. Do not put protected chan
 
 ## Native GitHub connector handoff
 
+For normal engineering work, publish the exact candidate tree and parent list on an owned branch,
+create/update its PR, and follow [delivery](https://github.com/apaapapapapa/HiFiScout/blob/main/.agents/skills/hifiscout-delivery/SKILL.md)
+directly. Collect the latest PR head, checks/statuses, discussions, reviews and all inline thread
+pages; after merge collect main/push runs for the merge SHA and applicable deployment receipts.
+No loop journal or controller handoff is needed for this path.
+
+The numbered controller handoff below applies only to an already initialized eligible repair loop.
 The host performs GitHub operations with its authenticated tools; the controller validates imported
 evidence and advances the same journal. No token export, background service or unattended CI worker
 is added. Remote mutations still require the user's existing authority and GitHub permissions.

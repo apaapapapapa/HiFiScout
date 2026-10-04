@@ -34,3 +34,21 @@
 配信前に試行数を記録し、`429`／一時障害では`Retry-After`を尊重します。`404`／`410`で失効した通知先を削除します。配信確認応答が失われた場合の完全な一度限り配信は保証できませんが、配信IDとブラウザーの通知タグで重複を抑制します。保存検索画面には最終確認完了・遅延・配信失敗を表示します。
 
 実D1とSQLiteの初期負荷は`test/notification-query.test.ts`、`test/notification-runtime.test.ts`で測定し、`scripts/harness/load-contracts.ts`で既存負荷と一緒に検査します。ブラウザー操作・暗号化・配信状態のテストは実端末への到達率を証明するものではありません。上限拡大は実利用と本番メトリクスを確認してから判断します。
+
+## 変更・調査の入口
+
+数値や有効化状態は、調査対象のリビジョンと環境で確認します。上の表は実装済みの初期予算で、
+本番の残量・配信実績ではありません。
+
+| 対象 | 正本・既存の検証 |
+| --- | --- |
+| APIと有効化スイッチ | `src/http/notifications.ts`、`wrangler.jsonc` の `NOTIFICATIONS_ENABLED` |
+| 上限・検索条件 | `src/notifications/policy.ts`、`src/db/notification-candidates.ts` |
+| Alarm・保存・配信・復旧 | `src/notifications/durable-object.ts`、`storage.ts`、`engine.ts`、`web-push.ts` |
+| 端末側の設定・停止・削除 | `frontend/notification-settings.tsx`、`frontend/notifications.ts`、`frontend/saved-searches-ui.tsx` |
+| 通知表示 | `frontend/notification-worker.ts` |
+| 操作と障害時の回復 | `e2e/components/notifications.spec.ts` |
+| D1・SQLite負荷と共通上限 | 上記の負荷テスト、[負荷回帰防止](./load-regression-prevention.md) |
+
+UI変更は[テスト戦略](./testing-strategy.md)のローカル部品テストから選び、負荷変更は該当する
+load contractを確認します。資料やテスト結果には管理トークン、Push通知先、暗号鍵を含めません。

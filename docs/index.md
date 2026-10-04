@@ -22,6 +22,8 @@ This site combines curated architecture documentation with references generated 
 - [Workers AI suggestions](./workers-ai-suggestions.md) — bounded operator review, evaluation and inference budgets.
 - [Remediation runbook](./data-quality-remediation.md) — evidence-driven investigation, correction, and bounded manual replay.
 - [Registered Product Admin](./listing-admin.md) — Access-protected listing corrections and overrides.
+- [Manufacturer photos](./listing-admin.md#メーカー写真) — catalog reference images, source credit and revision-guarded edits; links to the repeatable batch workflow.
+- [Saved-search notifications](./saved-search-notifications.md) — opt-in, unsubscribe, privacy, NotificationHub ownership and delivery budgets.
 - [R2 evidence limits](./r2-evidence-safety.md) — archive budgets, deduplication, and retention.
 - [D1 SQL observation](./d1-sql-observation.md) — private R2 query-statistics archive and incident analysis without querying D1.
 
@@ -36,6 +38,8 @@ checks use its `deployment-identity` artifact to distinguish an actual new deplo
 - [Adding shops](./adding-shops.md)
 - [TypeScript development](./typescript.md)
 - [Testing strategy](./testing-strategy.md)
+- [Load regression prevention](./load-regression-prevention.md)
+- [ChatGPT Work development](./work-development.md)
 - [Documentation tooling](./tooling.md)
 
 ## Source of truth

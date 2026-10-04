@@ -85,6 +85,7 @@ search and offer comparison through a React UI on Cloudflare Workers + D1.
 | Crawl control | Reserve a dispatch generation and deliver it to one DO per shop; recover the same token | `src/scheduled.ts`, `src/crawler/dispatch.ts` |
 | CrawlScheduler DO | Bounded fetch/parse/finalize steps and PREPARE / Alarm / FETCH pacing | `src/crawler/crawl-scheduler-do.ts` |
 | YahooAuctions SQLite DO | Gated auction facts, listing search, bounded collection and shared catalog candidates; disabled by default | `src/auctions/`, [pilot/runbook](docs/yahoo-auctions.md) |
+| NotificationHub SQLite DO | Opt-in saved-search watches, bounded read-only D1 checks and encrypted Web Push delivery | `src/notifications/`, [notification operations](docs/saved-search-notifications.md) |
 | Shop plugins and relay | Seller discovery/parsing and transport; optional Tokyo Lambda HTTP relay | `src/crawler/shops/index.ts`, `infra/audiounion-lambda/` |
 | D1 / FTS5 | Listings, catalog identity, product entities/offers, price projections, durable work | `src/db/`, `migrations/` |
 | Post-commit Queues | Knowledge Catalog verification and asynchronous CSV exports; independent of crawling | `src/queue.ts`, `wrangler.jsonc` |
@@ -103,6 +104,8 @@ See [Crawl orchestration](docs/crawl-orchestration.md) and
 | Cron selection and maintenance cadence | `src/scheduled.ts` and registered shop definitions |
 | Database schema | Ordered `migrations/*.sql` |
 | Auction gates, SQLite schema and recovery | `src/auctions/yahoo/policy.ts`, `src/auctions/storage.ts`, `docs/yahoo-auctions.md` |
+| Saved-search notifications, budgets and stopping | `src/notifications/policy.ts`, `src/http/notifications.ts`, [notification operations](docs/saved-search-notifications.md) |
+| Manufacturer photo contract and repeatable batches | `src/api/catalog-photo-contracts.ts`, [admin contract](docs/listing-admin.md#メーカー写真), [photo workflow](.agents/skills/hifiscout-catalog-photos/SKILL.md) |
 | Public search and price summaries | `src/http/public-routes.ts`, `src/db/product-search-price-index-repository.ts` |
 | Product identity and exact fallback grouping | `src/catalog/product-identity.ts`, `src/db/product-search-exact-identity.ts` |
 | Taxonomy, classification, remediation | `docs/data-quality.md`, `docs/data-quality-remediation.md`, `src/catalog/` |

@@ -11,6 +11,7 @@ or an editable CSV. Catalog creation adds no seller inventory; preparing a CSV a
 | Requested outcome | Read |
 | --- | --- |
 | Product research, catalog additions or CSV import | [research and import](references/research-and-import.md) |
+| Add official photos to existing catalog products or resume a photo batch | [catalog photos](../hifiscout-catalog-photos/SKILL.md); photos use their own revision-guarded operation, not catalog CSV import |
 | Correct classification/grouping or reprocess stored data | [resolution and replay](references/resolution-and-replay.md) |
 | Understand the shared evidence model | Relevant sections of [data quality](../../../docs/data-quality.md) |
 

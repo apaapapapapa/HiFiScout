@@ -204,6 +204,7 @@ configuration, not to these documents.
 | `AGENTS.md` | Shared scope, completion, task routing, validation and project invariants |
 | `CLAUDE.md` | Import the shared guide; no parallel rule set |
 | `.agents/skills/hifiscout-*/SKILL.md` | Short task trigger and domain-specific decisions; references hold narrower workflows |
+| Personal Work skills | Bootstrap and route to this revision's repository guidance; no second copy of domain workflows or mutable tool pins |
 | `.claude/settings.json` | Enforced Claude Code permissions, separate from context guidance |
 | `DESIGN.md` | Public UI visual context, consulted for implementation/restyling |
 | `.github/codex/docs-prompt.md` | Non-interactive candidate generation only; CI owns validation/delivery/publication |
@@ -223,6 +224,19 @@ adding another exception. Preserve real invariants, user/task scope and required
 representative task outcomes instead of writing tests that assert prose. For instruction changes,
 check a small edit, authorized implementation, audit-only reading, CI candidate generation and missing
 evidence as relevant. Such scenario checks are not a guarantee of every model's behavior.
+
+For a documentation/skill maintenance pass, start from current entry points (`README.md`, `AGENTS.md`,
+`docs/index.md` and the VitePress sidebar) and follow the paths for the affected features. Check each
+claim against its owning source, contract or policy. Keep authored runbooks separate from dated
+observations and generated references: a reviewed snapshot describes its recorded SHA, not necessarily
+the current application. Do not rewrite historical measurements into claims about today's production.
+
+Keep one maintained workflow per task in the repository, with personal skills pointing to it. For
+example, manufacturer-photo selection, manifests and recovery belong to
+`.agents/skills/hifiscout-catalog-photos/`; the [admin guide](./listing-admin.md#メーカー写真) owns the
+application contract. Add new task routes only where existing skills cannot select the correct owner.
+Check changed links, discovery descriptions and realistic interruption/error cases. Follow `AGENTS.md`'s
+validation matrix: navigation/published links need `docs:build`; prose alone does not need app tests.
 
 `.claude/settings.json` retains its specific local Vite+ permissions and read restrictions, including
 `package-lock.json` and generated output. A context-saving guideline cannot override a denied read;

@@ -6,6 +6,11 @@ Status: Accepted
 
 HiFiScout keeps Cloudflare D1 as the system of record for structured retail and catalog product data. R2 holds bounded diagnostic/verification evidence and generated CSV exports. Retail product search stays on D1 FTS5. Product identity is deterministic and explainable and uses the verified Knowledge Catalog as its canonical-product basis.
 
+[Saved-search notifications](./saved-search-notifications.md) use an independent `NotificationHub`
+SQLite DO for opted-in watches, push addresses, keys and delivery state. Its bounded Alarm reads
+existing D1 facts without writing D1 or changing crawl scheduling. Saving a search by itself remains
+device-local; enabling notifications is a separate explicit action.
+
 The disabled [Yahoo auction pilot](./yahoo-auctions.md) is a separate listing-level boundary: one
 SQLite DO stores static facts/FTS, live auction observations, bounded tasks/receipts and expiring
 shared catalog candidates. D1 remains the read-only catalog authority. Auction bids never enter
@@ -26,6 +31,7 @@ D1 remains authoritative for:
 - product feature facts
 - price history
 - Knowledge Catalog products, aliases, categories, candidates, and review state
+- registered manufacturer reference photos, attribution and optimistic revisions
 - crawl/shop state
 - search projection metadata
 - the product-level search read model: search entities and their offer memberships
@@ -955,7 +961,11 @@ same bounded vocabulary as shared URLs, including all supported sorts; malformed
 entries are discarded rather than silently broadening their conditions. A storage failure keeps
 the current entries and reports the failure. Each entry links to the existing Atom subscription
 for its saved conditions. Names remain device-local and are not transmitted to the feed endpoint.
-This adds no polling, server storage, crawl scheduling, notifications or account dependency.
+Saving alone adds no polling, server storage, crawl scheduling or account dependency. Separately,
+users may opt in to [new-listing and price-drop notifications](./saved-search-notifications.md), which
+send only the required condition/delivery data to NotificationHub. Deleting an active or unconfirmed
+notification search first requires server-confirmed unsubscribe; confirmed unregistered searches can
+still be deleted offline. Notification work does not turn local favorites or notes into server state.
 
 ### Product comparison
 
