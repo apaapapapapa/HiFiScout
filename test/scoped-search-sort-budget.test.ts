@@ -98,6 +98,51 @@ test("indexed product filters bound matching-offer sorting as unrelated same-sho
           );
         }
       }
+      // Reverse the selectivity: a broad product selector must not force per-entity offer work
+      // across all 10,000 products when the requested shops only hold twelve listings.
+      await db
+        .prepare(`UPDATE product_search_entities SET model_terms='needle';
+      UPDATE product_search_entity_categories SET category_id='AMP.PRE';
+      UPDATE products SET shop_key='audiounion' WHERE id>12;
+      UPDATE product_search_entity_offers SET shop_key='audiounion' WHERE listing_product_id>12;`)
+        .run();
+      for (const selector of ["q=needle", "category=AMP.PRE"]) {
+        for (const shops of ["shop=hifido", "shop=hifido&shop=missing"]) {
+          const measured = measureD1Cost(db);
+          const result = await searchProducts(
+            measured.db,
+            productQuery(
+              `?${selector}&${shops}&inStock=true&sort=priceAsc&includeTotal=true&limit=5`,
+            ),
+          );
+          assert.equal(result.totalCount, 11);
+          assert.deepEqual(
+            result.items.map((item) => item.key),
+            ["l-1", "l-3", "l-4", "l-5", "l-6"],
+          );
+          const metrics = measured.metrics();
+          assert.equal(metrics.rowsWritten, 0);
+          assert.notEqual(metrics.rowsRead, null);
+          // Both bounded planning probes are included; unrelated matches must not be enumerated.
+          assert.ok(metrics.rowsRead! < 500, JSON.stringify(metrics));
+          assert.equal(metrics.sqlStatements, 7);
+          console.log(
+            JSON.stringify({
+              event: "broad_search_small_shop_budget",
+              size,
+              selector,
+              shops,
+              metrics,
+            }),
+          );
+        }
+      }
+      await db
+        .prepare(`UPDATE product_search_entities SET model_terms=CASE WHEN id<=12 THEN 'needle' ELSE 'unrelated' END;
+      UPDATE product_search_entity_categories SET category_id=CASE WHEN entity_id<=12 THEN 'AMP.PRE' ELSE 'SPK.BOOK' END;
+      UPDATE products SET shop_key='hifido';
+      UPDATE product_search_entity_offers SET shop_key='hifido';`)
+        .run();
       previous = size;
     }
     console.log(JSON.stringify({ event: "scoped_search_sort_read_budget", measurements }));
@@ -109,40 +154,59 @@ test("indexed product filters bound matching-offer sorting as unrelated same-sho
       );
       assert.ok(costs[2].rowsRead <= costs[0].rowsRead + 100, JSON.stringify(costs));
     }
-    // Reverse the selectivity: a broad product selector must not force per-entity offer work
-    // across all 10,000 products when the requested shops only hold twelve listings.
-    await db
-      .prepare(`UPDATE product_search_entities SET model_terms='needle';
-      UPDATE product_search_entity_categories SET category_id='AMP.PRE';
-      UPDATE products SET shop_key='audiounion' WHERE id>12;
-      UPDATE product_search_entity_offers SET shop_key='audiounion' WHERE listing_product_id>12;`)
-      .run();
-    for (const selector of ["q=needle", "category=AMP.PRE"]) {
-      for (const shops of ["shop=hifido", "shop=hifido&shop=missing"]) {
+    // A broad shop must retain the set-based plan: point-checking every entity can be more
+    // expensive. Cover the exact probe boundary and both opposite selectivity shapes.
+    for (const shape of [
+      { selected: 64, hits: 10_000, limits: [1_500, 1_500] },
+      { selected: 65, hits: 10_000, limits: [31_000, 61_000] },
+      { selected: 10_000, hits: 66, limits: [52_000, 52_000] },
+      { selected: 10_000, hits: 10_000, limits: [121_000, 141_000] },
+    ]) {
+      await db
+        .prepare(`UPDATE products SET shop_key=CASE WHEN id<=? THEN 'hifido' ELSE 'audiounion' END`)
+        .bind(shape.selected)
+        .run();
+      await db
+        .prepare(
+          `UPDATE product_search_entity_offers SET shop_key=CASE WHEN listing_product_id<=? THEN 'hifido' ELSE 'audiounion' END`,
+        )
+        .bind(shape.selected)
+        .run();
+      await db
+        .prepare(
+          `UPDATE product_search_entities SET model_terms=CASE WHEN id<=? THEN 'needle' ELSE 'unrelated' END`,
+        )
+        .bind(shape.hits)
+        .run();
+      await db
+        .prepare(
+          `UPDATE product_search_entity_categories SET category_id=CASE WHEN entity_id<=? THEN 'AMP.PRE' ELSE 'SPK.BOOK' END`,
+        )
+        .bind(shape.hits)
+        .run();
+      for (const [index, selector] of ["q=needle", "category=AMP.PRE"].entries()) {
         const measured = measureD1Cost(db);
         const result = await searchProducts(
           measured.db,
           productQuery(
-            `?${selector}&${shops}&inStock=true&sort=priceAsc&includeTotal=true&limit=5`,
+            `?${selector}&shop=hifido&inStock=true&sort=priceAsc&includeTotal=true&limit=5`,
           ),
         );
-        assert.equal(result.totalCount, 11);
+        assert.equal(result.totalCount, Math.min(shape.selected, shape.hits) - 1);
         assert.deepEqual(
           result.items.map((item) => item.key),
           ["l-1", "l-3", "l-4", "l-5", "l-6"],
         );
         const metrics = measured.metrics();
         assert.equal(metrics.rowsWritten, 0);
-        assert.equal(metrics.sqlStatements, 6);
+        assert.equal(metrics.sqlStatements, 7);
         assert.notEqual(metrics.rowsRead, null);
-        // Includes the fixed 65-row planning probe. The original shape was about 30k/60k rows;
-        // blindly starting every aggregate at entities used about 100k/120k rows instead.
         assert.ok(
-          metrics.rowsRead! < (selector.startsWith("q=") ? 31_000 : 61_000),
-          JSON.stringify(metrics),
+          metrics.rowsRead! < shape.limits[index],
+          JSON.stringify({ shape, selector, metrics }),
         );
         console.log(
-          JSON.stringify({ event: "broad_search_small_shop_budget", selector, shops, metrics }),
+          JSON.stringify({ event: "broad_search_plan_boundary", shape, selector, metrics }),
         );
       }
     }
@@ -173,73 +237,106 @@ test("scoped sort preserves same-offer filters, nulls, ties, totals and all curs
       SELECT id,'AMP.PRE',1 FROM product_search_entities;
       INSERT INTO product_search_entity_categories(entity_id,category_id,is_direct)
       VALUES (1,'AMP.POW',1);`);
-    for (const selector of [
-      "q=needle",
-      "category=AMP",
-      "q=needle&category=AMP&manufacturer=luxman",
-    ]) {
-      const base = `?${selector}&shop=hifido&inStock=true&includeTotal=true`;
-      for (const [sort, ids] of [
-        ["priceAsc", [1, 3, 7, 4]],
-        ["priceDesc", [7, 3, 1, 4]],
-        ["updated", [7, 4, 3, 1]],
-        ["newest", [7, 4, 3, 1]],
-        ["oldest", [1, 3, 4, 7]],
-      ] as const) {
-        let cursor = "";
-        for (const [index, id] of ids.entries()) {
-          const result = await searchProducts(
-            db,
-            productQuery(`${base}&sort=${sort}&limit=1&cursor=${encodeURIComponent(cursor)}`),
-          );
-          assert.equal(result.totalCount, 4);
-          assert.deepEqual(
-            result.items.map((item) => item.key),
-            [`l-${id}`],
-          );
-          assert.equal(result.items[0].offer_count, 1);
-          if (id === 1) assert.equal(result.items[0].lowest_price_yen, 200);
-          assert.equal(result.hasMore, index < ids.length - 1);
-          cursor = result.nextCursor ?? "";
+    for (const broad of [false, true]) {
+      if (broad)
+        sqlite.exec(`WITH RECURSIVE n(i) AS (SELECT 100 UNION ALL SELECT i+1 FROM n WHERE i<199)
+        INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,first_seen_at,last_seen_at,last_changed_at,last_activity_at)
+        SELECT i,'audiounion',CAST(i AS TEXT),'needle','https://example.test/'||i,'in_stock','${AT}','${AT}','${AT}','${AT}' FROM n;
+        INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,manufacturer_id,manufacturer,model,model_terms)
+        SELECT id,'l-'||id,'unresolved_listing',id,'luxman','LUXMAN','needle','needle' FROM products WHERE id>=100;
+        INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        SELECT id,id,shop_key FROM products WHERE id>=100;
+        INSERT INTO product_search_entity_categories(entity_id,category_id,is_direct)
+        SELECT id,'AMP.PRE',1 FROM products WHERE id>=100;`);
+      for (const selector of [
+        "q=needle",
+        "category=AMP",
+        "q=needle&category=AMP&manufacturer=luxman",
+      ]) {
+        const base = `?${selector}&shop=hifido&inStock=true&includeTotal=true`;
+        for (const [sort, ids] of [
+          ["priceAsc", [1, 3, 7, 4]],
+          ["priceDesc", [7, 3, 1, 4]],
+          ["updated", [7, 4, 3, 1]],
+          ["newest", [7, 4, 3, 1]],
+          ["oldest", [1, 3, 4, 7]],
+        ] as const) {
+          let cursor = "";
+          for (const [index, id] of ids.entries()) {
+            const result = await searchProducts(
+              db,
+              productQuery(`${base}&sort=${sort}&limit=1&cursor=${encodeURIComponent(cursor)}`),
+            );
+            assert.equal(result.totalCount, 4);
+            assert.deepEqual(
+              result.items.map((item) => item.key),
+              [`l-${id}`],
+            );
+            assert.equal(result.items[0].offer_count, 1);
+            if (id === 1) assert.equal(result.items[0].lowest_price_yen, 200);
+            assert.equal(result.hasMore, index < ids.length - 1);
+            cursor = result.nextCursor ?? "";
+          }
         }
+        const offset = await searchProducts(
+          db,
+          productQuery(`${base}&sort=priceAsc&limit=1&offset=2`),
+        );
+        assert.equal(offset.totalCount, 4);
+        assert.deepEqual(
+          offset.items.map((item) => item.key),
+          ["l-7"],
+        );
+        const range = await searchProducts(
+          db,
+          productQuery(`${base}&sort=priceAsc&minPrice=10&maxPrice=250`),
+        );
+        assert.deepEqual(
+          range.items.map((item) => item.key),
+          ["l-1", "l-3"],
+        );
+        const empty = await searchProducts(db, productQuery(`${base}&sort=priceAsc&maxPrice=10`));
+        assert.equal(empty.totalCount, 0);
+        assert.deepEqual(empty.items, []);
       }
-      const offset = await searchProducts(
-        db,
-        productQuery(`${base}&sort=priceAsc&limit=1&offset=2`),
-      );
-      assert.equal(offset.totalCount, 4);
-      assert.deepEqual(
-        offset.items.map((item) => item.key),
-        ["l-7"],
-      );
-      const range = await searchProducts(
-        db,
-        productQuery(`${base}&sort=priceAsc&minPrice=10&maxPrice=250`),
-      );
-      assert.deepEqual(
-        range.items.map((item) => item.key),
-        ["l-1", "l-3"],
-      );
-      const empty = await searchProducts(db, productQuery(`${base}&sort=priceAsc&maxPrice=10`));
-      assert.equal(empty.totalCount, 0);
-      assert.deepEqual(empty.items, []);
     }
+    for (const filter of [
+      "q=needle&manufacturer=denon&shop=hifido",
+      "q=needle+zz&shop=hifido",
+      "q=needle&category=SPK.BOOK&shop=hifido",
+      "q=needle&shop=missing",
+    ]) {
+      const empty = await searchProducts(
+        db,
+        productQuery(`?${filter}&sort=priceAsc&includeTotal=true`),
+      );
+      assert.equal(empty.totalCount, 0, filter);
+      assert.deepEqual(empty.items, [], filter);
+    }
+    const withoutTotal = await searchProducts(
+      db,
+      productQuery("?q=needle&shop=hifido&inStock=true&sort=priceAsc&limit=1&includeTotal=false"),
+    );
+    assert.equal(withoutTotal.totalCount, undefined);
+    assert.equal(withoutTotal.hasMore, true);
     sqlite.exec(`INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at)
       VALUES (1,'remote_control','seller','present','title','fixture',1,'${AT}'),
         (2,'shop_warranty','seller','present','title','fixture',1,'${AT}'),
         (3,'remote_control','seller','present','title','fixture',1,'${AT}'),
         (3,'shop_warranty','seller','present','title','fixture',1,'${AT}')`);
-    const facts = await searchProducts(
-      db,
-      productQuery(
-        "?q=needle&category=AMP&offer=remote_control&offer=shop_warranty&inStock=true&sort=priceAsc&includeTotal=true",
-      ),
-    );
-    assert.equal(facts.totalCount, 1);
-    assert.deepEqual(
-      facts.items.map((item) => item.key),
-      ["l-3"],
-    );
+    for (const shop of ["", "&shop=hifido"]) {
+      const facts = await searchProducts(
+        db,
+        productQuery(
+          `?q=needle&category=AMP${shop}&offer=remote_control&offer=shop_warranty&inStock=true&sort=priceAsc&includeTotal=true`,
+        ),
+      );
+      assert.equal(facts.totalCount, 1);
+      assert.deepEqual(
+        facts.items.map((item) => item.key),
+        ["l-3"],
+      );
+    }
   } finally {
     sqlite.close();
   }

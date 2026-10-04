@@ -21,7 +21,7 @@ import { decodeCatalogSpecifications } from "./catalog-specification-repository.
  *   not a lenient one.
  *
  * Offer data is loaded with a bounded number of queries per request — never one per result. At the
- * maximum page size a response costs at most ten statements: an optional bounded planning probe,
+ * maximum page size a response costs at most eleven statements: up to two bounded planning probes,
  * an optional count, the entity page,
  * up to three chunks each for filtered aggregates and representative offers, and one indexed fact
  * read limited to the selected representatives.
@@ -481,13 +481,28 @@ async function hasSmallEntityScope(
   return (result.results?.length ?? limit) < limit;
 }
 
+/** Only point-check broad product predicates when the entire selected shop scope is small.
+ * Probe active shop inventory, without potentially expensive offer facts or entity predicates. */
+async function hasSmallShopScope(
+  db: QueryableDatabase,
+  shops: readonly string[],
+): Promise<boolean> {
+  const limit = 65;
+  const result = await db
+    .prepare(`SELECT id FROM products INDEXED BY idx_products_shop_active_quality
+      WHERE shop_key IN (SELECT value FROM json_each(?)) AND is_active = 1 LIMIT ?`)
+    .bind(JSON.stringify(shops), limit)
+    .all();
+  return (result.results?.length ?? limit) < limit;
+}
+
 /**
  * Aggregate sort values over exactly the offers accepted by {@link offerFilter}.
  *
  * This inner join also proves a matching offer exists. A small indexed scope reuses the same
  * groups for its exact count; neither query repeats a separate matching-offer membership scan.
  */
-function requestScopedSortJoin(filter: OfferFilter, scope: SortEntityScope | null): string {
+function requestScopedSortSource(filter: OfferFilter, scope: SortEntityScope | null): string {
   // FTS/category indexes already identify the eligible products. Visit their memberships before
   // applying offer predicates instead of aggregating the shop's entire active inventory. CROSS
   // JOIN keeps the offer lookups behind the entity selector even when a shop filter is present.
@@ -502,7 +517,7 @@ function requestScopedSortJoin(filter: OfferFilter, scope: SortEntityScope | nul
       }
        CROSS JOIN products p ON p.id = m.listing_product_id`
     : matchingOfferFrom(filter);
-  return ` JOIN (
+  return `(
     SELECT m.entity_id AS entity_id,
            MIN(p.price_yen) AS lowest_price_yen,
            MIN(CASE WHEN p.stock_status = 'in_stock' THEN p.price_yen END) AS lowest_in_stock_price_yen,
@@ -512,7 +527,7 @@ function requestScopedSortJoin(filter: OfferFilter, scope: SortEntityScope | nul
     WHERE ${scope ? `${scope.where.join(" AND ")} AND ` : ""}p.is_active = 1${filter.sql}
       ${scope && filter.shopScoped ? "AND m.shop_key IN (SELECT value FROM json_each(?))" : ""}
     GROUP BY m.entity_id
-  ) matching_sort ON matching_sort.entity_id = e.id`;
+  ) matching_sort`;
 }
 
 /** Recomputes the card summary over the matching offers, so it cannot contradict the filter.
@@ -617,6 +632,21 @@ export async function searchProducts(
     (await hasSmallEntityScope(db, search.plan, query.category))
       ? { join: search.join, where: [...where], binds: [...binds] }
       : null;
+  // Broad product selectors must not enumerate unrelated entities after a selective shop
+  // aggregate. Check their predicates by entity ID, once per matching shop group instead.
+  const smallShopScope =
+    requestScopedSort &&
+    !sortEntityScope &&
+    filter.shopScoped &&
+    indexedEntityScope &&
+    (await hasSmallShopScope(db, filter.shops));
+  if (smallShopScope) {
+    where.length = 0;
+    binds.length = 0;
+    addSearchPlan(query.q, where, binds, true);
+    addProductFilters(query, where, binds, true);
+    addSpecificationFilters(query.specificationFilters, where, binds, true);
+  }
 
   // `newest_in_stock_listed_at` is maintained from the same active in-stock offers as this exact
   // filter. Counting through that partial index avoids probing every entity and then every offer
@@ -632,13 +662,14 @@ export async function searchProducts(
     query.maxPrice == null,
   );
 
-  // Totals have no sort join and must count the whole result set, before the cursor predicate.
+  // Totals count the whole result set before the cursor predicate. Small scopes reuse the
+  // matching-offer groups; other totals retain the existing membership predicate.
   const countWhere = [...where];
   const countBinds = [...binds];
   if (projectedInStockNewOnly) {
     countWhere.push("e.in_stock_offer_count > 0");
     countWhere.push(newOfferTimestampPredicate("e.newest_in_stock_listed_at"));
-  } else {
+  } else if (!smallShopScope) {
     addOfferFilter(filter, countWhere, countBinds, inStockOnly);
   }
   // matching_sort already selects exactly the entities with a matching offer, including an empty
@@ -674,7 +705,10 @@ export async function searchProducts(
     ? relevanceOrder(query.q, search.plan, rankBinds)
     : sortOrderBy(sort, sortColumn);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const sortJoin = requestScopedSort ? requestScopedSortJoin(filter, sortEntityScope) : "";
+  const sortSource = requestScopedSort ? requestScopedSortSource(filter, sortEntityScope) : "";
+  const from = smallShopScope
+    ? `${sortSource} CROSS JOIN product_search_entities e ON e.id = matching_sort.entity_id`
+    : `product_search_entities e${sortEntityScope ? "" : search.join}${sortSource ? ` JOIN ${sortSource} ON matching_sort.entity_id = e.id` : ""}`;
   const sortSelect = explicitSortValue ? `, ${sortColumn} AS request_sort_value` : "";
   const sortJoinBinds = requestScopedSort
     ? [
@@ -694,14 +728,20 @@ export async function searchProducts(
       countBinds.length === 0;
     const countResult = await db
       .prepare(
-        sortEntityScope
-          ? `SELECT COUNT(*) AS total FROM product_search_entities e${sortJoin}`
+        sortEntityScope || smallShopScope
+          ? `SELECT COUNT(*) AS total FROM ${from}${smallShopScope && countWhere.length ? ` WHERE ${countWhere.join(" AND ")}` : ""}`
           : exactInStockTotal
             ? `SELECT in_stock_entity_count AS total
              FROM product_search_totals WHERE singleton = 1`
             : `SELECT COUNT(*) AS total FROM product_search_entities e${search.join} ${countWhere.length ? `WHERE ${countWhere.join(" AND ")}` : ""}`,
       )
-      .bind(...(sortEntityScope ? sortJoinBinds : countBinds))
+      .bind(
+        ...(sortEntityScope
+          ? sortJoinBinds
+          : smallShopScope
+            ? [...sortJoinBinds, ...countBinds]
+            : countBinds),
+      )
       .all<{ total: number }>();
     const total = countResult.results?.[0]?.total;
     if (total === undefined || total === null)
@@ -714,7 +754,7 @@ export async function searchProducts(
   const paginationBinds = query.offset > 0 ? [query.limit + 1, query.offset] : [query.limit + 1];
   const result = await db
     .prepare(
-      `SELECT ${entityColumns("e")}${sortSelect} FROM product_search_entities e${sortEntityScope ? "" : search.join}${sortJoin} ${whereSql} ORDER BY ${orderBy} ${paginationSql}`,
+      `SELECT ${entityColumns("e")}${sortSelect} FROM ${from} ${whereSql} ORDER BY ${orderBy} ${paginationSql}`,
     )
     .bind(...sortJoinBinds, ...binds, ...rankBinds, ...paginationBinds)
     .all<ProductSearchPageRow>();
