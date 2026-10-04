@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout カタログ写真追加"
+  short_description: "公式写真の調査・型番照合・登録・検証をバッチ単位で進める"
+  default_prompt: "Use $hifiscout-catalog-photos to plan or resume the requested HiFiScout catalog photo batch."
+
+policy:
+  allow_implicit_invocation: true

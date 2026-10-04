@@ -1,6 +1,6 @@
 ---
 name: hifiscout-load-analysis
-description: "HiFiScoutのD1クエリ最適化と、D1・Queue・Workers/DO CPUの負荷原因・改善効果の分析に使う。"
+description: "HiFiScoutのD1クエリ最適化と、D1・DO SQLite・Queue・Workers/DO CPU・通知配信の負荷原因と改善効果の分析に使う。"
 ---
 
 # HiFiScout load analysis
@@ -11,6 +11,8 @@ Select the evidence needed for the claim; code optimization need not start with 
 | --- | --- |
 | Production SQL/billing observation | [D1 SQL observation](../../../docs/d1-sql-observation.md) |
 | Query/projection design | [data-platform architecture](../../../docs/data-platform-architecture.md) |
+| Auction storage/collection budgets | [auction runbook](../../../docs/yahoo-auctions.md), `src/auctions/yahoo/policy.ts` |
+| Notification queries, ledger and sends | [notification operations](../../../docs/saved-search-notifications.md), `src/notifications/policy.ts` |
 | Local cost regression | [testing strategy](../../../docs/testing-strategy.md#free-tier-performance-regressions) |
 | Existing CI samples/comparisons | [harness cost evidence](../../../.github/harness/README.md) |
 
@@ -30,6 +32,10 @@ telemetry (including `exceededCpu`); SQL duration and wall time measure differen
 ## Optimize the owning path
 
 Trace costly fingerprints to current callers and distinguish per-execution cost from frequency.
+Identify the storage owner first: NotificationHub and YahooAuctions SQLite usage is separate from D1.
+For notifications, account for D1 reads, SQLite/Alarm work and push attempts independently; unknown
+D1 metering must retain its stop behavior. Check current policy and registered load contracts before
+changing budgets; a docs/code audit does not authorize real push sends or enabling auction collection.
 Evaluate reads, writes, statement count and query plans with realistic unrelated inventory/history
 and changed/unchanged cases. `LIMIT`, a small result, an index or fewer bindings alone proves no bound;
 include projection/index/trigger maintenance and work moved to Queue, R2, DO storage or CPU.

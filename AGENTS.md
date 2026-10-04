@@ -65,10 +65,13 @@ delivery skill when preparing or following a PR. Load additional skills only for
 | PR, review, merge and pipeline evidence | [hifiscout-delivery](.agents/skills/hifiscout-delivery/SKILL.md) |
 | Bounded improvement loops and resumption | [hifiscout-loop](.agents/skills/hifiscout-loop/SKILL.md) |
 | ChatGPT Work bootstrap and native GitHub handoff | [Work development](docs/work-development.md) |
-| D1/query cost or operational load | [hifiscout-load-analysis](.agents/skills/hifiscout-load-analysis/SKILL.md) |
+| D1/query cost, DO storage or operational load | [hifiscout-load-analysis](.agents/skills/hifiscout-load-analysis/SKILL.md) |
 | Catalog research/CSV, identity, classification or replay | [hifiscout-catalog-maintenance](.agents/skills/hifiscout-catalog-maintenance/SKILL.md) |
+| Manufacturer photo planning, registration or batch resumption | [hifiscout-catalog-photos](.agents/skills/hifiscout-catalog-photos/SKILL.md) |
 | Crawl freshness, parser defects or new shops | [hifiscout-crawl-diagnostics](.agents/skills/hifiscout-crawl-diagnostics/SKILL.md) |
+| Yahoo auction collection, search or recovery | [auction runbook](docs/yahoo-auctions.md); auction boundary in [crawl diagnostics](.agents/skills/hifiscout-crawl-diagnostics/SKILL.md#auction-boundary) |
 | Public/admin UI behavior or layout | [hifiscout-ui-changes](.agents/skills/hifiscout-ui-changes/SKILL.md) |
+| Saved-search notifications, opt-in or delivery | [notification operations](docs/saved-search-notifications.md); UI or load skill for the affected boundary |
 | Issue acceptance, updates or closure | [hifiscout-issue-triage](.agents/skills/hifiscout-issue-triage/SKILL.md) |
 | Runtime/bindings | `src/worker.ts`, `src/index.ts`, `wrangler.jsonc`, `wrangler.admin.jsonc` |
 | TypeSafe / Jev integration or experiments | [TypeSafe skill](.agents/skills/typesafe-ai/SKILL.md) and [project integration](docs/tooling.md#typesafe-jev-development) |

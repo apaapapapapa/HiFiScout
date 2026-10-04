@@ -1,6 +1,6 @@
 ---
 name: hifiscout-ui-changes
-description: "HiFiScoutの公開検索・フィルター・商品詳細・比較・管理画面の操作、表示、ブラウザー不具合の修正に使う。"
+description: "HiFiScoutの公開検索・商品詳細・比較・保存検索と通知設定・管理画面の操作、表示、ブラウザー不具合の修正に使う。"
 ---
 
 # HiFiScout UI changes
@@ -20,6 +20,13 @@ Use local fixtures for deterministic states; live investigation needs the target
 - Admin: preserve preview/apply, optimistic revisions, durable operation IDs, partial failures and
   saved progress. Reuse bounded endpoints/shared contracts; navigation must not add constant polling
   or full-table counts. Keep completion, retry/resume and session-expiry recovery understandable.
+- Saved searches: saving stays device-local; [notifications](../../../docs/saved-search-notifications.md)
+  require explicit opt-in. Preserve server-confirmed unsubscribe before deleting an active or unknown
+  notification, partial-registration recovery, and offline deletion of confirmed unregistered searches.
+  Keep tokens, push endpoints and private notes out of logs, URLs and evidence artifacts.
+- Manufacturer photos: keep source/credit, reference-photo semantics and broken-image fallback.
+  Seller imagery is not a fallback. Data-only additions use [catalog photos](../hifiscout-catalog-photos/SKILL.md);
+  rendering/security changes use the existing component and `e2e/tests/security-headers.spec.ts` cases.
 - Retain keyboard/focus behavior, responsive layout and loading/empty/error states. Images/links need
   the real CSP/security headers when those behaviors change. Local fixtures must not weaken production
   Access or add test-token bypasses.

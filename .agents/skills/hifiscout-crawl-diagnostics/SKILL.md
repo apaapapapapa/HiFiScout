@@ -1,6 +1,6 @@
 ---
 name: hifiscout-crawl-diagnostics
-description: "HiFiScoutのショップ収集停止・更新遅延・新着欠落・抽出不備の調査修正とショップ追加に使う。"
+description: "HiFiScoutのショップ収集停止・更新遅延・抽出不備・ショップ追加と、独立したYahooオークション収集境界の調査に使う。"
 ---
 
 # HiFiScout crawl diagnostics
@@ -8,6 +8,17 @@ description: "HiFiScoutのショップ収集停止・更新遅延・新着欠落
 For scheduling/recovery use [crawl orchestration](../../../docs/crawl-orchestration.md); for parsing
 or a new adapter use [adding shops](../../../docs/adding-shops.md). Current registry, schedule/window
 code and `wrangler.jsonc` own active shops and UTC/JST policy. A new shop need not start with an outage audit.
+
+## Auction boundary
+
+For Yahoo auction work, start with the [auction runbook](../../../docs/yahoo-auctions.md) and current
+`src/auctions/` policy/storage/DO code. Its collection, search and display gates are independent and
+default to disabled in the committed configuration; inspect the authorized environment before claiming
+runtime state. This is not a retail shop adapter or a per-shop CrawlScheduler generation. Preserve its
+separate SQLite facts/search, bounded tasks/receipts, catalog-candidate expiry and resource budgets.
+Auction bids never become retail prices, stock or price history. Public reads must not fetch the seller
+or D1. Evidence of a stalled/disabled pilot does not authorize enabling it or bypassing its source gates.
+The retail diagnosis below applies only after identifying a retail owner.
 
 ## Find the failed boundary
 
