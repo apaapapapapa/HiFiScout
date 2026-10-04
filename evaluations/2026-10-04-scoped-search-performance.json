@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Selective search sort and page hydration load regression evidence",
+  "baseSourceSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+  "candidateSourceSha": "e6c1ee8852e18c22755dda8732bee2135fa13b23",
+  "environment": "local-workerd",
+  "workload": "Complete three-page traversal, page size 5, 11 matching entities / 12 offers; counts and card hydration included; 100/1000/10000 same-shop listings",
+  "before": [
+    {
+      "size": 100,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 2802
+    },
+    {
+      "size": 100,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 2898
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 1344
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 2910
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 25302
+    },
+    {
+      "size": 1000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 25398
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 1347
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 25410
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 250302
+    },
+    {
+      "size": 10000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 250398
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 1347
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 250410
+    }
+  ],
+  "after": [
+    {
+      "size": 100,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 100,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 1000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 10000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    }
+  ],
+  "sqlStatements": {
+    "before": 15,
+    "after": 18,
+    "reason": "One bounded 65-row planning probe per page"
+  },
+  "rowsWritten": 0,
+  "reverseSelectivity": {
+    "workload": "Separate diagnostic fixture: 10000 matching entities, selected shop has 12 offers, one page with exact count",
+    "measurements": [
+      {
+        "name": "before",
+        "filter": "q=needle",
+        "total": 12,
+        "metrics": {
+          "rowsRead": 30191,
+          "rowsWritten": 0,
+          "sqlStatements": 5
+        }
+      },
+      {
+        "name": "after",
+        "filter": "q=needle",
+        "total": 12,
+        "metrics": {
+          "rowsRead": 30242,
+          "rowsWritten": 0,
+          "sqlStatements": 6
+        }
+      },
+      {
+        "name": "before",
+        "filter": "category=AMP.PRE",
+        "total": 12,
+        "metrics": {
+          "rowsRead": 60187,
+          "rowsWritten": 0,
+          "sqlStatements": 5
+        }
+      },
+      {
+        "name": "after",
+        "filter": "category=AMP.PRE",
+        "total": 12,
+        "metrics": {
+          "rowsRead": 60244,
+          "rowsWritten": 0,
+          "sqlStatements": 6
+        }
+      }
+    ]
+  },
+  "guardrails": [
+    "Complete predicates are re-evaluated; planning probe never limits actual results or exact totals",
+    "Same-offer filtering, five sorts, nulls, ties, offset and cursor traversal are covered",
+    "Broad selectors keep the offer-first plan; only fewer than 65 indexed candidates use entity-first aggregation",
+    "No schema/index/cron/cache change or increased load ceiling"
+  ],
+  "validation": {
+    "fullVerify": {
+      "files": 436,
+      "tests": 2493,
+      "status": "pass",
+      "workers": 2
+    },
+    "initialDefaultConcurrency": "10 timeout/ECONNRESET failures under shared-runner contention retained in local verify.log; no timeout or budget changes",
+    "originalGrowthAssertion": "Fails against old implementation as expected; identical workload demonstrates inventory-dependent reads",
+    "existingLoadCaptures": "Both complete 41-sample captures pass with identical deterministic metrics and profiles; CPU timing is not an improvement claim",
+    "registeredCapture": {
+      "sourceSha": "13d605fd3316dc980133a5ed90ce3c62109c804b",
+      "tests": 199,
+      "status": "pass",
+      "existingProfiles": 41,
+      "deterministicSamples": 33,
+      "metrics": "unchanged"
+    },
+    "dependencyIntegratedCapture": {
+      "sourceSha": "5292aa538ec95249c1fde171247eaea579307e78",
+      "tests": 199,
+      "status": "pass",
+      "existingProfiles": 41,
+      "deterministicSamples": 33,
+      "metrics": "unchanged against prerequisite dependency candidate"
+    }
+  },
+  "limitations": [
+    "These are local workerd row-read measurements, not production latency, CPU or billing claims",
+    "The heuristic selects a safe bounded plan; it is not a full cardinality estimator"
+  ],
+  "integrationBaseSha": "51ff05194b0477a6d8acb3dfc465eabb350a26e3"
+}

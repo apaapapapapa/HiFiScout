@@ -67,7 +67,8 @@ jobs:
         run: |
           set -euo pipefail
           vp migrate --no-interactive
-          vp env pin 22 --target dev-engines
+          runtime_version="$(node -p 'require("./package.json").devEngines.runtime.version')"
+          vp env pin "$runtime_version" --target dev-engines
           git diff --exit-code
       - name: Reject legacy project toolchain entrypoints
         shell: bash

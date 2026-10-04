@@ -165,6 +165,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     suites: [
       "test/observed-sql-read-budget.test.ts",
       "test/filtered-search-read-budget.test.ts",
+      "test/scoped-search-sort-budget.test.ts",
       "test/d1-write-budget.test.ts",
       "test/public-meta-incremental.test.ts",
     ],

@@ -3,6 +3,426 @@
   "reviews": [
     {
       "id": "load-contracts",
+      "baseSha": "51ff05194b0477a6d8acb3dfc465eabb350a26e3",
+      "beforeDigest": "71c71a6c3cf0c0d208d007c63fa11130fcbfb2b199c2c0db98b00fc3115ab29e",
+      "afterDigest": "b7fe9a5639c0c8cc9fd32b80964cbcf2b45118426e041e04603848be43dfeb3e",
+      "reason": "Register the new scoped-search-sort-budget suite under search-and-projection so load-capture executes its full workerd inventory-growth and SQLite semantics regressions. Reviewed clean capture at 13d605fd passes 199 tests (baseline 197), all 41 existing profiles and 33 deterministic metrics remain identical. The integration with prerequisite Undici patch at 5292aa53 also passes the complete 199-test capture, retaining all dependency-candidate profiles and deterministic metrics. The policy change only adds this suite; no sample, fixture, query budget or CPU ceiling is removed or relaxed. PR #753 records the baseline inventory-dependent read failure and complete before/after cost evidence.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/753"
+      ]
+    },
+    {
+      "id": "auction-admin-status",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "80d24c36e5873fd9e00612454fb421eac652e1da13d7ae7de6018bf85b5a06c8",
+      "afterDigest": "b20af9f4332b04d5f0fb666e3bc9ee339ecc2b2f96efad5bed996bf93f98b29a",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-catalog-replay",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "1a7e6c59c193fe2d0242eb632d36d06b0bf3cf74522c99c77fcd713aa2ab5048",
+      "afterDigest": "2ef2678da908b0702cf81832d32cc07d1989623b73ec17adc9fbc560c8dbe2a0",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-catalog-shared",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "1792e53cd01888e1baf7ffbad7dfdacef461b021bc57f4c595c5e9ea90ad1f9c",
+      "afterDigest": "354cdca5a0cd3674b269028eb0789a66300ed5448c76be29895159ad39ce77ec",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-price-change",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "4c1cb6f6a3f165bf6692fcc3547759d1200c6275e69f4530449a663cb1442edb",
+      "afterDigest": "05c7c35b5c14fde998130609cbfe37b60f8af98237fb3098a3bfc9ec02135ff2",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-replay",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "d48bf05c157c927e8d1e0f5185e94bd324d5cc405af5fcd3609fafb0e65f795e",
+      "afterDigest": "fa8b63c44cfa48c4b694599e702e7926f2e6d35e4ecc764751018b0ecfe1edff",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-search-filtered",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "f800d64382f0426eacebd856ac29a6582ba01a33f2a11fb6c93fde1a10feefe0",
+      "afterDigest": "86cfd5c09fea496f146abe60dc63c0d9e7a444a0a58e577006be4247191647f0",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "auction-search-page",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "346cffae47590e37c9812582246058e8ce6dd3c15db51859123d8d272ea08d9d",
+      "afterDigest": "e7532b4379d5d730a2e42205c94b698df184998b3fe1bae7d48ce1591307083a",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-photo-replay",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "d8937e71c0fd62f7f62f45f766325344c6bf51dec64adb5349f9040b1871bec1",
+      "afterDigest": "b9396a33cc023c8da951d209fd2dcca35fb4989cf7afa3a32be4de0ae3174e68",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-100",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "62d833c905dd1a84c87d916c74ae9c78d897b274b5f208a0cc8f121a2f399a28",
+      "afterDigest": "1e14349b78b23ef7bb94ef0ae4c9f863de37aef1717f68f0f0ed347132e3fd30",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-10000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "9361aec4cb084848e7ef3081da5eaa390a2626d0b4885982bf931c6b4adc1cee",
+      "afterDigest": "8440006c28044fcdfc2d1c8c8be2a1ce196b182ed3479872800ddcbb7cd59346",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-photo-update",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "4b0267e0a7527892e7db78445d146c680d5c236ac48f584f308a42d4c293c230",
+      "afterDigest": "4977d923e00c32bd0cab91082666dc0b9d743d58b1a18cbacb4a8c186f09bac7",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-remediation-100",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "ddfaa6d35dcd9d1b8563372d9a936fcf85d2bf6531b0360f88ea39ca9bad11a6",
+      "afterDigest": "6bb8616a3f5faba11a12b7430a32387a2bb80ff856b0eb55b1c823cf091d4851",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "a5d7fd8d1db5b30054cdb5cc476a6728628e2795e8632b4d83cb3618a64b4a11",
+      "afterDigest": "bffb42ba0f8a2857f2f24edaf5f5de49acbde71cb97bed089aff8bd33fdc05c6",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "9fdaa8785327c3ad3285c67a72d8d41df80fb5ea08a7a348b7091360c36e84c4",
+      "afterDigest": "d59a56cc4ec8bc9a085bc1f5bfd3e33454cd8a2fe7eb41031f1041551ee9b398",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-rows-100",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "7280e77e838869890fd4ed673ce258f120efbcea3ecd9e22741185e8af415f3e",
+      "afterDigest": "68ad9d2e4cd795695fa0dbcf6bd3915b886c54ad31fbc90f3a8c4730752b5ef7",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-rows-1000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "3a5a866beb6d19f9f322c785718a2d4c3477fa5ecd35be45fa2156db4de45d81",
+      "afterDigest": "1ca8f679a1f04e2ad71cd6538e618b58f0de1d2e3112df469347f8e372bfa8bd",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "catalog-rows-10000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "f97ac77512263c7b9412acd15e44d5ac944a30c10ec04927786a702c6fe283f1",
+      "afterDigest": "8533d5beaa8b349b04a97fcb3105f76f128f9e94f9bab19d1aa60d084bc852bd",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "category-prune",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "041cf97c337102dde21edb922f3de4f0d1ccb95b2b305cbfee9396615673b74f",
+      "afterDigest": "163f0e1a497a4c3a4314fb728c0ad3de0590114bb5de6c1c9e7b472d321086f5",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "9e820143b9b3f1124efe63d35331476bde77ffd0c962e6336867c5fa35acc13e",
+      "afterDigest": "58cb1e254f7b45187073590d39462eec9619f5fd5058bca1359595a3d30800cc",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "7fcec3912411bc3e942ee83e345b670a77b9d4a3543afa4f74052c75223c98fc",
+      "afterDigest": "00a431bebc536e1c879035c83f36f03d230a3b84c9fa6f755b188c35cfea839e",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "49d5fca5d2afb97319a71ded8db312cc129aefebeee4e21a466daa7d970b5a6c",
+      "afterDigest": "c2bd5284ae54b902506e13f6c6532e683e3a90caee0dc40f93e6a663ee640e25",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "45f4e59d3ff039bf07f225bd62ae8f64d39e0af16e5b0c61513755b45358580a",
+      "afterDigest": "ac06d29271d33a6fd6de1e0dff0222f748a109ee82caeef3812f757ffc70333e",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "f4c54fd79e9f4e14457190a4ba75964222bee7b7d8c21f998440ba26fc1e579a",
+      "afterDigest": "f41b62631f036f547e91d0cd199c3822b31fcfb826c5e22f781e410448d4a972",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "63b000609bde5a1f0f123247cd24db8fdfc7e0941351d13a85dc364ecdf893ff",
+      "afterDigest": "80167eb3db8d68d6e2c120cd4b1162a310af43f4f443df370d2909d1cf48eac2",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "c76b6b12f61d3ea7375de03b8c59aa3236c39cfd92b6406c8910a880dc8b5664",
+      "afterDigest": "0a51be5d07d98005c7537dea4ea17e6f7396a8c39ff6b03fb429adad34a57cf3",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "f79092857785b429f7488c7ea28b82841d687c1630ac5c73cd04bd8b8212a677",
+      "afterDigest": "99cb872e9678fe7c6cfc7449e50f839cb0fdcb58b4b529d43fa98a078346a41b",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. Parser code, fixtures and CPU ceilings are unchanged. The fixed same-runner alternating three-session comparison completed all six sessions and every absolute ceiling; observed candidate/baseline CPU-time ratios are 0.815-1.062. This accepts the dependency profile only, not a performance claim or a waiver of missing evidence/absolute limits.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "3a9cad6f5c4febe57a960060f4bdeaac4760c3f8fa21cc8fb28093ec78702232",
+      "afterDigest": "22a01eb4f336db09bbf3130ddf6f94e1b650d21e04ee176071dfcaeed2664d6d",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "5690cc1adabd3cc9881ebc340ea22f43877905c96eb188971af35921c3543b9e",
+      "afterDigest": "f3b847f741592d6cff8f5c0a0c36f6ed1853a9da68bfdf8ea4151debff6fd950",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "crawl-do-retry",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "599373410b1c9c2b10cec68447e7b6959830e079568217ee9c9954847ebdf575",
+      "afterDigest": "1b029d54846734c5c314774872e3da3e018ce7afb35f6743dae54b5da8868e65",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "39678a1d023fbbc9ab5ef5c52b9feab3aeecafe87522727199371e588e11df68",
+      "afterDigest": "bf677533fe7b730d14e6d8c7fd6eb865f90ea0713818b695b1faaa993c4e7a2b",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "maintenance-continuation",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "505cd4ecbfcf1916af6a720e3af86bca1dcebc4ad8a13e84c9776d8842f6aa36",
+      "afterDigest": "82879885ee8d78ccd7c2b82d2e0c4debfe3d6fcec7aa10fb31b645d605cd7ada",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "notification-candidates",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "eb01d088a0a97c146b697d8b96dfe4a31edbedf7bdb8a2fb1a44c9deff1e8f1f",
+      "afterDigest": "e0127cf709652e762b68421fb7db10f668e9392fb1f442ed376d1253682ec607",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "notification-matches",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "898d764aa1c96097616bb79c14938a9d055f37c84dc166da8d6ef6059287e2f7",
+      "afterDigest": "30f376ac0caea59f3a844d67cea9ff2bd06fb7a8f2c7bc6ca4ac696b409cbf61",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "notification-outbox-replay",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "4e02a520e8ea426f873fdc29006c0bd105145250300d1ceb9df01be7707a5064",
+      "afterDigest": "19cfc9dd11c9938aef1a65f95f2e1d5f9918fec57bce30b66a6b0f522fbb96cc",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "509a1b490a9600991898f7e0662c3d777b2248a31636a537fa8466c48b4ac695",
+      "afterDigest": "9da1ee9bd7bebe73cfdb91a7d6515b08aa008dd673ed4d6868f3a3aacee97a7c",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "queue-export-redelivery",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "a3440c41e4260bc08a71c86e11ec1da2ecf1337b270532df93ae73f95a3e6251",
+      "afterDigest": "a23acac749e8b0bd17ea351d3071afa96d7ab374279c911333fb8067bcd718bb",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "retention-history-100",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "5e71f5344cdfb616055927cdf3eb36b9862a06f49f4fc20878cfd251409e3deb",
+      "afterDigest": "9ee52bf7b80c8f464e6c1b3d68dfa69b2dec4da003da7ad2e76c0fa2cf889111",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "retention-history-1000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "1bec86b133a28b2be166ea01dfc9f207fb888ec45e5f8d8adf272c53befdde0b",
+      "afterDigest": "627669cc3c5c7eba955f688a0cfe2b5f41ccab10c4b54f776b576fc840564c63",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "retention-history-10000",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "c9a39c2df624c055b946f6a74e7361765d845ed55207f157737ea4f9f2e37b8b",
+      "afterDigest": "b8f4572be21096081c3e3eb8d92fb48d345342894d61057b3d2181e4ea54eb4a",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "search-new-total",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "d7ac16b96b2afa080207bd057493219332520ad737001e4b3b64b0b1d735e0e9",
+      "afterDigest": "e2099604b6b619729d4ce8b598824e1861b2c0779b08fbf29477604496919441",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "search-price-drop-total",
+      "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "beforeDigest": "c8ec05848b0a37c23b4fbdd24ad16380343bba20eec6610dee2173c5defbac6d",
+      "afterDigest": "bfd3e2fbb48a479c8790101061cfb67b20c8c673be3f5a2ed409caf82be2a4aa",
+      "reason": "Reviewed minimal Miniflare Undici 7.29.0 -> 7.29.1 security patch changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 7123124b; fixtures, application queries, policy and absolute limits are unchanged. Both complete 41-sample captures pass. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/2a70734bc634e654dea736280d740f3a3a34f8e6/evaluations/2026-10-04-ci-runtime-undici.json"
+      ]
+    },
+    {
+      "id": "load-contracts",
       "baseSha": "c98bc5017fb7c520b9fac537a525ae3e9d6385b0",
       "beforeDigest": "9effc356a88d667d9147f716c9cc11004a618804bdc8d83c26a45be7cf61b6a6",
       "afterDigest": "5c0f167bf3c7caa2ac4300c07e79ad0099fbed6f23f7a359aebf790fe37312dc",
