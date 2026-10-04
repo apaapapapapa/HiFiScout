@@ -115,6 +115,35 @@ test("canonical closure contains one leaf and its product-type root", () => {
   assert.deepEqual(categoryClosureIds("CAB.ANALOG"), ["CAB.ANALOG", "CAB"]);
 });
 
+test("category vocabulary preserves root and leaf precedence for shared labels", () => {
+  assert.equal(categoryIdForFilter("スピーカー"), "SPK");
+  assert.equal(categoryIdForClassification("スピーカー"), "SPK.LOUDSPEAKER");
+  assert.equal(categoryIdForFilter("アンプ"), "AMP");
+  assert.equal(categoryIdForClassification("アンプ"), null);
+  assert.equal(categoryIdForFilter("speaker"), "SPK.LOUDSPEAKER");
+  assert.equal(categoryIdForClassification("speaker"), "SPK.LOUDSPEAKER");
+});
+
+test("category vocabulary accepts normalized spellings without broadening unknown labels", () => {
+  for (const [value, expected] of [
+    [" ＡＭＰ．ＰＲＥ ", "AMP.PRE"],
+    [" Ｐｒｅ＿Ａｍｐｌｉｆｉｅｒ ", "AMP.PRE"],
+    ["HEADPHONE / AMP", "AMP.HEADPHONE"],
+    ["（ｈｅａｄ・ｐｈｏｎｅｓ）", "PER.HEADPHONE"],
+    [" \t・_-/（） ", null],
+    ["unknown category", null],
+    ["__proto__", null],
+    ["unclassified", null],
+    ["未分類", null],
+  ] as const) {
+    assert.equal(categoryIdForFilter(value), expected, value);
+    assert.equal(categoryIdForClassification(value), expected, value);
+  }
+  // Evidence-based legacy values still need their original evidence even after a previous match.
+  assert.equal(categoryIdForClassification("cable_xlr", "AES/EBU digital cable"), "CAB.DIGITAL");
+  assert.equal(categoryIdForClassification("cable_xlr", "XLR cable"), null);
+});
+
 test("headphone and speaker properties become independent facets", () => {
   const headphone = classify("Bluetooth wireless headphones with detachable wired USB cable");
   assert.equal(headphone.primaryCategoryId, "PER.HEADPHONE");

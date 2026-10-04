@@ -752,16 +752,26 @@ function normalizeLookup(value: string = ""): string {
     .replace(/[\s・･_\-/()（）]+/g, "");
 }
 
-function canonicalFromVocabulary(value: string, classifiableOnly = false): CategoryId | null {
-  const needle = normalizeLookup(value);
-  if (!needle) return null;
-  for (const category of CATEGORIES) {
-    if (classifiableOnly && !category.classifiable) continue;
-    if (normalizeLookup(category.id) === needle || normalizeLookup(category.name) === needle)
-      return category.id;
-    if (category.aliases.some((alias) => normalizeLookup(alias) === needle)) return category.id;
+// The authored vocabulary is fixed for this module's lifetime. Normalize it once, keeping the
+// first category in authored order for collisions. Classification needs its own lookup: the
+// shared speaker label selects the SPK root for filters but SPK.LOUDSPEAKER for classification.
+const CATEGORY_BY_VOCABULARY = new Map<string, CategoryId>();
+const CLASSIFIABLE_CATEGORY_BY_VOCABULARY = new Map<string, CategoryId>();
+for (const category of CATEGORIES) {
+  for (const value of [category.id, category.name, ...category.aliases]) {
+    const key = normalizeLookup(value);
+    if (!key) continue;
+    if (!CATEGORY_BY_VOCABULARY.has(key)) CATEGORY_BY_VOCABULARY.set(key, category.id);
+    if (category.classifiable && !CLASSIFIABLE_CATEGORY_BY_VOCABULARY.has(key))
+      CLASSIFIABLE_CATEGORY_BY_VOCABULARY.set(key, category.id);
   }
-  return null;
+}
+
+function canonicalFromVocabulary(value: string, classifiableOnly = false): CategoryId | null {
+  const vocabulary = classifiableOnly
+    ? CLASSIFIABLE_CATEGORY_BY_VOCABULARY
+    : CATEGORY_BY_VOCABULARY;
+  return vocabulary.get(normalizeLookup(value)) ?? null;
 }
 
 function legacyRule(value: string): LegacyCategoryMigrationRule | null {
