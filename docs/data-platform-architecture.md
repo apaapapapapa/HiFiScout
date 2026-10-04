@@ -590,6 +590,12 @@ has no canonical `other` product type. A multi-product listing keeps every compo
 `primary_category_id` only as its representative label. Product Identity and price history continue
 to identify the product/listing independently of that representative category.
 
+Category vocabulary lookups normalize the fixed IDs, labels and aliases once per module instance.
+Two bounded maps preserve authored-order precedence: filters may select roots, while classification
+only selects leaves. Thus `スピーカー` still selects `SPK` as a filter and `SPK.LOUDSPEAKER` for
+classification. Only the incoming label is normalized on each lookup; seller mappings and
+evidence-dependent legacy migration decisions remain evaluated from the current input.
+
 Migration `0068_category_taxonomy_v3.sql` preserves legacy URLs, saved searches, overrides, and
 stored rows through an explicit alias/migration registry. Deterministic legacy ids map directly;
 ambiguous ids such as transport, XLR cable, and old `other` inspect title/category evidence and fall
