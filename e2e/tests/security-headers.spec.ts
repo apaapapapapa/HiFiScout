@@ -8,6 +8,7 @@
 
 import type { APIResponse, Page } from "@playwright/test";
 import { expect, test } from "../fixtures/catalog-test.js";
+import { offer, product, routeProductSearch } from "./product-fixtures.js";
 
 const REQUIRED_HEADERS = {
   "content-security-policy": /(^|; )script-src 'self'(;|$)/u,
@@ -144,26 +145,73 @@ test("search, paging, product detail and shop links work under the enforced poli
   expect(pageErrors, "unexpected page errors under the enforced policy").toEqual([]);
 });
 
-/**
- * The complete set of image sources the public surface is expected to reference.
- *
- * An allowlist rather than an origin check on purpose: a retailer's photo copied into a same-origin
- * path, or inlined as a `data:` URL, would satisfy `img-src 'self' data:` and still be exactly the
- * republication the catalogue does not do. Widening this set is a deliberate decision, so it should
- * take a failing test to notice one was made.
+/** Only registered manufacturer photos and the known first-party icon may be requested.
+ * Keep the product payload and external image bytes deterministic: live inventory can gain photos,
+ * and manufacturer availability must not decide whether our deployed CSP/rendering contract works.
  */
-const ALLOWED_IMAGE_PATHS = ["/hifiscout-mark.jpg"];
-
-test("the only images the catalogue loads are its own, and no seller imagery is republished", async ({
+test("registered manufacturer photos and first-party icons load without seller imagery", async ({
   page,
   catalogPage,
 }) => {
-  // `img-src 'self' data:` is only proven by a document that actually loads an image, and the
-  // policy alone cannot tell a first-party icon from a copied product photo.
+  const photo = {
+    imageUrl: "https://manufacturer.example.com/reference.jpg",
+    sourceUrl: "https://manufacturer.example.com/model",
+    credit: "Manufacturer fixture",
+  };
+  const sellerImage = "https://seller.example.com/listing.jpg";
+  const icon = await page.request.get("/hifiscout-mark.jpg");
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()["content-type"]).toMatch(/^image\//u);
+  const imageBytes = await icon.body();
+  await page.route(photo.imageUrl, (route) =>
+    route.fulfill({ contentType: "image/jpeg", body: imageBytes }),
+  );
+  // Never send test traffic to a retailer, even if rendering regresses.
+  await page.route(sellerImage, (route) => route.abort());
+  await page.route("**/api/meta", (route) =>
+    route.fulfill({
+      json: {
+        status: "healthy",
+        shops: [
+          {
+            key: "shop-a",
+            name: "Shop A",
+            enabled: true,
+            intervalMinutes: 60,
+            sync: null,
+            health: null,
+          },
+        ],
+        manufacturers: ["LUXMAN"],
+        categories: [],
+        categoryFacets: [],
+      },
+    }),
+  );
+  await routeProductSearch(page, () => ({
+    items: [
+      product({ photo, representative_offer: offer({ image_url: sellerImage }) }),
+      product({
+        key: "c-2",
+        catalog_product_id: 2,
+        model: "No registered photo",
+        photo: null,
+        image_url: sellerImage,
+        representative_offer: offer({ listing_product_id: 2, image_url: sellerImage }),
+      }),
+    ],
+    hasMore: false,
+    nextCursor: null,
+    totalCount: 2,
+    totalPages: 1,
+  }));
+
   const violations = await collectCspViolations(page);
   const imageRequests: string[] = [];
+  const photoReferrers: (string | null)[] = [];
   page.on("request", (request) => {
     if (request.resourceType() === "image") imageRequests.push(request.url());
+    if (request.url() === photo.imageUrl) photoReferrers.push(request.headers().referer ?? null);
   });
   const failedImages: string[] = [];
   page.on("response", (response) => {
@@ -172,38 +220,32 @@ test("the only images the catalogue loads are its own, and no seller imagery is 
   });
 
   await catalogPage.goto("/");
-  await expect(catalogPage.heading).toBeVisible();
-  await expect(catalogPage.count).not.toHaveText("—");
+  await expect(catalogPage.cards).toHaveCount(2);
+  const image = page.locator("img");
+  await expect(image).toHaveCount(1);
+  await expect(image).toHaveAttribute("src", photo.imageUrl);
+  await expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect
+    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const attribution = page.getByRole("link", { name: "メーカー写真：Manufacturer fixture" });
+  await expect(attribution).toHaveAttribute("href", photo.sourceUrl);
+  await expect(attribution).toHaveAttribute("rel", "noopener noreferrer");
+  expect(photoReferrers, "the manufacturer request never discloses the catalog URL").toEqual([
+    null,
+  ]);
 
-  const documentImages = await page.evaluate(() => {
-    const icons = [
-      ...document.querySelectorAll('link[rel~="icon"], link[rel~="apple-touch-icon"]'),
-    ].map((link) => (link as HTMLLinkElement).href);
-    const images = [...document.querySelectorAll("img")].map(
-      (image) => image.getAttribute("src") ?? "",
-    );
-    return { icons, images };
-  });
-
-  // An `<img>` on the public catalogue would be a product photo: there are none by design.
-  expect(documentImages.images, "the catalogue renders no <img> elements").toEqual([]);
-
-  const origin = new URL(page.url()).origin;
-  const referenced = [...new Set([...documentImages.icons, ...imageRequests])];
-  expect(referenced.length, "the document references at least one image").toBeGreaterThan(0);
-  expect(
-    referenced.map((url) => (url.startsWith("data:") ? "data:" : new URL(url).pathname)).sort(),
-    "only the known first-party image assets may be referenced",
-  ).toEqual([...ALLOWED_IMAGE_PATHS].sort());
-
-  for (const url of referenced) {
-    expect(new URL(url).origin, `image source must be same-origin: ${url}`).toBe(origin);
-    // Without this the directive could be admitting a 404 rather than a real file.
-    const fetched = await page.request.get(url);
-    expect(fetched.status(), `image must load: ${url}`).toBe(200);
-    expect(fetched.headers()["content-type"] ?? "").toMatch(/^image\//u);
-  }
-
+  const icons = await page.evaluate(() =>
+    [...document.querySelectorAll('link[rel~="icon"], link[rel~="apple-touch-icon"]')].map(
+      (link) => (link as HTMLLinkElement).href,
+    ),
+  );
+  const localIcon = new URL("/hifiscout-mark.jpg", page.url()).href;
+  expect([...new Set(icons)], "only the known first-party icon is declared").toEqual([localIcon]);
+  const referenced = [...new Set([...icons, ...imageRequests])].sort();
+  expect(referenced, "no seller, copied, inline or unregistered image may be requested").toEqual(
+    [localIcon, photo.imageUrl].sort(),
+  );
   expect(failedImages, "images blocked or missing under the enforced policy").toEqual([]);
   expect(violations, "unexpected CSP violations").toEqual([]);
 });
