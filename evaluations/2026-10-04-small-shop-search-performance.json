@@ -1,0 +1,474 @@
+{
+  "schemaVersion": 1,
+  "baselineSha": "cea932937278064dc0a175c08e14cf4ae02f55da",
+  "sourceSha": "ca54d9c5c365d5b4e7fef1d3b25454b77f9f9740",
+  "environment": "local-workerd; pinned Node 22.23.2, Vite+ 0.2.9 and frozen npm lockfile",
+  "contract": "search-and-projection",
+  "boundary": "Product search with an explicit offer-scoped sort, broad FTS/category selector and at most 64 active listings across the selected shops.",
+  "acceptance": [
+    "Exact entity totals before cursors; same-offer filters, five sort directions, ties/nulls, complete cursor/offset pagination and optional totals remain correct.",
+    "Small-shop reads stay below 500 with 100, 1000 and 10000 unrelated matching listings; all measured searches write zero rows.",
+    "Preserve small-entity plan and use the existing set-based fallback for larger shops, including the 64/65 boundary.",
+    "No migration, runtime pin, load policy, sample profile, budget or paused production audit changes."
+  ],
+  "commands": [
+    "VITEST_MAX_WORKERS=2 vp run verify",
+    "vp run harness load-capture .generated/load-baseline (baseline worktree)",
+    "vp run harness load-capture .generated/load-candidate",
+    "vp run harness compare-cost ../HiFiScout-baseline/.generated/load-baseline/samples .generated/load-candidate/samples"
+  ],
+  "verification": {
+    "verifyExitCode": 0,
+    "baselineCapture": "pass",
+    "candidateCapture": "pass",
+    "baselineTests": 199,
+    "candidateTests": 199,
+    "requiredSamples": 41,
+    "comparableProfiles": 41,
+    "unchangedDeterministicSamples": [
+      "auction-admin-status",
+      "auction-catalog-replay",
+      "auction-catalog-shared",
+      "auction-price-change",
+      "auction-replay",
+      "auction-search-filtered",
+      "auction-search-page",
+      "catalog-photo-replay",
+      "catalog-photo-search-100",
+      "catalog-photo-search-10000",
+      "catalog-photo-update",
+      "catalog-remediation-100",
+      "catalog-remediation-1000",
+      "catalog-remediation-10000",
+      "catalog-rows-100",
+      "catalog-rows-1000",
+      "catalog-rows-10000",
+      "category-prune",
+      "crawl-checkpoint-inline",
+      "crawl-checkpoint-split",
+      "crawl-do-retry",
+      "daily-schedule",
+      "maintenance-continuation",
+      "notification-candidates",
+      "notification-matches",
+      "notification-outbox-replay",
+      "projection-unchanged",
+      "queue-export-redelivery",
+      "retention-history-100",
+      "retention-history-1000",
+      "retention-history-10000",
+      "search-new-total",
+      "search-price-drop-total"
+    ],
+    "compareCost": "pass",
+    "cpu": "Local single captures are diagnostic. Required CI paired CPU gate remains mandatory."
+  },
+  "workload": "One exact-count request with page size 5, 11 matching entities / 12 active listings in hifido, among 10000 listings. Multiple selected shops include an empty shop. Baseline uses the original registered fixture; candidate extends the same logical workload to all three growth sizes.",
+  "beforeAfter": [
+    {
+      "selector": "q=needle",
+      "shops": "shop=hifido",
+      "before": {
+        "rowsRead": 30242,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "after": {
+        "rowsRead": 261,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "selector": "q=needle",
+      "shops": "shop=hifido&shop=missing",
+      "before": {
+        "rowsRead": 30254,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "after": {
+        "rowsRead": 275,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido",
+      "before": {
+        "rowsRead": 60242,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "after": {
+        "rowsRead": 311,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido&shop=missing",
+      "before": {
+        "rowsRead": 60254,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "after": {
+        "rowsRead": 325,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    }
+  ],
+  "growth": [
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 100,
+      "selector": "q=needle",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 261,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 100,
+      "selector": "q=needle",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 275,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 100,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 311,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 100,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 325,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 1000,
+      "selector": "q=needle",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 261,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 1000,
+      "selector": "q=needle",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 275,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 1000,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 311,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 1000,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 325,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 10000,
+      "selector": "q=needle",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 261,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 10000,
+      "selector": "q=needle",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 275,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 10000,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido",
+      "metrics": {
+        "rowsRead": 311,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_small_shop_budget",
+      "size": 10000,
+      "selector": "category=AMP.PRE",
+      "shops": "shop=hifido&shop=missing",
+      "metrics": {
+        "rowsRead": 325,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    }
+  ],
+  "fallbackBoundaries": [
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 64,
+        "hits": 10000,
+        "limits": [
+          1500,
+          1500
+        ]
+      },
+      "selector": "q=needle",
+      "metrics": {
+        "rowsRead": 781,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 64,
+        "hits": 10000,
+        "limits": [
+          1500,
+          1500
+        ]
+      },
+      "selector": "category=AMP.PRE",
+      "metrics": {
+        "rowsRead": 1039,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 65,
+        "hits": 10000,
+        "limits": [
+          31000,
+          61000
+        ]
+      },
+      "selector": "q=needle",
+      "metrics": {
+        "rowsRead": 30786,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 65,
+        "hits": 10000,
+        "limits": [
+          31000,
+          61000
+        ]
+      },
+      "selector": "category=AMP.PRE",
+      "metrics": {
+        "rowsRead": 60733,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 10000,
+        "hits": 66,
+        "limits": [
+          52000,
+          52000
+        ]
+      },
+      "selector": "q=needle",
+      "metrics": {
+        "rowsRead": 50664,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 10000,
+        "hits": 66,
+        "limits": [
+          52000,
+          52000
+        ]
+      },
+      "selector": "category=AMP.PRE",
+      "metrics": {
+        "rowsRead": 50810,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 10000,
+        "hits": 10000,
+        "limits": [
+          121000,
+          141000
+        ]
+      },
+      "selector": "q=needle",
+      "metrics": {
+        "rowsRead": 120201,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    },
+    {
+      "event": "broad_search_plan_boundary",
+      "shape": {
+        "selected": 10000,
+        "hits": 10000,
+        "limits": [
+          121000,
+          141000
+        ]
+      },
+      "selector": "category=AMP.PRE",
+      "metrics": {
+        "rowsRead": 140213,
+        "rowsWritten": 0,
+        "sqlStatements": 7
+      }
+    }
+  ],
+  "previousSelectiveWorkload": [
+    {
+      "size": 100,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 100,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 100,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 1000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 1000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&shop=hifido&inStock=true",
+      "rowsRead": 771
+    },
+    {
+      "size": 10000,
+      "filter": "category=AMP.PRE&shop=hifido&inStock=true",
+      "rowsRead": 888
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&minPrice=100&maxPrice=200&priceDropped=true&inStock=true",
+      "rowsRead": 699
+    },
+    {
+      "size": 10000,
+      "filter": "q=needle&category=AMP.PRE&manufacturer=luxman&shop=hifido&inStock=true",
+      "rowsRead": 879
+    }
+  ],
+  "regressionProof": {
+    "baselineCodeSha": "cea932937278064dc0a175c08e14cf4ae02f55da",
+    "testPath": "test/scoped-search-sort-budget.test.ts",
+    "assertion": "indexed product filters bound matching-offer sorting as unrelated same-shop inventory grows",
+    "method": "Copied the candidate test onto the frozen baseline, ran that named assertion, and restored the baseline test. Source implementation stayed unchanged.",
+    "result": "Expected assertion failure: rowsRead=542 exceeds the new <500 limit already at 100 rows; source candidate passes all growth sizes.",
+    "baselineFailureLogSha256": "edb68d9c2f3c002903b5e9dddf02574af169c5f1bdab81ca05863d6ed4f3f0ea"
+  },
+  "tradeoff": "For broad selectors with a shop filter, one additional indexed planning statement reads at most 65 active listing IDs (67 measured rows for a single large shop, including JSON input). Requests at the maximum page size now allow up to eleven statements. The planner probes do not freeze IDs, cap totals or replace full predicates.",
+  "rejectedExperiment": "Unconditionally point-checking all shop groups increased a 10000-listing / 65-category-match experiment from 50736 to 159946 reads. The final planner limits that strategy to small shops; larger shops retain the prior query plus the bounded probe.",
+  "productionObservation": null,
+  "limitations": [
+    "These are local SQLite/workerd read counters, not measured production latency, CPU or billing savings.",
+    "Both broad entity and broad shop scopes retain inventory-dependent work."
+  ]
+}

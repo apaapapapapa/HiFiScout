@@ -117,11 +117,17 @@ result is an entity-ID set: multiple matching listings still count as one produc
 and pages share this predicate, and request-scoped sort aggregates use the same shop-first access
 path when there is no small FTS or category candidate set. For an explicit offer-scoped sort with
 an indexed product selector, one planning query reads at most 65 candidate IDs. Fewer than 65
-selects entity-first aggregation; broader selectors retain the existing shop/offer-first plan.
-The probe only chooses a plan: count and page queries evaluate the complete filters again, without
-capping totals or freezing candidate IDs across database changes. Its extra statement and reads
-are included in the regression measurements. Small scopes count matching groups and apply product
-predicates before loading offers for their sort aggregates.
+selects entity-first aggregation. For broader selectors with a shop filter, a second indexed probe
+reads at most 65 active listing IDs across all selected shops. Fewer than 65 selects a small-shop
+plan: aggregate matching offers first, then point-check FTS, category and specification predicates
+for each resulting entity. `CROSS JOIN` keeps that order for both exact totals and pages. If both
+scopes are broad, retain the existing set-based shop/offer-first plan; repeated FTS point checks
+across a large shop can cost more than the set-based selector.
+These probes only choose a plan: count and page queries evaluate the complete filters again, without
+capping totals or freezing candidate IDs across database changes. Both probes and their reads
+are included in the regression measurements. Small entity scopes count matching groups and apply
+product predicates before loading offers for their sort aggregates; small shop scopes apply product
+predicates after grouping and before pagination.
 The membership-to-listing joins retain this order, including the page's summary and representative
 offer loaders, so a shop predicate cannot make those page-sized reads scan the entire shop.
 Stock, price, newness and price-drop conditions must all hold on the same listing; another
@@ -130,8 +136,9 @@ Offer selection scales with the selected shop's active inventory, not other shop
 inactive rows; it is not constant-time as the selected shop itself grows. Additional FTS/product
 filters have their own access costs; FTS/category-scoped aggregation scales with the selected
 product candidates and their offers, not with unrelated same-shop inventory. Broad product
-selectors still cost proportionally to their candidate set. No extra index, counter write or cache
-freshness tradeoff is introduced.
+selectors with a small selected shop no longer enumerate the whole matching entity set. When both
+scopes are broad, the existing candidate-dependent cost remains, plus the bounded planning probe.
+No extra index, counter write or cache freshness tradeoff is introduced.
 
 Manufacturer presentation aliases are an uncorrelated SQL set, rather than JSON expanded once per
 entity. Only badge-prefixed stale presentations use the legacy suffix comparison. This retains
