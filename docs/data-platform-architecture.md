@@ -115,11 +115,22 @@ Shop-filtered search starts with that shop's active listings through the existin
 `idx_products_shop_active_quality` index and then looks up offer membership by listing ID. The
 result is an entity-ID set: multiple matching listings still count as one product. Exact totals
 and pages share this predicate, and request-scoped sort aggregates use the same shop-first access
-path. Stock, price, newness and price-drop conditions must all hold on the same listing; another
+path when there is no small FTS or category candidate set. For an explicit offer-scoped sort with
+an indexed product selector, one planning query reads at most 65 candidate IDs. Fewer than 65
+selects entity-first aggregation; broader selectors retain the existing shop/offer-first plan.
+The probe only chooses a plan: count and page queries evaluate the complete filters again, without
+capping totals or freezing candidate IDs across database changes. Its extra statement and reads
+are included in the regression measurements. Small scopes count matching groups and apply product
+predicates before loading offers for their sort aggregates.
+The membership-to-listing joins retain this order, including the page's summary and representative
+offer loaders, so a shop predicate cannot make those page-sized reads scan the entire shop.
+Stock, price, newness and price-drop conditions must all hold on the same listing; another
 shop's offer cannot satisfy one of them. Totals remain exact and independent of page cursors.
 Offer selection scales with the selected shop's active inventory, not other shops or retained
 inactive rows; it is not constant-time as the selected shop itself grows. Additional FTS/product
-filters have their own access costs. No extra index, counter write or cache
+filters have their own access costs; FTS/category-scoped aggregation scales with the selected
+product candidates and their offers, not with unrelated same-shop inventory. Broad product
+selectors still cost proportionally to their candidate set. No extra index, counter write or cache
 freshness tradeoff is introduced.
 
 Manufacturer presentation aliases are an uncorrelated SQL set, rather than JSON expanded once per
@@ -127,7 +138,9 @@ entity. Only badge-prefixed stale presentations use the legacy suffix comparison
 canonical IDs, historical aliases and Japanese labels while reducing repeated work. Without a shop
 scope the presentation fallback can still scan entities; it is not an indexed constant-cost path.
 `test/filtered-search-read-budget.test.ts` measures real local D1 reads at increasing unrelated-data
-sizes, and `test/filtered-search-semantics.test.ts` covers distinct totals, same-offer filters,
+sizes; `test/scoped-search-sort-budget.test.ts` covers selective product filters with growing
+same-shop inventory, broad selectors with small shops, and complete cursor traversal.
+`test/filtered-search-semantics.test.ts` covers distinct totals, same-offer filters,
 manufacturer compatibility and cursor pagination. These are regression gates, not production
 billing or Worker CPU measurements.
 
