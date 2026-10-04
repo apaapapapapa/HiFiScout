@@ -1,0 +1,954 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Minimal CI repair prerequisite for search-performance PR #753",
+  "baseSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+  "measuredSourceSha": "7ac383bf87a83565e439aea9d69ffac6b41169da",
+  "changes": [
+    "Resolve vp env pin from package.json exact runtime version, preserving Node 22.23.2 and npm 12.0.2",
+    "Override only Miniflare Undici 7.29.0 to patched 7.29.1"
+  ],
+  "validation": {
+    "verify": {
+      "files": 435,
+      "tests": 2491,
+      "status": "pass",
+      "workers": 2
+    },
+    "frozenInstall": "pass",
+    "auditHigh": "pass; five existing moderate advisories remain",
+    "registrySignatures": 245,
+    "registryAttestations": 122,
+    "deterministicSamples": 33,
+    "deterministicMetrics": "identical",
+    "cpuSampling": {
+      "schemaVersion": 1,
+      "method": "same-runner-alternating-median-3",
+      "rounds": 3,
+      "status": "pass",
+      "baselineSha": "7123124b93c160e889b9925308f1ac4ae4edb924",
+      "sourceSha": "7ac383bf87a83565e439aea9d69ffac6b41169da",
+      "exits": [
+        {
+          "side": "baseline",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 3,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 3,
+          "exit": 0
+        }
+      ],
+      "problem": null
+    },
+    "performanceClaim": false
+  },
+  "rows": [
+    {
+      "id": "auction-admin-status",
+      "environment": "local-workerd",
+      "beforeProfile": "398d9952631f2f818d0e6a4781cc3c6497051b793e68586c43c7911befc49620",
+      "afterProfile": "f42585f5267a60f7cf9c8bad2e35ea53285838f2087f0b252f47a0ab5a8ffbf5",
+      "before": {
+        "rowsRead": 8002,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "after": {
+        "rowsRead": 8002,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "limits": {
+        "rowsRead": 10100,
+        "rowsWritten": 0,
+        "sqlStatements": 6
+      },
+      "beforeDigest": "80d24c36e5873fd9e00612454fb421eac652e1da13d7ae7de6018bf85b5a06c8",
+      "afterDigest": "b20af9f4332b04d5f0fb666e3bc9ee339ecc2b2f96efad5bed996bf93f98b29a"
+    },
+    {
+      "id": "auction-catalog-replay",
+      "environment": "local-workerd",
+      "beforeProfile": "2cabaa19d8d6e33db21400e121a6ff8c354109af08d39df948054095e195b5b8",
+      "afterProfile": "e0f58e9f6840fe59283503c13b4397884a4d9309a150177f9e12117e30437a16",
+      "before": {
+        "rowsRead": 4,
+        "rowsWritten": 0,
+        "sqlStatements": 3
+      },
+      "after": {
+        "rowsRead": 4,
+        "rowsWritten": 0,
+        "sqlStatements": 3
+      },
+      "limits": {
+        "rowsRead": 10,
+        "rowsWritten": 0,
+        "sqlStatements": 3
+      },
+      "beforeDigest": "1a7e6c59c193fe2d0242eb632d36d06b0bf3cf74522c99c77fcd713aa2ab5048",
+      "afterDigest": "2ef2678da908b0702cf81832d32cc07d1989623b73ec17adc9fbc560c8dbe2a0"
+    },
+    {
+      "id": "auction-catalog-shared",
+      "environment": "local-workerd",
+      "beforeProfile": "3db847fc35f465e90a3b6c34bf1845550a63fc78ecc2a85f4506009131cdf584",
+      "afterProfile": "3be49e9e96f9ce99c224517e2b108b2291edf223f9fe178bf26aabe611455e66",
+      "before": {
+        "rowsRead": 17,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "after": {
+        "rowsRead": 17,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "limits": {
+        "rowsRead": 40,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "beforeDigest": "1792e53cd01888e1baf7ffbad7dfdacef461b021bc57f4c595c5e9ea90ad1f9c",
+      "afterDigest": "354cdca5a0cd3674b269028eb0789a66300ed5448c76be29895159ad39ce77ec"
+    },
+    {
+      "id": "auction-price-change",
+      "environment": "local-workerd",
+      "beforeProfile": "220bca97ce039ff02235490df24eb0ef83c0b2daa6a3eab0cccc61dd75325e82",
+      "afterProfile": "5cee2095fb6abd4016422806dca1368925116a80be68780398f1dd1c98610c9e",
+      "before": {
+        "rowsRead": 3,
+        "rowsWritten": 5,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 3,
+        "rowsWritten": 5,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 20,
+        "rowsWritten": 20,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "4c1cb6f6a3f165bf6692fcc3547759d1200c6275e69f4530449a663cb1442edb",
+      "afterDigest": "05c7c35b5c14fde998130609cbfe37b60f8af98237fb3098a3bfc9ec02135ff2"
+    },
+    {
+      "id": "auction-replay",
+      "environment": "local-workerd",
+      "beforeProfile": "220bca97ce039ff02235490df24eb0ef83c0b2daa6a3eab0cccc61dd75325e82",
+      "afterProfile": "5cee2095fb6abd4016422806dca1368925116a80be68780398f1dd1c98610c9e",
+      "before": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 5,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "d48bf05c157c927e8d1e0f5185e94bd324d5cc405af5fcd3609fafb0e65f795e",
+      "afterDigest": "fa8b63c44cfa48c4b694599e702e7926f2e6d35e4ecc764751018b0ecfe1edff"
+    },
+    {
+      "id": "auction-search-filtered",
+      "environment": "local-workerd",
+      "beforeProfile": "5fb9b5b503ba372df4afcb37b385cd5d6b26d47e53ab99d4930bcd49ee96b780",
+      "afterProfile": "2e72993d4f21a461faf99f9de3641b107775d104cb93a53ec6273c2d30d49783",
+      "before": {
+        "rowsRead": 12001,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 12001,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 15000,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "f800d64382f0426eacebd856ac29a6582ba01a33f2a11fb6c93fde1a10feefe0",
+      "afterDigest": "86cfd5c09fea496f146abe60dc63c0d9e7a444a0a58e577006be4247191647f0"
+    },
+    {
+      "id": "auction-search-page",
+      "environment": "local-workerd",
+      "beforeProfile": "5fb9b5b503ba372df4afcb37b385cd5d6b26d47e53ab99d4930bcd49ee96b780",
+      "afterProfile": "2e72993d4f21a461faf99f9de3641b107775d104cb93a53ec6273c2d30d49783",
+      "before": {
+        "rowsRead": 53,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 53,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 6100,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "346cffae47590e37c9812582246058e8ce6dd3c15db51859123d8d272ea08d9d",
+      "afterDigest": "e7532b4379d5d730a2e42205c94b698df184998b3fe1bae7d48ce1591307083a"
+    },
+    {
+      "id": "catalog-photo-replay",
+      "environment": "local-workerd",
+      "beforeProfile": "9a4ebf1f36a0714e5e20f510760f436272e3a8656e79a387998312c8875c1888",
+      "afterProfile": "44cdd302dd78db9bad191eeda9b52a665d10bf22df7f9a06646e016b8509e0b2",
+      "before": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 20,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "d8937e71c0fd62f7f62f45f766325344c6bf51dec64adb5349f9040b1871bec1",
+      "afterDigest": "b9396a33cc023c8da951d209fd2dcca35fb4989cf7afa3a32be4de0ae3174e68"
+    },
+    {
+      "id": "catalog-photo-search-100",
+      "environment": "local-workerd",
+      "beforeProfile": "9a4ebf1f36a0714e5e20f510760f436272e3a8656e79a387998312c8875c1888",
+      "afterProfile": "44cdd302dd78db9bad191eeda9b52a665d10bf22df7f9a06646e016b8509e0b2",
+      "before": {
+        "rowsRead": 161,
+        "rowsWritten": 0,
+        "sqlStatements": 4
+      },
+      "after": {
+        "rowsRead": 161,
+        "rowsWritten": 0,
+        "sqlStatements": 4
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "beforeDigest": "62d833c905dd1a84c87d916c74ae9c78d897b274b5f208a0cc8f121a2f399a28",
+      "afterDigest": "1e14349b78b23ef7bb94ef0ae4c9f863de37aef1717f68f0f0ed347132e3fd30"
+    },
+    {
+      "id": "catalog-photo-search-10000",
+      "environment": "local-workerd",
+      "beforeProfile": "9a4ebf1f36a0714e5e20f510760f436272e3a8656e79a387998312c8875c1888",
+      "afterProfile": "44cdd302dd78db9bad191eeda9b52a665d10bf22df7f9a06646e016b8509e0b2",
+      "before": {
+        "rowsRead": 161,
+        "rowsWritten": 0,
+        "sqlStatements": 4
+      },
+      "after": {
+        "rowsRead": 161,
+        "rowsWritten": 0,
+        "sqlStatements": 4
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "beforeDigest": "9361aec4cb084848e7ef3081da5eaa390a2626d0b4885982bf931c6b4adc1cee",
+      "afterDigest": "8440006c28044fcdfc2d1c8c8be2a1ce196b182ed3479872800ddcbb7cd59346"
+    },
+    {
+      "id": "catalog-photo-update",
+      "environment": "local-workerd",
+      "beforeProfile": "9a4ebf1f36a0714e5e20f510760f436272e3a8656e79a387998312c8875c1888",
+      "afterProfile": "44cdd302dd78db9bad191eeda9b52a665d10bf22df7f9a06646e016b8509e0b2",
+      "before": {
+        "rowsRead": 7,
+        "rowsWritten": 1,
+        "sqlStatements": 3
+      },
+      "after": {
+        "rowsRead": 7,
+        "rowsWritten": 1,
+        "sqlStatements": 3
+      },
+      "limits": {
+        "rowsRead": 20,
+        "rowsWritten": 1,
+        "sqlStatements": 3
+      },
+      "beforeDigest": "4b0267e0a7527892e7db78445d146c680d5c236ac48f584f308a42d4c293c230",
+      "afterDigest": "4977d923e00c32bd0cab91082666dc0b9d743d58b1a18cbacb4a8c186f09bac7"
+    },
+    {
+      "id": "catalog-remediation-100",
+      "environment": "local-workerd",
+      "beforeProfile": "2e78dfc010fe2677ec118591a2544aafb95de85d448e1ec203d180bd3aa760ff",
+      "afterProfile": "b3ba22a2797512eae6d5c9732ee650dbc4e219ab2c77c8b639e6ce73df7cbd4f",
+      "before": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 60,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "ddfaa6d35dcd9d1b8563372d9a936fcf85d2bf6531b0360f88ea39ca9bad11a6",
+      "afterDigest": "6bb8616a3f5faba11a12b7430a32387a2bb80ff856b0eb55b1c823cf091d4851"
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "environment": "local-workerd",
+      "beforeProfile": "2e78dfc010fe2677ec118591a2544aafb95de85d448e1ec203d180bd3aa760ff",
+      "afterProfile": "b3ba22a2797512eae6d5c9732ee650dbc4e219ab2c77c8b639e6ce73df7cbd4f",
+      "before": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 60,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "a5d7fd8d1db5b30054cdb5cc476a6728628e2795e8632b4d83cb3618a64b4a11",
+      "afterDigest": "bffb42ba0f8a2857f2f24edaf5f5de49acbde71cb97bed089aff8bd33fdc05c6"
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "environment": "local-workerd",
+      "beforeProfile": "2e78dfc010fe2677ec118591a2544aafb95de85d448e1ec203d180bd3aa760ff",
+      "afterProfile": "b3ba22a2797512eae6d5c9732ee650dbc4e219ab2c77c8b639e6ce73df7cbd4f",
+      "before": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 46,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 60,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "9fdaa8785327c3ad3285c67a72d8d41df80fb5ea08a7a348b7091360c36e84c4",
+      "afterDigest": "d59a56cc4ec8bc9a085bc1f5bfd3e33454cd8a2fe7eb41031f1041551ee9b398"
+    },
+    {
+      "id": "catalog-rows-100",
+      "environment": "local-workerd",
+      "beforeProfile": "c6ca02d42b41dfc2e8d0f0abd92b5c276922143e97776b2eac1735f04684ba9d",
+      "afterProfile": "387b0d9f512cd3047f38b3135f7676b3bbec4b3cf05d3c06d35fc3545ecdaf84",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "7280e77e838869890fd4ed673ce258f120efbcea3ecd9e22741185e8af415f3e",
+      "afterDigest": "68ad9d2e4cd795695fa0dbcf6bd3915b886c54ad31fbc90f3a8c4730752b5ef7"
+    },
+    {
+      "id": "catalog-rows-1000",
+      "environment": "local-workerd",
+      "beforeProfile": "c6ca02d42b41dfc2e8d0f0abd92b5c276922143e97776b2eac1735f04684ba9d",
+      "afterProfile": "387b0d9f512cd3047f38b3135f7676b3bbec4b3cf05d3c06d35fc3545ecdaf84",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "3a5a866beb6d19f9f322c785718a2d4c3477fa5ecd35be45fa2156db4de45d81",
+      "afterDigest": "1ca8f679a1f04e2ad71cd6538e618b58f0de1d2e3112df469347f8e372bfa8bd"
+    },
+    {
+      "id": "catalog-rows-10000",
+      "environment": "local-workerd",
+      "beforeProfile": "c6ca02d42b41dfc2e8d0f0abd92b5c276922143e97776b2eac1735f04684ba9d",
+      "afterProfile": "387b0d9f512cd3047f38b3135f7676b3bbec4b3cf05d3c06d35fc3545ecdaf84",
+      "before": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "after": {
+        "rowsRead": 120,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 2
+      },
+      "beforeDigest": "f97ac77512263c7b9412acd15e44d5ac944a30c10ec04927786a702c6fe283f1",
+      "afterDigest": "8533d5beaa8b349b04a97fcb3105f76f128f9e94f9bab19d1aa60d084bc852bd"
+    },
+    {
+      "id": "category-prune",
+      "environment": "local-workerd",
+      "beforeProfile": "9635cc7bf2ed9defbddbd38c66fd6ffde0d9e935036b7050d27f260e536356f0",
+      "afterProfile": "2a6c2e53fab904031e6e8b5a24e10828e28dedfc27ce993493beabf7a9b21c7b",
+      "before": {
+        "rowsRead": 241,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 241,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 300,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "041cf97c337102dde21edb922f3de4f0d1ccb95b2b305cbfee9396615673b74f",
+      "afterDigest": "163f0e1a497a4c3a4314fb728c0ad3de0590114bb5de6c1c9e7b472d321086f5"
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 5.834,
+        "cpuRelative": 0.595
+      },
+      "after": {
+        "cpuUs": 4.755,
+        "cpuRelative": 0.594
+      },
+      "limits": null,
+      "beforeDigest": "9e820143b9b3f1124efe63d35331476bde77ffd0c962e6336867c5fa35acc13e",
+      "afterDigest": "58cb1e254f7b45187073590d39462eec9619f5fd5058bca1359595a3d30800cc"
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 1391.737,
+        "cpuRelative": 341.439
+      },
+      "after": {
+        "cpuUs": 1299,
+        "cpuRelative": 297.037
+      },
+      "limits": null,
+      "beforeDigest": "7fcec3912411bc3e942ee83e345b670a77b9d4a3543afa4f74052c75223c98fc",
+      "afterDigest": "00a431bebc536e1c879035c83f36f03d230a3b84c9fa6f755b188c35cfea839e"
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 158.215,
+        "cpuRelative": 15.321
+      },
+      "after": {
+        "cpuUs": 143.462,
+        "cpuRelative": 16.828
+      },
+      "limits": null,
+      "beforeDigest": "49d5fca5d2afb97319a71ded8db312cc129aefebeee4e21a466daa7d970b5a6c",
+      "afterDigest": "c2bd5284ae54b902506e13f6c6532e683e3a90caee0dc40f93e6a663ee640e25"
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 2647,
+        "cpuRelative": 266.599
+      },
+      "after": {
+        "cpuUs": 2497.238,
+        "cpuRelative": 299.561
+      },
+      "limits": null,
+      "beforeDigest": "45f4e59d3ff039bf07f225bd62ae8f64d39e0af16e5b0c61513755b45358580a",
+      "afterDigest": "ac06d29271d33a6fd6de1e0dff0222f748a109ee82caeef3812f757ffc70333e"
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 335.664,
+        "cpuRelative": 12.253
+      },
+      "after": {
+        "cpuUs": 356.372,
+        "cpuRelative": 13.025
+      },
+      "limits": null,
+      "beforeDigest": "f4c54fd79e9f4e14457190a4ba75964222bee7b7d8c21f998440ba26fc1e579a",
+      "afterDigest": "f41b62631f036f547e91d0cd199c3822b31fcfb826c5e22f781e410448d4a972"
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 17.506,
+        "cpuRelative": 2.516
+      },
+      "after": {
+        "cpuUs": 17.403,
+        "cpuRelative": 2.46
+      },
+      "limits": null,
+      "beforeDigest": "63b000609bde5a1f0f123247cd24db8fdfc7e0941351d13a85dc364ecdf893ff",
+      "afterDigest": "80167eb3db8d68d6e2c120cd4b1162a310af43f4f443df370d2909d1cf48eac2"
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 5656.75,
+        "cpuRelative": 402.786
+      },
+      "after": {
+        "cpuUs": 5473.571,
+        "cpuRelative": 454.938
+      },
+      "limits": null,
+      "beforeDigest": "c76b6b12f61d3ea7375de03b8c59aa3236c39cfd92b6406c8910a880dc8b5664",
+      "afterDigest": "0a51be5d07d98005c7537dea4ea17e6f7396a8c39ff6b03fb429adad34a57cf3"
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "environment": "local-node",
+      "beforeProfile": "6e28db9211268d32c42572f3852e500eeb9da5251e2404391b46c948f175c982",
+      "afterProfile": "d7e2ab03a5ebcd94850a0320f1efe45e11dc38a659ed5a48e7478629baa45c07",
+      "before": {
+        "cpuUs": 470.448,
+        "cpuRelative": 70.193
+      },
+      "after": {
+        "cpuUs": 473.646,
+        "cpuRelative": 69.866
+      },
+      "limits": null,
+      "beforeDigest": "f79092857785b429f7488c7ea28b82841d687c1630ac5c73cd04bd8b8212a677",
+      "afterDigest": "99cb872e9678fe7c6cfc7449e50f839cb0fdcb58b4b529d43fa98a078346a41b"
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "environment": "local-workerd",
+      "beforeProfile": "6018da48e5c0dd05227dacaa782303022239f663529be38605552e098135a85b",
+      "afterProfile": "7e0df935490aeee29ed0887032d34b51514fbb61218c9ce660f6da22f5731668",
+      "before": {
+        "rowsRead": 196,
+        "rowsWritten": 176,
+        "sqlStatements": 59
+      },
+      "after": {
+        "rowsRead": 196,
+        "rowsWritten": 176,
+        "sqlStatements": 59
+      },
+      "limits": {
+        "rowsRead": 240,
+        "rowsWritten": 200,
+        "sqlStatements": 70
+      },
+      "beforeDigest": "3a9cad6f5c4febe57a960060f4bdeaac4760c3f8fa21cc8fb28093ec78702232",
+      "afterDigest": "22a01eb4f336db09bbf3130ddf6f94e1b650d21e04ee176071dfcaeed2664d6d"
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "environment": "local-workerd",
+      "beforeProfile": "6018da48e5c0dd05227dacaa782303022239f663529be38605552e098135a85b",
+      "afterProfile": "7e0df935490aeee29ed0887032d34b51514fbb61218c9ce660f6da22f5731668",
+      "before": {
+        "rowsRead": 316,
+        "rowsWritten": 256,
+        "sqlStatements": 99
+      },
+      "after": {
+        "rowsRead": 316,
+        "rowsWritten": 256,
+        "sqlStatements": 99
+      },
+      "limits": {
+        "rowsRead": 350,
+        "rowsWritten": 300,
+        "sqlStatements": 110
+      },
+      "beforeDigest": "5690cc1adabd3cc9881ebc340ea22f43877905c96eb188971af35921c3543b9e",
+      "afterDigest": "f3b847f741592d6cff8f5c0a0c36f6ed1853a9da68bfdf8ea4151debff6fd950"
+    },
+    {
+      "id": "crawl-do-retry",
+      "environment": "local-mock",
+      "beforeProfile": "6acc023346554d894279ed1694ccbac965c5e0bba02d92192387538366a1704b",
+      "afterProfile": "73a7ed097bb5ee197ddb032c0530bdd8351dceb8f13def26961a0b0474d33e56",
+      "before": {
+        "doAlarms": 3,
+        "doStorageWrites": 2
+      },
+      "after": {
+        "doAlarms": 3,
+        "doStorageWrites": 2
+      },
+      "limits": {
+        "doAlarms": 3,
+        "doStorageWrites": 2
+      },
+      "beforeDigest": "599373410b1c9c2b10cec68447e7b6959830e079568217ee9c9954847ebdf575",
+      "afterDigest": "1b029d54846734c5c314774872e3da3e018ce7afb35f6743dae54b5da8868e65"
+    },
+    {
+      "id": "daily-schedule",
+      "environment": "local-mock",
+      "beforeProfile": "8bc406e07007bc72b34350340d7e2a668b09697ddeab7f218c2797b1f599210e",
+      "afterProfile": "2bd0efdc651adabba0a435421a876c23b4a5394c2d5b8adbcf14342fa1bc786b",
+      "before": {
+        "scheduledInvocations": 391,
+        "crawlDispatches": 61,
+        "plannedPages": 1619
+      },
+      "after": {
+        "scheduledInvocations": 391,
+        "crawlDispatches": 61,
+        "plannedPages": 1619
+      },
+      "limits": {
+        "scheduledInvocations": 391,
+        "crawlDispatches": 61,
+        "plannedPages": 1800
+      },
+      "beforeDigest": "39678a1d023fbbc9ab5ef5c52b9feab3aeecafe87522727199371e588e11df68",
+      "afterDigest": "bf677533fe7b730d14e6d8c7fd6eb865f90ea0713818b695b1faaa993c4e7a2b"
+    },
+    {
+      "id": "maintenance-continuation",
+      "environment": "local-mock",
+      "beforeProfile": "f5a05aabc82aa22b9faba506633e50beb00fe7bd3d6901cab3c116aaee4e4ed3",
+      "afterProfile": "51303c9886b07b0cfc51f8378f07798d87fcb25ce99a2ce39a2c4c9d2de40a5e",
+      "before": {
+        "d1Calls": 49,
+        "sqlStatements": 49
+      },
+      "after": {
+        "d1Calls": 49,
+        "sqlStatements": 49
+      },
+      "limits": {
+        "d1Calls": 72,
+        "sqlStatements": 72
+      },
+      "beforeDigest": "505cd4ecbfcf1916af6a720e3af86bca1dcebc4ad8a13e84c9776d8842f6aa36",
+      "afterDigest": "82879885ee8d78ccd7c2b82d2e0c4debfe3d6fcec7aa10fb31b645d605cd7ada"
+    },
+    {
+      "id": "notification-candidates",
+      "environment": "local-workerd",
+      "beforeProfile": "6de81b17977d5e654efbb61aa847a6a21049e1479d301bfa904dfd7be3147980",
+      "afterProfile": "508e46a1e7b9826a6bfed762002a356792b2767f917f6e69bc04693e5fd370f6",
+      "before": {
+        "rowsRead": 20,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 20,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 50,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "eb01d088a0a97c146b697d8b96dfe4a31edbedf7bdb8a2fb1a44c9deff1e8f1f",
+      "afterDigest": "e0127cf709652e762b68421fb7db10f668e9392fb1f442ed376d1253682ec607"
+    },
+    {
+      "id": "notification-matches",
+      "environment": "local-workerd",
+      "beforeProfile": "6de81b17977d5e654efbb61aa847a6a21049e1479d301bfa904dfd7be3147980",
+      "afterProfile": "508e46a1e7b9826a6bfed762002a356792b2767f917f6e69bc04693e5fd370f6",
+      "before": {
+        "rowsRead": 78,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "after": {
+        "rowsRead": 78,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "limits": {
+        "rowsRead": 1000,
+        "rowsWritten": 0,
+        "sqlStatements": 1
+      },
+      "beforeDigest": "898d764aa1c96097616bb79c14938a9d055f37c84dc166da8d6ef6059287e2f7",
+      "afterDigest": "30f376ac0caea59f3a844d67cea9ff2bd06fb7a8f2c7bc6ca4ac696b409cbf61"
+    },
+    {
+      "id": "notification-outbox-replay",
+      "environment": "local-workerd",
+      "beforeProfile": "ad5b914d89d20a493c58aed0f925e45086c9c3adb601d2c015e8b23408846ae1",
+      "afterProfile": "3cedd96c3da165c56b928ea678706acee1a8849b15f2e28ae8029adec6264b98",
+      "before": {
+        "rowsRead": 6,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "after": {
+        "rowsRead": 6,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "limits": {
+        "rowsRead": 10,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "beforeDigest": "4e02a520e8ea426f873fdc29006c0bd105145250300d1ceb9df01be7707a5064",
+      "afterDigest": "19cfc9dd11c9938aef1a65f95f2e1d5f9918fec57bce30b66a6b0f522fbb96cc"
+    },
+    {
+      "id": "projection-unchanged",
+      "environment": "local-workerd",
+      "beforeProfile": "3521a409cc3b34554efe13070b01dbc1bdf014c212bec5cfb3f5d9e29aaa8e66",
+      "afterProfile": "fde0277125ce93d7db621d5dfa1f37b859af7ac4cf8cb45173359ebbeb281925",
+      "before": {
+        "rowsRead": 109,
+        "rowsWritten": 0,
+        "sqlStatements": 34
+      },
+      "after": {
+        "rowsRead": 109,
+        "rowsWritten": 0,
+        "sqlStatements": 34
+      },
+      "limits": {
+        "rowsRead": 200,
+        "rowsWritten": 0,
+        "sqlStatements": 34
+      },
+      "beforeDigest": "509a1b490a9600991898f7e0662c3d777b2248a31636a537fa8466c48b4ac695",
+      "afterDigest": "9da1ee9bd7bebe73cfdb91a7d6515b08aa008dd673ed4d6868f3a3aacee97a7c"
+    },
+    {
+      "id": "queue-export-redelivery",
+      "environment": "local-mock",
+      "beforeProfile": "749b851fc383c476bbeaf77e43f9240652a68604c8887bcf100529e4c3c8383b",
+      "afterProfile": "619d58e1a356a838c009633526d31d4f99885e4d3e572cd554cd7d7fe80f4aaf",
+      "before": {
+        "queueSends": 0,
+        "queueRetries": 0
+      },
+      "after": {
+        "queueSends": 0,
+        "queueRetries": 0
+      },
+      "limits": {
+        "queueSends": 0,
+        "queueRetries": 0
+      },
+      "beforeDigest": "a3440c41e4260bc08a71c86e11ec1da2ecf1337b270532df93ae73f95a3e6251",
+      "afterDigest": "a23acac749e8b0bd17ea351d3071afa96d7ab374279c911333fb8067bcd718bb"
+    },
+    {
+      "id": "retention-history-100",
+      "environment": "local-workerd",
+      "beforeProfile": "31ecca857dad0611af194197568c0d7256972a8489e9877d022f2b63482ebe43",
+      "afterProfile": "c467948a9ab88a24dd5f067ca2fd6831b58ebcaf895c4881d07305a876c91629",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "limits": {
+        "rowsRead": 3000,
+        "rowsWritten": 500,
+        "sqlStatements": 12
+      },
+      "beforeDigest": "5e71f5344cdfb616055927cdf3eb36b9862a06f49f4fc20878cfd251409e3deb",
+      "afterDigest": "9ee52bf7b80c8f464e6c1b3d68dfa69b2dec4da003da7ad2e76c0fa2cf889111"
+    },
+    {
+      "id": "retention-history-1000",
+      "environment": "local-workerd",
+      "beforeProfile": "31ecca857dad0611af194197568c0d7256972a8489e9877d022f2b63482ebe43",
+      "afterProfile": "c467948a9ab88a24dd5f067ca2fd6831b58ebcaf895c4881d07305a876c91629",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "limits": {
+        "rowsRead": 3000,
+        "rowsWritten": 500,
+        "sqlStatements": 12
+      },
+      "beforeDigest": "1bec86b133a28b2be166ea01dfc9f207fb888ec45e5f8d8adf272c53befdde0b",
+      "afterDigest": "627669cc3c5c7eba955f688a0cfe2b5f41ccab10c4b54f776b576fc840564c63"
+    },
+    {
+      "id": "retention-history-10000",
+      "environment": "local-workerd",
+      "beforeProfile": "31ecca857dad0611af194197568c0d7256972a8489e9877d022f2b63482ebe43",
+      "afterProfile": "c467948a9ab88a24dd5f067ca2fd6831b58ebcaf895c4881d07305a876c91629",
+      "before": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "after": {
+        "rowsRead": 2528,
+        "rowsWritten": 500,
+        "sqlStatements": 10
+      },
+      "limits": {
+        "rowsRead": 3000,
+        "rowsWritten": 500,
+        "sqlStatements": 12
+      },
+      "beforeDigest": "c9a39c2df624c055b946f6a74e7361765d845ed55207f157737ea4f9f2e37b8b",
+      "afterDigest": "b8f4572be21096081c3e3eb8d92fb48d345342894d61057b3d2181e4ea54eb4a"
+    },
+    {
+      "id": "search-new-total",
+      "environment": "local-workerd",
+      "beforeProfile": "35ca1e92932ce31158baae19f3363567cd09646ddcadabaa43352753bd6b94d3",
+      "afterProfile": "62d430f821042943f4deccb8068f6271e0edccdfedde2415dd2ce8f2afb3b0c4",
+      "before": {
+        "rowsRead": 145,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "after": {
+        "rowsRead": 145,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "limits": {
+        "rowsRead": 250,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "beforeDigest": "d7ac16b96b2afa080207bd057493219332520ad737001e4b3b64b0b1d735e0e9",
+      "afterDigest": "e2099604b6b619729d4ce8b598824e1861b2c0779b08fbf29477604496919441"
+    },
+    {
+      "id": "search-price-drop-total",
+      "environment": "local-workerd",
+      "beforeProfile": "35ca1e92932ce31158baae19f3363567cd09646ddcadabaa43352753bd6b94d3",
+      "afterProfile": "62d430f821042943f4deccb8068f6271e0edccdfedde2415dd2ce8f2afb3b0c4",
+      "before": {
+        "rowsRead": 181,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "after": {
+        "rowsRead": 181,
+        "rowsWritten": 0,
+        "sqlStatements": 5
+      },
+      "limits": {
+        "rowsRead": 250,
+        "rowsWritten": 0,
+        "sqlStatements": 8
+      },
+      "beforeDigest": "c8ec05848b0a37c23b4fbdd24ad16380343bba20eec6610dee2173c5defbac6d",
+      "afterDigest": "bfd3e2fbb48a479c8790101061cfb67b20c8c673be3f5a2ed409caf82be2a4aa"
+    }
+  ]
+}
