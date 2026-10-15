@@ -873,102 +873,553 @@
       ]
     },
     {
+      "id": "notification-candidates",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "e0127cf709652e762b68421fb7db10f668e9392fb1f442ed376d1253682ec607",
+      "afterDigest": "9d3375fe140ac701e9012442fe461a3b6bd3e306ebfd55fedf6d6fd99c95e061",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "notification-matches",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "30f376ac0caea59f3a844d67cea9ff2bd06fb7a8f2c7bc6ca4ac696b409cbf61",
+      "afterDigest": "8ded482ce87b627687b4777279bb744b02b1dc8ff5f06a60151d8cfdfbf3279c",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "notification-outbox-replay",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "19cfc9dd11c9938aef1a65f95f2e1d5f9918fec57bce30b66a6b0f522fbb96cc",
+      "afterDigest": "7922fcdc1206ecda2d4aab06919f6decbeffe8b172411735d7f5e59ed12a5cc2",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-replay",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "fa8b63c44cfa48c4b694599e702e7926f2e6d35e4ecc764751018b0ecfe1edff",
+      "afterDigest": "66ffb365ea5c2bd1a43bdc34143020ed2124d69854ad0ad90a3972b796e29a26",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-price-change",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "05c7c35b5c14fde998130609cbfe37b60f8af98237fb3098a3bfc9ec02135ff2",
+      "afterDigest": "94bc0b660c36b25da805d68828e8c83827ae43e4738e49ea00f117660bd914b0",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-catalog-shared",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "354cdca5a0cd3674b269028eb0789a66300ed5448c76be29895159ad39ce77ec",
+      "afterDigest": "c94e00ba11dc99e039062f309398b7d553dfb523a1ef9c93b919ac6e2a7276c1",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-catalog-replay",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "2ef2678da908b0702cf81832d32cc07d1989623b73ec17adc9fbc560c8dbe2a0",
+      "afterDigest": "83c99612621d034fac1125c3f6e120ce53ebc90a4c370092f5c3aed3d51332dc",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-search-page",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "e7532b4379d5d730a2e42205c94b698df184998b3fe1bae7d48ce1591307083a",
+      "afterDigest": "2ea1f5b306a285132661faf826552959a8dfc002bec9e324686188ba7dcded67",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-search-filtered",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "86cfd5c09fea496f146abe60dc63c0d9e7a444a0a58e577006be4247191647f0",
+      "afterDigest": "999da644193478c70a9d8cff780a79cf86028e816a264a36aedea1b6891d92d0",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "auction-admin-status",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "b20af9f4332b04d5f0fb666e3bc9ee339ecc2b2f96efad5bed996bf93f98b29a",
+      "afterDigest": "0665677853d641043aa686967fc68a4630c0f8b4c3219a476960165abfc0e8d9",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "22a01eb4f336db09bbf3130ddf6f94e1b650d21e04ee176071dfcaeed2664d6d",
+      "afterDigest": "1ad088ae8ca1d5ac3087e2714ce5ebf534c8baafeb2977e85da3944cc6cfa284",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "f3b847f741592d6cff8f5c0a0c36f6ed1853a9da68bfdf8ea4151debff6fd950",
+      "afterDigest": "a0b9b43023ee334cc713e93a093d09f6da1bcbe51d1491e579489aaae73ebe1d",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "crawl-do-retry",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "1b029d54846734c5c314774872e3da3e018ce7afb35f6743dae54b5da8868e65",
+      "afterDigest": "c5831a3e6b9f3e06654c41457043031ed0a672ebb41304c7178e8e98547428e4",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "queue-export-redelivery",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "a23acac749e8b0bd17ea351d3071afa96d7ab374279c911333fb8067bcd718bb",
+      "afterDigest": "8ec018a99a996e0d52c0f1a7d0ef090af029dbd58578911480a2fee612c97f5b",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "category-prune",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "163f0e1a497a4c3a4314fb728c0ad3de0590114bb5de6c1c9e7b472d321086f5",
+      "afterDigest": "aa01235e915bbf2990e7f3150cdb44a049f8e55cf2abff4a578b6ea583be33fd",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "search-new-total",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "e2099604b6b619729d4ce8b598824e1861b2c0779b08fbf29477604496919441",
+      "afterDigest": "411bbe439b5e862286f09f4e9c0e1aff772411458ea955742d6d79b0c8a4c4aa",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "search-price-drop-total",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "bfd3e2fbb48a479c8790101061cfb67b20c8c673be3f5a2ed409caf82be2a4aa",
+      "afterDigest": "c8460d6a222b1398482441265e2e763cf3c47f411178a4f63bb7362f09e3f4ac",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "9da1ee9bd7bebe73cfdb91a7d6515b08aa008dd673ed4d6868f3a3aacee97a7c",
+      "afterDigest": "be4b79f1e3a90348581bdd3a59f5bdb36f941a4ad55bd6c8972259326b1c5c58",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "1e14349b78b23ef7bb94ef0ae4c9f863de37aef1717f68f0f0ed347132e3fd30",
+      "afterDigest": "4f469a2474a1e5632ee2cb5e7dafc0867362a95582a8c702da275552a1cd2210",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "8440006c28044fcdfc2d1c8c8be2a1ce196b182ed3479872800ddcbb7cd59346",
+      "afterDigest": "2453e834ed8fcc52b9a37e876bbea06215239ee5d5781547e7423626bf17c83b",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-photo-replay",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "b9396a33cc023c8da951d209fd2dcca35fb4989cf7afa3a32be4de0ae3174e68",
+      "afterDigest": "d05c6c7149ed5f0c7e3843bca578e3935e07832737ac96e677ec0be239b78421",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-photo-update",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "4977d923e00c32bd0cab91082666dc0b9d743d58b1a18cbacb4a8c186f09bac7",
+      "afterDigest": "5bd37fd454004104ad483b5561f3811f295f33697624de13863f1f3ffea5797c",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-rows-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "68ad9d2e4cd795695fa0dbcf6bd3915b886c54ad31fbc90f3a8c4730752b5ef7",
+      "afterDigest": "d7fcdacce77c5c7875a44637a3fe0728ded6fb8f05cf0303d00cb4d756774d9f",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-rows-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "1ca8f679a1f04e2ad71cd6538e618b58f0de1d2e3112df469347f8e372bfa8bd",
+      "afterDigest": "73617c772f7284d156c0639aa8b3d3197cc757fed72197da856554af9038478c",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-rows-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "8533d5beaa8b349b04a97fcb3105f76f128f9e94f9bab19d1aa60d084bc852bd",
+      "afterDigest": "4050028db8ad29979c4b83489d1e4a59c3c5fa963668194ccd2a4a68ca069a8a",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-remediation-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "6bb8616a3f5faba11a12b7430a32387a2bb80ff856b0eb55b1c823cf091d4851",
+      "afterDigest": "47e89269b02a0e1f7103d364e54684b25ee19da9acd134f5974bc012be4cd487",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "bffb42ba0f8a2857f2f24edaf5f5de49acbde71cb97bed089aff8bd33fdc05c6",
+      "afterDigest": "aa00b861629fd4cf36724d3b5fc42a8f7ace58f72dd69fa18b86c752ef869e8c",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "d59a56cc4ec8bc9a085bc1f5bfd3e33454cd8a2fe7eb41031f1041551ee9b398",
+      "afterDigest": "7cd11788b3be8143bc38afea604aa01ffefe44a9b66fbcb5dd71c0f42e9f8f32",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "retention-history-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "9ee52bf7b80c8f464e6c1b3d68dfa69b2dec4da003da7ad2e76c0fa2cf889111",
+      "afterDigest": "48d0f9e7fb09f9b3844f98c151d0a38d6a5b9f37af4cc42564806b8593fde69e",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "retention-history-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "627669cc3c5c7eba955f688a0cfe2b5f41ccab10c4b54f776b576fc840564c63",
+      "afterDigest": "59265f3705f6991f3e9af27064f6f6d690a8bb86453d84e08f0a7c766b1b0a54",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "retention-history-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "b8f4572be21096081c3e3eb8d92fb48d345342894d61057b3d2181e4ea54eb4a",
+      "afterDigest": "a0ebb67f886f50f2dd10f185c74fd3bc3d6a93d778eebc741dbc368ff25a601b",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "maintenance-continuation",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "82879885ee8d78ccd7c2b82d2e0c4debfe3d6fcec7aa10fb31b645d605cd7ada",
+      "afterDigest": "fe8bcb5988463a3a5925568665f373446afee9eae18cd871180e4a643cbc37f3",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "bf677533fe7b730d14e6d8c7fd6eb865f90ea0713818b695b1faaa993c4e7a2b",
+      "afterDigest": "dd17096925bb01ee5a0d5a36de62d0e3845092f80fe5e90305e133a3e253b5bc",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. All 33 deterministic samples, including this case, have exactly identical measured metrics against base 01ba0a0; fixtures, application queries for this sample, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "c2bd5284ae54b902506e13f6c6532e683e3a90caee0dc40f93e6a663ee640e25",
+      "afterDigest": "7fcc249b8a72fc0e6869f8e6791faf6002fb03c431a6bed9041e442400187255",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 16.855 -> 21.036 (ratio 1.248, allowance 1.780). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "00a431bebc536e1c879035c83f36f03d230a3b84c9fa6f755b188c35cfea839e",
+      "afterDigest": "d7ee9e09178c18d56bd3af538bee73e8f93823e590237414f359e886b4ec4424",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 332.07 -> 282.235 (ratio 0.850, allowance 1.752). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "58cb1e254f7b45187073590d39462eec9619f5fd5058bca1359595a3d30800cc",
+      "afterDigest": "96416b46de4f0f7e7414eb79e2b5994b96308b491de1a7845d254edad77fd978",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 0.529 -> 0.545 (ratio 1.030, allowance 2.695). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "f41b62631f036f547e91d0cd199c3822b31fcfb826c5e22f781e410448d4a972",
+      "afterDigest": "c38d91af248993b3867adaf76cbaab0622a67db7e5a34a16d221d410663689ea",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 14.163 -> 15.853 (ratio 1.119, allowance 1.785). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "ac06d29271d33a6fd6de1e0dff0222f748a109ee82caeef3812f757ffc70333e",
+      "afterDigest": "9b14edc8cfa2cd4555689a93c44aa498e69e42599caee5f008faa6e1d183a595",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 313.189 -> 320.819 (ratio 1.024, allowance 1.752). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "99cb872e9678fe7c6cfc7449e50f839cb0fdcb58b4b529d43fa98a078346a41b",
+      "afterDigest": "78b9df0adc78423040bad882cb7f979f893d8454086b298a73b59b2c75957915",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 77.189 -> 79.113 (ratio 1.025, allowance 1.756). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "0a51be5d07d98005c7537dea4ea17e6f7396a8c39ff6b03fb429adad34a57cf3",
+      "afterDigest": "dfaff972ce3227a59925f1c0c4b02cba479549fcbdb9bd648ca7b5dcb9ebe338",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 339.88 -> 332.2 (ratio 0.977, allowance 1.751). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "80167eb3db8d68d6e2c120cd4b1162a310af43f4f443df370d2909d1cf48eac2",
+      "afterDigest": "431478780428e545fd6914b790958d38ef91884537f2bd06377aa73715e85e12",
+      "reason": "Reviewed dependency security patch in this PR (overrides tinypool 2.1.2 and Miniflare sharp 0.35.5; vue 3.5.44 and source-map-js 1.2.2 within range) changes the lockfile profile. The same-runner alternating median-3 pair passed: relative CPU 2.551 -> 2.631 (ratio 1.031, allowance 1.946). Parser sources, fixtures and absolute ceilings are unchanged; the patched packages are not on the parser path. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
+      ]
+    },
+    {
       "id": "catalog-remediation-backlog-100",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "0e751120830075f1115882fe2b7e2c4089af5883d11036f23aaf13e33bc9e99b",
-      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 100 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "afterDigest": "504ce59dc2667f7f41643389006f655eb7e24cbdccc1d11c57179dcee6e5ebce",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline under the patched lockfile profile: 37 reads, 8 writes and 18 statements to drain four owed entries amid 100 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-remediation-backlog-1000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "56b6311facd72c1f9308bbdde4696ebddd7c67c2d04f8989c7094bf60d702314",
-      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 1,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "afterDigest": "f8fa8f9082d97243e3a0cb163dce5c864ccc9e9ce0bacc91db6944259b4bc762",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline under the patched lockfile profile: 37 reads, 8 writes and 18 statements to drain four owed entries amid 1,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-remediation-backlog-10000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "1692d628c7c3ae9e9c5367fa3473e0ac5e326afb434abb644a8f860b287b44b2",
-      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 10,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "afterDigest": "6e33e1cdedceddda23a3cb9a98d95a3eeab8c0b1748b691093d5bc41019698bb",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline under the patched lockfile profile: 37 reads, 8 writes and 18 statements to drain four owed entries amid 10,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-duplicates-100",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "990bb5e56139a290b618a1c0d3a9a00c9c6b3a745b74b4a08055a5dd04b64076",
-      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 100 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "afterDigest": "87f71417c49b6d424a4ae35de2bf45430de00b264259694259d301ff727e1143",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline under the patched lockfile profile: 32 reads, zero writes and one statement with 100 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-duplicates-1000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "f62909f3ae863b9421836f10b962e1e974f1feaf1bf4b72b4ca484b0e4937a7e",
-      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 1,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "afterDigest": "e8615c451119b78937fd31ed9bd6ae35406d15355b6a4532214d1f309d056fd2",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline under the patched lockfile profile: 32 reads, zero writes and one statement with 1,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-duplicates-10000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "8a752e25f33e21f397597c17687832b473cd0f29ba85561fa6dcbfa4c53ba452",
-      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 10,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "afterDigest": "23d7f91e410841858ea0a4fa1d67ccdf1e34dccc3ab9bf6f1d0fe33ca62ced84",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline under the patched lockfile profile: 32 reads, zero writes and one statement with 10,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-verification-claim-100",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "a285938c4b01b17abe84acdce482abeda8b160e068984b7e9e19857b47f98ddd",
-      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "afterDigest": "730c1d4b8fc21feda63fa1c08d0664caab16805994bedc00e751e20299b06c94",
+      "reason": "Reviewed initial real-workerd claim baseline under the patched lockfile profile: 67 reads, 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-verification-claim-1000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "c039c0e74a0dd34a39ad060154937803881e51346966def9842c7e9d1b238890",
-      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "afterDigest": "1cb7ab98c1e05d4556b81dc8cd32ca36e151c88e8ab5ce950368184ea5c96d81",
+      "reason": "Reviewed initial real-workerd claim baseline under the patched lockfile profile: 67 reads, 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     },
     {
       "id": "catalog-verification-claim-10000",
       "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "14f1b411466bcd2a49b3121f7a23fc2a0754700a42723c5855fb4326f02813c6",
-      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "afterDigest": "78763b95575f0ff1b875147b351112fcdcfe1f989165f6155c53fa554c42d9d0",
+      "reason": "Reviewed initial real-workerd claim baseline under the patched lockfile profile: 67 reads, 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/799",
-        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38771114145"
       ]
     }
   ]
