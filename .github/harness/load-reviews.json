@@ -860,6 +860,116 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/752",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/35743798194"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "b7fe9a5639c0c8cc9fd32b80964cbcf2b45118426e041e04603848be43dfeb3e",
+      "afterDigest": "a33f58e6157b53403ab2e23cca0f23f7d244ffb0d64f7dc4cdbf42d1a7e816b6",
+      "reason": "Register two previously unowned Knowledge Catalog boundaries (catalog-duplicates, catalog-verification-queue) and add finalizer backlog samples to catalog-remediation, each with real-workerd growth suites. Production D1 SQL reports attributed about 52%, 10% and 7% of observed reads to these paths. Existing contracts, samples and ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "0e751120830075f1115882fe2b7e2c4089af5883d11036f23aaf13e33bc9e99b",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 100 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "56b6311facd72c1f9308bbdde4696ebddd7c67c2d04f8989c7094bf60d702314",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 1,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1692d628c7c3ae9e9c5367fa3473e0ac5e326afb434abb644a8f860b287b44b2",
+      "reason": "Reviewed initial real-workerd finalizer backlog baseline: 37 reads, 8 writes and 18 statements to drain four owed entries amid 10,000 replayed verified entries. The same fixture read 242 rows at 100 entries before the partial index and grew with the catalog; the 60-read ceiling rejects that scan.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "990bb5e56139a290b618a1c0d3a9a00c9c6b3a745b74b4a08055a5dd04b64076",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 100 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "f62909f3ae863b9421836f10b962e1e974f1feaf1bf4b72b4ca484b0e4937a7e",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 1,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "8a752e25f33e21f397597c17687832b473cd0f29ba85561fa6dcbfa4c53ba452",
+      "reason": "Reviewed initial real-workerd duplicate-page baseline: 32 reads, zero writes and one statement with 10,000 unrelated verified singletons. The previous window aggregation read 871 rows at 100 singletons and about eight per catalog entry; the 60-read ceiling rejects a return to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-100",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "a285938c4b01b17abe84acdce482abeda8b160e068984b7e9e19857b47f98ddd",
+      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-1000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "c039c0e74a0dd34a39ad060154937803881e51346966def9842c7e9d1b238890",
+      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-10000",
+      "baseSha": "01ba0a0f86c6a29e7b84d2d0eea2554e89d42297",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "14f1b411466bcd2a49b3121f7a23fc2a0754700a42723c5855fb4326f02813c6",
+      "reason": "Reviewed initial real-workerd claim baseline: 67 reads, 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. Before the seekable predicates the same pair read about three rows per finished job; the 100-read ceiling rejects that growth.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/799",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38768388937"
+      ]
     }
   ]
 }
