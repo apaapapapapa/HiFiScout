@@ -12,6 +12,16 @@ import type {
 
 const WRITE_BATCH_SIZE = 50;
 
+/**
+ * Run-scoped selectors seek `(run_id, status IN live)` and `(run_id, job_type IN targets, status)`
+ * instead of filtering a run's whole history. `job_type <> 'finalize'` and an OR across statuses
+ * cannot seek past `run_id`, so every claim re-read the run's completed jobs as well; with one
+ * claim per job that made a run quadratic in its size. The schema's CHECK limits `job_type` to
+ * these two plus `finalize`.
+ */
+const LIVE_JOB_STATUSES = "'queued', 'processing', 'retrying'";
+const TARGET_JOB_TYPES = "'candidate', 'product_recheck'";
+
 interface VerificationRunStatsRow {
   target_jobs: number | null;
   candidate_jobs: number | null;
@@ -152,11 +162,13 @@ export async function claimNextKnowledgeCatalogVerificationJobForRun(
   // A selection can lose its conditional claim to another duplicate wake-up. Retry a small,
   // bounded number of times so the invocation can pick a different job instead of spinning.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const selected = await db
-      .prepare(`
+    const selected = await firstMeasured<{ id?: number | null }>(
+      db
+        .prepare(`
         SELECT job.id
         FROM knowledge_catalog_verification_jobs job
         WHERE job.run_id = ?
+          AND job.status IN (${LIVE_JOB_STATUSES})
           AND (
             (job.status IN ('queued', 'retrying')
               AND (job.available_at IS NULL OR job.available_at <= ?))
@@ -169,8 +181,8 @@ export async function claimNextKnowledgeCatalogVerificationJobForRun(
               SELECT 1
               FROM knowledge_catalog_verification_jobs target
               WHERE target.run_id = job.run_id
-                AND target.job_type <> 'finalize'
-                AND target.status IN ('queued', 'processing', 'retrying')
+                AND target.job_type IN (${TARGET_JOB_TYPES})
+                AND target.status IN (${LIVE_JOB_STATUSES})
             )
           )
           AND (
@@ -188,8 +200,8 @@ export async function claimNextKnowledgeCatalogVerificationJobForRun(
                  job.id
         LIMIT 1
       `)
-      .bind(runId, claimedAt, claimedAt, claimedAt)
-      .first<{ id?: number | null }>();
+        .bind(runId, claimedAt, claimedAt, claimedAt),
+    );
     const jobId = number(selected?.id);
     if (!jobId) return null;
     const claimed = await claimKnowledgeCatalogVerificationJob(db, jobId, claimedAt, leaseSeconds);
@@ -210,14 +222,15 @@ export async function knowledgeCatalogVerificationRunWakeState(
   runId: number,
   now: string,
 ): Promise<KnowledgeCatalogVerificationRunWakeState> {
-  const row = await db
-    .prepare(`
+  const row = await firstMeasured<VerificationRunWakeStateRow>(
+    db
+      .prepare(`
       WITH target_state AS (
         SELECT COUNT(*) AS live_targets
         FROM knowledge_catalog_verification_jobs
         WHERE run_id = ?
-          AND job_type <> 'finalize'
-          AND status IN ('queued', 'processing', 'retrying')
+          AND job_type IN (${TARGET_JOB_TYPES})
+          AND status IN (${LIVE_JOB_STATUSES})
       ), eligible_jobs AS (
         SELECT job.*, domain_lease.leased_until AS domain_leased_until,
                domain_lease.job_id AS domain_job_id
@@ -247,8 +260,8 @@ export async function knowledgeCatalogVerificationRunWakeState(
         ) AS next_available_at
       FROM eligible_jobs
     `)
-    .bind(runId, runId, runId, now, now, now, now)
-    .first<VerificationRunWakeStateRow>();
+      .bind(runId, runId, runId, now, now, now, now),
+  );
   return {
     outstandingJobs: number(row?.outstanding_jobs),
     nextAvailableAt: row?.next_available_at || null,
@@ -279,10 +292,9 @@ export async function claimKnowledgeCatalogVerificationJob(
     .bind(claimedAt, leaseExpiresAt, claimedAt, jobId, claimedAt, claimedAt)
     .run();
   if (number(result?.meta?.changes) === 0) return null;
-  const row = await db
-    .prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE id = ?")
-    .bind(jobId)
-    .first<KnowledgeCatalogVerificationJobRow>();
+  const row = await firstMeasured<KnowledgeCatalogVerificationJobRow>(
+    db.prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE id = ?").bind(jobId),
+  );
   return jobFromRow(row);
 }
 
