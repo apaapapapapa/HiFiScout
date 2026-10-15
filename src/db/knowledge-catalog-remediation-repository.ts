@@ -12,6 +12,7 @@
 
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { firstMeasured } from "./read-accounting.js";
 import { remediationEventStatement } from "./remediation-event-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
@@ -161,14 +162,19 @@ export async function loadCatalogRemediationTarget(
   db: ReadableDatabase,
   catalogProductId: number,
 ): Promise<CatalogRemediationTarget | null> {
-  const product = await db
-    .prepare(`
-      SELECT id, manufacturer_id, canonical_model
-      FROM knowledge_catalog_products
-      WHERE id = ? AND verification_status = 'verified'
-    `)
-    .bind(catalogProductId)
-    .first<{ id: number; manufacturer_id: string; canonical_model: string }>();
+  const product = await firstMeasured<{
+    id: number;
+    manufacturer_id: string;
+    canonical_model: string;
+  }>(
+    db
+      .prepare(`
+        SELECT id, manufacturer_id, canonical_model
+        FROM knowledge_catalog_products
+        WHERE id = ? AND verification_status = 'verified'
+      `)
+      .bind(catalogProductId),
+  );
   if (!product) return null;
 
   const aliases = await db
@@ -375,11 +381,18 @@ interface PendingCatalogProductRow {
   remediation_after_listing_id: number;
 }
 
-/** Verified entries whose listings have not been replayed since the entry was last verified. */
+/**
+ * Verified entries whose listings have not been replayed since the entry was last verified.
+ *
+ * Migration 0136's partial index carries exactly this WHERE clause, so it holds only the backlog.
+ * Both statements below name it: without statistics the planner otherwise prefers the broader
+ * status index and walks every verified entry to find the few still owed a replay.
+ */
 const PENDING_REMEDIATION_PREDICATE = `
   verification_status = 'verified'
   AND (last_remediated_at IS NULL OR last_remediated_at < last_verified_at)
 `;
+const PENDING_REMEDIATION_INDEX = "idx_knowledge_catalog_products_remediation_backlog";
 
 /**
  * Drain the remediation backlog.
@@ -402,7 +415,7 @@ export async function reprocessPendingCatalogRemediation(
   const productPage = await db
     .prepare(`
       SELECT id, last_verified_at, remediation_after_listing_id
-      FROM knowledge_catalog_products
+      FROM knowledge_catalog_products INDEXED BY ${PENDING_REMEDIATION_INDEX}
       WHERE ${PENDING_REMEDIATION_PREDICATE}
       ORDER BY last_verified_at, id
       LIMIT ?
@@ -458,11 +471,12 @@ export async function reprocessPendingCatalogRemediation(
     }
   }
 
-  const remaining = await db
-    .prepare(
-      `SELECT COUNT(*) AS pending FROM knowledge_catalog_products WHERE ${PENDING_REMEDIATION_PREDICATE}`,
-    )
-    .first<{ pending: number }>();
+  const remaining = await firstMeasured<{ pending: number }>(
+    db.prepare(
+      `SELECT COUNT(*) AS pending FROM knowledge_catalog_products INDEXED BY ${PENDING_REMEDIATION_INDEX}
+       WHERE ${PENDING_REMEDIATION_PREDICATE}`,
+    ),
+  );
   summary.pendingProducts = Number(remaining?.pending || 0);
   summary.hasMoreProducts ||= summary.pendingProducts > 0;
   summary.remainingProductCount = summary.pendingProducts;

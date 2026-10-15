@@ -691,7 +691,7 @@ The governing rule is that a false positive merge is more damaging than a false 
 
 `GET /api/admin/knowledge-catalog/duplicates` on the **Access-protected admin Worker** reports those sets through internal RPC. Detection runs in two stages, because neither half can be done alone:
 
-1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity rule, and paging walks bucket keys rather than row ids so a set is never split across pages.
+1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity rule, and paging walks bucket keys rather than row ids so a set is never split across pages. Pages read the trigger-maintained `knowledge_catalog_duplicate_members` projection (verified rows whose persisted `admin_identity_bucket` is shared with another verified row), so neither the admin screen nor the finalizer's convergence pass aggregates the singleton majority of the catalog.
 2. TypeScript re-keys each bucket with the identity rule and keeps only the sub-groups with more than one member.
 
 A bucket that is too coarse therefore costs a discarded row, never a reported group: two manufacturers that share a model string fall apart in stage 2, and a model that normalizes to no identity at all is never reported.

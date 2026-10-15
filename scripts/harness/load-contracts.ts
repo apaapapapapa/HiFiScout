@@ -214,12 +214,43 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/knowledge-catalog-remediation.test.ts",
       "test/maintenance-read-budget.test.ts",
       "test/remediation-query-plans.test.ts",
+      "test/catalog-remediation-backlog-budget.test.ts",
+    ],
+    samples: Object.fromEntries([
+      ...[100, 1000, 10000].map((size) => [`catalog-remediation-${size}`, d1(60, 0, 1)]),
+      ...[100, 1000, 10000].map((size) => [`catalog-remediation-backlog-${size}`, d1(60, 10, 18)]),
+    ]),
+    reason:
+      "Verified catalog replay seeks complete exact-identity index prefixes and merges page-bounded streams. Matching and unrelated identity growth retain constant read cost, cursor order and zero writes. The finalizer's backlog selector and count walk a partial index of owed entries, so replayed-entry growth adds no reads.",
+  },
+  {
+    id: "catalog-duplicates",
+    sources: ["src/db/knowledge-catalog-duplicate-repository.ts"],
+    suites: [
+      "test/knowledge-catalog-duplicates.test.ts",
+      "test/knowledge-catalog-duplicates-budget.test.ts",
+      "test/knowledge-catalog-identity-dedup.test.ts",
     ],
     samples: Object.fromEntries(
-      [100, 1000, 10000].map((size) => [`catalog-remediation-${size}`, d1(60, 0, 1)]),
+      [100, 1000, 10000].map((size) => [`catalog-duplicates-${size}`, d1(60, 0, 1)]),
     ),
     reason:
-      "Verified catalog replay seeks complete exact-identity index prefixes and merges page-bounded streams. Matching and unrelated identity growth retain constant read cost, cursor order and zero writes.",
+      "Duplicate pages for the admin screen and the finalizer's convergence pass read the trigger-maintained bucket projection; unrelated verified singletons add no reads and the page writes nothing.",
+  },
+  {
+    id: "catalog-verification-queue",
+    sources: ["src/db/knowledge-catalog-verification-queue-repository.ts"],
+    suites: [
+      "test/knowledge-catalog-verification-claim-budget.test.ts",
+      "test/knowledge-catalog-verification-queue-behavior.test.ts",
+      "test/knowledge-catalog-run-wakeup.test.ts",
+      "test/control-plane-query-plans.test.ts",
+    ],
+    samples: Object.fromEntries(
+      [100, 1000, 10000].map((size) => [`catalog-verification-claim-${size}`, d1(100, 10, 4)]),
+    ),
+    reason:
+      "A run-scoped claim and wake-state read seek live job statuses and target job types, so finished jobs in the run and older runs add no reads to each claim.",
   },
   {
     id: "retention-and-schema",
