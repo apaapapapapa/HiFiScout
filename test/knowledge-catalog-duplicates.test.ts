@@ -161,6 +161,29 @@ test("identity bucket key folds the separators and revisions the identity model 
   }
 });
 
+test("the persisted duplicate bucket is the identity bucket key of the stored model", () => {
+  const { sqlite } = emptyCatalog();
+  try {
+    for (const model of [
+      "PMA-2500NE",
+      "L-509 MK II",
+      "MODEL REV3",
+      "C'10",
+      "Model Limited Edition",
+    ])
+      insertCatalog(sqlite, { manufacturerId: "luxman", canonicalModel: model });
+    const rows = sqlite
+      .prepare(`SELECT admin_identity_bucket AS persisted,
+        ${catalogIdentityBucketKeySql("normalized_model")} AS computed
+        FROM knowledge_catalog_products`)
+      .all();
+    assert.equal(rows.length, 5);
+    for (const row of rows) assert.equal(row.persisted, row.computed);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("catalog duplicates group separator and revision spellings of one model", async () => {
   const { sqlite, db } = emptyCatalog();
   const spaced = insertCatalog(sqlite, { manufacturerId: "denon", canonicalModel: "PMA-2500NE" });

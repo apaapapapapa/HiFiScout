@@ -3,10 +3,7 @@ import {
   catalogIdentityManufacturerIds,
 } from "../catalog/knowledge-catalog-identity.js";
 import type { KnowledgeCatalogDuplicateListOptions } from "../http/knowledge-catalog-admin.js";
-import {
-  canonicalCatalogIdentityOrder,
-  catalogIdentityBucketKeySql,
-} from "./knowledge-catalog-identity.js";
+import { canonicalCatalogIdentityOrder } from "./knowledge-catalog-identity.js";
 import type { KnowledgeCatalogLifecycleStatus, ReadableDatabase } from "./types.js";
 
 /**
@@ -141,63 +138,70 @@ export async function listKnowledgeCatalogDuplicates(
   db: ReadableDatabase,
   options: KnowledgeCatalogDuplicateListOptions,
 ): Promise<KnowledgeCatalogDuplicateListResult> {
-  const bucketKey = catalogIdentityBucketKeySql("kp.normalized_model");
   const scannedKeys = Math.min(options.limit * KEY_SCAN_FACTOR, MAX_SCANNED_KEYS);
-  const where = ["kp.verification_status = 'verified'"];
-  const params: unknown[] = [];
-  if (options.manufacturerId) {
-    // Expanding to every id the resolver treats as the same manufacturer keeps the legacy-id
-    // duplicates -- the ones this screen exists for -- inside the filtered scan.
-    where.push("kp.manufacturer_id IN (SELECT value FROM json_each(?))");
-    params.push(JSON.stringify(catalogIdentityManufacturerIds(options.manufacturerId)));
-  }
+  // Expanding to every id the resolver treats as the same manufacturer keeps the legacy-id
+  // duplicates -- the ones this screen exists for -- inside the filtered scan.
+  const manufacturerIds = options.manufacturerId
+    ? JSON.stringify(catalogIdentityManufacturerIds(options.manufacturerId))
+    : null;
+  const manufacturerFilter = manufacturerIds
+    ? "AND kp.manufacturer_id IN (SELECT value FROM json_each(?))"
+    : "";
 
+  // `knowledge_catalog_duplicate_members` is the trigger-maintained set of verified rows whose
+  // coarse bucket (`admin_identity_bucket`, the same folding as `catalogIdentityBucketKeySql`) is
+  // shared with another verified row. Paging its primary key reads only duplicate candidates, so a
+  // finalizer pass or an admin page no longer aggregates every singleton in the catalog.
+  // A manufacturer filter still needs two of the bucket's members inside the filter.
   const result = await db
     .prepare(`
-      WITH bucketed AS (
-        SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
-               kp.canonical_name, kp.lifecycle_status, kp.first_verified_at, kp.updated_at,
-               ${bucketKey} AS bucket_key,
-               COUNT(*) OVER (PARTITION BY ${bucketKey}) AS bucket_size
-        FROM knowledge_catalog_products kp
-        WHERE ${where.join(" AND ")}
-      ),
-      page AS (
-        SELECT DISTINCT bucket_key
-        FROM bucketed
-        WHERE bucket_size > 1 AND bucket_key <> '' AND bucket_key > ?
-        ORDER BY bucket_key
+      WITH page AS (
+        SELECT dm.bucket_key
+        FROM knowledge_catalog_duplicate_members dm
+        ${manufacturerIds ? "JOIN knowledge_catalog_products kp ON kp.id = dm.product_id" : ""}
+        WHERE dm.bucket_key > ? ${manufacturerFilter}
+        GROUP BY dm.bucket_key
+        HAVING COUNT(*) > 1
+        ORDER BY dm.bucket_key
         LIMIT ?
       )
-      SELECT b.id, b.manufacturer_id, b.canonical_model, b.canonical_name,
-             b.lifecycle_status, b.first_verified_at, b.updated_at, b.bucket_key,
+      SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.canonical_name,
+             kp.lifecycle_status, kp.first_verified_at, kp.updated_at, dm.bucket_key,
              (
                SELECT kpc.category_id
                FROM knowledge_catalog_product_categories kpc
-               WHERE kpc.product_id = b.id AND kpc.is_primary = 1
+               WHERE kpc.product_id = kp.id AND kpc.is_primary = 1
                LIMIT 1
              ) AS primary_category_id,
              (
                SELECT COUNT(*)
                FROM product_identity_resolutions pir
                JOIN products p ON p.id = pir.listing_product_id
-               WHERE pir.catalog_product_id = b.id AND pir.status = 'matched' AND p.is_active = 1
+               WHERE pir.catalog_product_id = kp.id AND pir.status = 'matched' AND p.is_active = 1
              ) AS matched_listing_count,
              (
                SELECT COUNT(*)
                FROM knowledge_catalog_aliases ka
-               WHERE ka.product_id = b.id
+               WHERE ka.product_id = kp.id
              ) AS alias_count,
              (
                SELECT COUNT(*)
                FROM knowledge_catalog_sources ks
-               WHERE ks.product_id = b.id
+               WHERE ks.product_id = kp.id
              ) AS source_count
-      FROM bucketed b
-      JOIN page ON page.bucket_key = b.bucket_key
-      ORDER BY b.bucket_key, b.id
+      FROM page
+      -- CROSS JOIN pins the page as the outer loop; otherwise the planner may start from every
+      -- verified Catalog row and probe the projection for each.
+      CROSS JOIN knowledge_catalog_duplicate_members dm ON dm.bucket_key = page.bucket_key
+      CROSS JOIN knowledge_catalog_products kp ON kp.id = dm.product_id
+      WHERE kp.verification_status = 'verified' ${manufacturerFilter}
+      ORDER BY dm.bucket_key, kp.id
     `)
-    .bind(...params, options.afterKey, scannedKeys)
+    .bind(
+      ...(manufacturerIds
+        ? [options.afterKey, manufacturerIds, scannedKeys, manufacturerIds]
+        : [options.afterKey, scannedKeys]),
+    )
     .all<DuplicateRow>();
 
   const rows = result.results || [];
