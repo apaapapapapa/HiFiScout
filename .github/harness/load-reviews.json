@@ -1516,6 +1516,17 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/801"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "89f0a42081b51430a31d38328b39570f51f1bcf1",
+      "beforeDigest": "1fe9f61037b051ea25bee58281f81210f9023b216c20a4ec63fd2927a131e4d0",
+      "afterDigest": "db80295337aa17ee833173ddab7c22754ccd0e39cd4c0aac42e4a72899e3c913",
+      "reason": "Bring the crawl category enricher under search-and-projection with a six-crawl regression on the real crawl pipeline. Its detail caches never matched listings with an unresolved manufacturer, so those listings re-fetched details, rewrote metadata and flipped category columns at the per-crawl budget edge; production attributed the top D1 writer (a category-only listing UPDATE, about 14,000 rows a day) to that shape. Existing samples and ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801",
+        "https://github.com/apaapapapapa/HiFiScout/pull/802"
+      ]
     }
   ]
 }

@@ -115,6 +115,18 @@ export function manufacturerIdForFilter(value: unknown = ""): string {
 }
 
 /**
+ * The manufacturer id a listing row stores: its resolved canonical id, or else the filter id of
+ * the seller's manufacturer text. Unresolved and candidate listings carry an empty canonical id,
+ * so anything comparing a fresh listing with its stored row must derive the id the same way.
+ */
+export function storedManufacturerId(product: {
+  manufacturerId?: string | null;
+  manufacturer?: unknown;
+}): string {
+  return product.manufacturerId || manufacturerIdForFilter(product.manufacturer);
+}
+
+/**
  * IDs that may represent the same known manufacturer while historical resolver output is being
  * replayed. The canonical id is first; the remaining ids are exactly the fallback ids the previous
  * normalization produced for canonical names and aliases (for example `msb` before

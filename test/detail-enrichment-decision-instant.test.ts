@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { storedManufacturerId } from "../src/catalog/manufacturers.js";
 
 import {
   CATEGORY_CLASSIFICATION_METADATA_VERSION,
@@ -64,9 +65,9 @@ function unclassifiedListing(): NormalizedCatalogProduct {
  * The row that makes the decision time matter: a previous crawl checked this identity's detail page
  * and resolved nothing, so the shop waits out `cacheHours` before spending another request on it.
  *
- * The identity columns are taken from the product as the catalog resolver leaves it, not from the
- * parsed listing, because that is the shape the enricher compares against. A fixture that guessed
- * them would silently stop matching and quietly test nothing.
+ * The identity columns are the ones the listing write stores for this product (an unresolved
+ * manufacturer keeps its filter id), because that is the row the enricher compares against. A
+ * fixture that guessed them would silently stop matching and quietly test nothing.
  */
 function insertUnresolvedCheck(
   sqlite: ReturnType<typeof migratedSqlite>["sqlite"],
@@ -92,7 +93,7 @@ function insertUnresolvedCheck(
       detailCheckedAt.toISOString(),
       product.manufacturer,
       product.manufacturer,
-      product.manufacturerId ?? "",
+      storedManufacturerId(product),
       product.model ?? "",
       product.model ?? "",
       JSON.stringify({
