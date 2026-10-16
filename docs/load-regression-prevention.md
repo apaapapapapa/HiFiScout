@@ -92,6 +92,8 @@ cases so removing a test cannot silently remove a requirement.
 - Search entity sync: an unchanged 29-listing crawl chunk at 100, 1,000 and 10,000 unrelated
   catalog-matched listings, and its catalog offer upsert under statistics taken on a small catalog,
   so the scoped statement walks neither every match nor every listing.
+- Crawl deactivation: 50 missing listings among 100, 1,000 and 10,000 active listings of the same
+  shop, with no statistics and without statistics for the shop cursor index.
 - Listing replay: unchanged product/metadata/projection publication with zero physical writes.
 - Scheduling: every configured Cron firing over a whole UTC day, per-shop dispatch counts and
   the sum of configured initial-page ceilings, including disabled shops conservatively.

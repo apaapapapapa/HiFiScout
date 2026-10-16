@@ -391,10 +391,13 @@ export async function deactivateProductsBySourceIds(
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
     const placeholders = chunk.map(() => "?").join(",");
+    // `+is_active` keeps the guard out of index selection. Without statistics for the
+    // (shop_key, is_active, id) cursor index, SQLite otherwise preferred it over the unique
+    // (shop_key, source_id) key from three ids up and read every active listing in the shop.
     statements.push(
       db
         .prepare(
-          `UPDATE products SET is_active = 0 WHERE shop_key = ? AND is_active = 1 AND source_id IN (${placeholders})`,
+          `UPDATE products SET is_active = 0 WHERE shop_key = ? AND +is_active = 1 AND source_id IN (${placeholders})`,
         )
         .bind(shopKey, ...chunk),
     );
