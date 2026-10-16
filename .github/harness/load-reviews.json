@@ -1476,6 +1476,46 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/801",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/38976579430"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "2263cf4280f2336dd76233a3057ec30536169a41",
+      "beforeDigest": "fd569c1b14a275ede953774a1c2d8207b995e18ef3fe2e9af650b0b147ec60bb",
+      "afterDigest": "1fe9f61037b051ea25bee58281f81210f9023b216c20a4ec63fd2927a131e4d0",
+      "reason": "Add a real-workerd crawl deactivation suite and three crawl-deactivate-missing samples to search-and-projection: 50 missing listings among 100, 1,000 and 10,000 active listings of the same shop. Without statistics for the shop cursor index the deactivation UPDATE read every active listing of the shop per 50-id chunk. Existing contracts, samples and ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-100",
+      "baseSha": "2263cf4280f2336dd76233a3057ec30536169a41",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "0ad6292287c0d3a6201e526428111b3e074b474a53fa9a7f5a5c87199c5805a1",
+      "reason": "Reviewed initial real-workerd baseline: 816 reads, 601 writes (the 50 rows, their indexes and deactivation triggers) and one statement for 50 missing listings among 100 active listings of the same shop, no statistics. With `is_active` able to drive index selection the same deactivation read 866 rows; the suite also bounds the spread across sizes and repeats it without cursor-index statistics.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-1000",
+      "baseSha": "2263cf4280f2336dd76233a3057ec30536169a41",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "5ca2eca59179aa8b5945d50552dbb814ca57337bad2233906b27269adec56f50",
+      "reason": "Reviewed initial real-workerd baseline: 817 reads, 600 writes (the 50 rows, their indexes and deactivation triggers) and one statement for 50 missing listings among 1,000 active listings of the same shop, no statistics. With `is_active` able to drive index selection the same deactivation read 1,767 rows; the suite also bounds the spread across sizes and repeats it without cursor-index statistics.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-10000",
+      "baseSha": "2263cf4280f2336dd76233a3057ec30536169a41",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "5063a1722795c4241a96f7ccdd6af7806eb7efa0f386323f61c54922ee1e59a2",
+      "reason": "Reviewed initial real-workerd baseline: 817 reads, 600 writes (the 50 rows, their indexes and deactivation triggers) and one statement for 50 missing listings among 10,000 active listings of the same shop, no statistics. With `is_active` able to drive index selection the same deactivation read 10,767 rows; the suite also bounds the spread across sizes and repeats it without cursor-index statistics.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801"
+      ]
     }
   ]
 }
