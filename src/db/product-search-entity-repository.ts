@@ -266,7 +266,7 @@ export async function syncProductSearchEntities(
         { sql: upsertCatalogEntitiesSql(listingScope), binds: chunk },
         { sql: upsertFallbackEntitiesSql(listingScope), binds: chunk },
         ...chunk.map((id) => ({ sql: deleteInactiveOfferSql(), binds: [id] })),
-        { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
+        { sql: upsertCatalogOffersSql(chunk.length), binds: chunk },
         { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
         { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },
         { sql: completeEntityMembershipProvenanceSql(listingScope), binds: chunk },
