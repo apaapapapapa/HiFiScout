@@ -280,14 +280,17 @@ export function deleteInactiveOffersSql(): string {
 }
 
 export function upsertCatalogOffersSql(listingScope = ""): string {
+  // CROSS JOIN pins listings as the outer loop. Without statistics SQLite rates the
+  // `r.status = 'matched'` index above a 40-id listing scope, so every incremental sync walked all
+  // matched resolutions; this order costs a few primary-key lookups per scoped listing instead.
   return `
     INSERT INTO product_search_entity_offers(listing_product_id, entity_id, shop_key)
     SELECT p.id, e.id, p.shop_key
     FROM products p
-    JOIN product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
-    JOIN knowledge_catalog_products kp
+    CROSS JOIN product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
+    CROSS JOIN knowledge_catalog_products kp
       ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-    JOIN product_search_entities e ON e.entity_key = 'c-' || kp.id
+    CROSS JOIN product_search_entities e ON e.entity_key = 'c-' || kp.id
     WHERE p.is_active = 1${listingScope}
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,

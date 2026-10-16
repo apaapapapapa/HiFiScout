@@ -168,6 +168,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/scoped-search-sort-budget.test.ts",
       "test/d1-write-budget.test.ts",
       "test/public-meta-incremental.test.ts",
+      "test/product-search-catalog-offer-budget.test.ts",
     ],
     samples: {
       "category-prune": d1(300, 0, 1),
@@ -175,9 +176,13 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "search-price-drop-total": d1(250, 0, 8),
       // All five projection stages issue 34 statements; omitted stages are not a cheaper replay.
       "projection-unchanged": d1(200, 0, 34),
+      // One 29-listing chunk: lookups, one projection batch and one refresh batch.
+      "search-sync-catalog-offers-100": d1(4000, 0, 51),
+      "search-sync-catalog-offers-1000": d1(4000, 0, 51),
+      "search-sync-catalog-offers-10000": d1(4000, 0, 51),
     },
     reason:
-      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences.",
+      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches.",
   },
   {
     id: "catalog-photos",
