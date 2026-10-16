@@ -1465,6 +1465,17 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/801",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/38893958883"
       ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "e9d432e91f1103f92ad82ba6d5295eca25aeafc6",
+      "beforeDigest": "be4b79f1e3a90348581bdd3a59f5bdb36f941a4ad55bd6c8972259326b1c5c58",
+      "afterDigest": "e013a04f020b0c976c9198028cb1675f74d4ea397a2d568c7693501297cfe229",
+      "reason": "Unchanged single-listing projection replay reads 110 rows instead of 109, still zero writes and 34 statements: the scoped catalog offer upsert now reads its one materialized listing ID before the primary-key joins. That one row per scoped listing replaces walking every matched resolution (about 3,150 rows per production crawl chunk) and keeps the plan fixed under stale statistics; the 200-read ceiling is unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/801",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/38976579430"
+      ]
     }
   ]
 }
