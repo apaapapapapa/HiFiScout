@@ -170,6 +170,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/d1-write-budget.test.ts",
       "test/public-meta-incremental.test.ts",
       "test/product-search-catalog-offer-budget.test.ts",
+      "test/crawl-deactivation-budget.test.ts",
       "test/category-detail-cache-identity.test.ts",
     ],
     samples: {
@@ -182,9 +183,13 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "search-sync-catalog-offers-100": d1(4000, 0, 51),
       "search-sync-catalog-offers-1000": d1(4000, 0, 51),
       "search-sync-catalog-offers-10000": d1(4000, 0, 51),
+      // 50 missing listings: their rows, indexes and deactivation triggers, never the shop's rest.
+      "crawl-deactivate-missing-100": d1(1000, 700, 1),
+      "crawl-deactivate-missing-1000": d1(1000, 700, 1),
+      "crawl-deactivate-missing-10000": d1(1000, 700, 1),
     },
     reason:
-      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
+      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. Deactivating a crawl's missing listings costs the same with 100 or 10,000 other active listings in the shop. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
   },
   {
     id: "catalog-photos",
