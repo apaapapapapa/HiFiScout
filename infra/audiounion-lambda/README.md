@@ -152,7 +152,8 @@ The Worker uses Audio Union detail pages only for stale-product inventory verifi
 - explicit sold-out evidence or HTTP 404/410 must be observed twice consecutively before the product is marked inactive;
 - a later normal-listing observation resets the effective unavailable streak.
 
-The settings are controlled by `AUDIOUNION_INVENTORY_RECHECK_*` variables in `wrangler.jsonc`.
+The settings are controlled by `AUDIOUNION_INVENTORY_RECHECK_*` variables. `wrangler.jsonc` enables the
+recheck and declares only values that differ from the defaults in `src/config.ts`.
 
 ## Security and cost controls
 
