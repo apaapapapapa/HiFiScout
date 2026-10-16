@@ -220,7 +220,10 @@ not its global menu or accessory list. Budgets and cache durations remain shop p
 
 Set `capabilities.detailCategoryEvidence.version` when changing extraction semantics (omitted means
 version 1). Positive and negative detail caches are reused only for the current shop-local version;
-this avoids invalidating other shops or scheduling a catalog-wide replay. Structured staged results
+this avoids invalidating other shops or scheduling a catalog-wide replay. A cache entry belongs to the
+stored identity (title, model and the manufacturer id the listing row stores, which for an unresolved
+manufacturer is its filter id); comparing against the empty canonical id instead missed every entry,
+so those listings re-fetched details on every crawl and flipped classification at the budget edge. Structured staged results
 carry that version too. If a deployment crosses a run, an old committed result retains its request
 fence but cannot be stamped as current evidence or a negative cache hit; the next ordinary crawl
 retries within its existing request budget. Manual overrides and verified catalog authority remain

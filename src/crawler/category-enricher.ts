@@ -15,6 +15,7 @@ import {
   type DbUsageMetrics,
 } from "../db/read-accounting.js";
 import { categoryIdForClassification } from "../catalog/categories.js";
+import { storedManufacturerId } from "../catalog/manufacturers.js";
 import { errorMessage, isRecord } from "../types.js";
 import type {
   CategoryClassification,
@@ -76,13 +77,13 @@ function sameIdentity(
   return (
     existing?.title === product.title &&
     (existing?.model || "") === (product.model || "") &&
-    (existing?.manufacturer_id || "") === (product.manufacturerId || "")
+    (existing?.manufacturer_id || "") === storedManufacturerId(product)
   );
 }
 
 /** The identity {@link sameIdentity} compares against, as a map key. */
 function identityKey(product: NormalizedCatalogProduct): string {
-  return JSON.stringify([product.manufacturerId || "", product.model || "", product.title]);
+  return JSON.stringify([storedManufacturerId(product), product.model || "", product.title]);
 }
 
 function groupByIdentity(

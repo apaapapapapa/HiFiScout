@@ -158,6 +158,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     sources: [
       "src/db/product-search-*",
       "src/db/product-write-*",
+      "src/crawler/category-enricher.ts",
       "src/db/product-metadata-*",
       "src/db/product-identity-*",
       "src/db/public-meta-*",
@@ -169,6 +170,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/d1-write-budget.test.ts",
       "test/public-meta-incremental.test.ts",
       "test/product-search-catalog-offer-budget.test.ts",
+      "test/category-detail-cache-identity.test.ts",
     ],
     samples: {
       "category-prune": d1(300, 0, 1),
@@ -182,7 +184,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "search-sync-catalog-offers-10000": d1(4000, 0, 51),
     },
     reason:
-      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches.",
+      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
   },
   {
     id: "catalog-photos",

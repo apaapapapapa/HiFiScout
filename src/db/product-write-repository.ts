@@ -18,7 +18,11 @@ import {
 } from "../catalog/listing-components.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { normalizeFacetFacts } from "../catalog/product-facets.js";
-import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
+import {
+  manufacturerIdForFilter,
+  normalizeManufacturerKey,
+  storedManufacturerId,
+} from "../catalog/manufacturers.js";
 import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.js";
 import { MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
@@ -148,7 +152,7 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
     rawManufacturer,
     normalizedRawManufacturer:
       product.normalizedRawManufacturer ?? normalizeManufacturerKey(rawManufacturer),
-    manufacturerId: product.manufacturerId || manufacturerIdForFilter(product.manufacturer),
+    manufacturerId: storedManufacturerId(product),
     canonicalManufacturerId,
     manufacturerResolutionStatus,
     manufacturerResolutionMethod:
