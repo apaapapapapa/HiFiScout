@@ -177,7 +177,11 @@ environment prefix and the platform reads:
 | `<PREFIX>_MAX_PAGES` | discovery ceiling | `defaultMaxPages`, else global |
 | `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings | off unless capability enabled |
 
-Declare deployed values in `wrangler.jsonc`. The prefix is always derived from the shop key; aliases and
+Declare a value in `wrangler.jsonc` only when it differs from the default above; an enabled shop always
+declares its `<PREFIX>_ENABLED` kill switch. Workers Free accepts at most 64 variables per Worker
+(secrets and text combined) and rejects the whole deployment otherwise, so
+`test/worker-variable-limit.test.ts` keeps the deployed set under that cap. The prefix is always
+derived from the shop key; aliases and
 custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
 discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
 
@@ -271,15 +275,16 @@ other editorial content.
 6. Add parser assertions for raw fields, availability, classification and factual metadata.
 7. Run `vp run verify` and `vp run build`. Architecture validation is already included in `verify`.
 8. Check robots.txt and the site's current terms.
-9. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`; relay collectors also require
-   `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN`.
+9. Declare the shop's `<PREFIX>_ENABLED` kill switch, and any `<PREFIX>_*` value that differs from
+   its definition default, in `wrangler.jsonc`; relay collectors also require `CRAWL_RELAY_URL` and
+   `CRAWL_RELAY_TOKEN`.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
 
 
 ## e☆イヤホン collection
 
 `e-earphone` reads the public `/collections/recently-used` HTML feed. It shares the normal
-11:00/17:00 JST rotation when enabled; current page and pacing limits live in `wrangler.jsonc`.
+11:00/17:00 JST rotation when enabled; current page and pacing limits are its shop-definition defaults.
 Coverage is deliberately **partial**: reaching the page ceiling or the end of recent arrivals cannot
 deactivate absent listings, and older inventory is not a complete, continuously rechecked snapshot.
 The collector makes no product-detail requests and does not retrieve images or seller descriptions.

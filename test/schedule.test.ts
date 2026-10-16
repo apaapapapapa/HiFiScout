@@ -2,7 +2,12 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { requiredLifecycleRules, requiredQueues } from "../scripts/lib/production-resources.js";
-import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from "../src/config.js";
+import {
+  SHOP_DEFINITIONS,
+  getShopEnabled,
+  getShopIntervalMinutes,
+  getShopRequestDelayMs,
+} from "../src/config.js";
 import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 import {
   dailyRotationShopForScheduledTime,
@@ -59,9 +64,11 @@ test("dedicated crawl schedules match the requested cadence", () => {
   // Cloudflare Cron is UTC, so 12:30 UTC is 21:30 JST.
   assert.equal(SHOP_DEFINITIONS["fujiya-avic"].scheduleCron, "30 12 * * *");
 
-  assert.equal(wranglerConfig.vars.AUDIOUNION_INTERVAL_MINUTES, "60");
-  assert.equal(wranglerConfig.vars.HIFIDO_INTERVAL_MINUTES, "60");
-  assert.equal(wranglerConfig.vars.FUJIYA_AVIC_INTERVAL_MINUTES, "1440");
+  // The deployed interval is the declared variable when present, else the shop's default; only
+  // values that differ from the default are declared, which keeps the Worker under its variable cap.
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS.audiounion), 60);
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS.hifido), 60);
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS["fujiya-avic"]), 1440);
 });
 
 test("AudioUnion and HiFiDo share one cron and alternate every thirty minutes from :01", () => {
@@ -117,8 +124,8 @@ test("all non-dedicated shops have twice-daily intervals and share a staggered t
     assert.equal(plugin.definition.scheduleCron, undefined);
     assert.equal(plugin.definition.defaultIntervalMinutes, expectedIntervalMinutes);
     assert.equal(
-      wranglerConfig.vars[`${plugin.definition.envPrefix}_INTERVAL_MINUTES`],
-      String(expectedIntervalMinutes),
+      getShopIntervalMinutes(wranglerConfig.vars, plugin.definition),
+      expectedIntervalMinutes,
     );
   }
 });
