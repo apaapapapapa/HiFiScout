@@ -279,16 +279,28 @@ export function deleteInactiveOffersSql(): string {
   `;
 }
 
-export function upsertCatalogOffersSql(listingScope = ""): string {
+/**
+ * Catalog membership for every active listing, or for `listingCount` bound listing IDs.
+ *
+ * The scoped form drives from the materialized IDs and pins every join. Given only an `IN` list,
+ * SQLite without statistics rated the `r.status = 'matched'` index above it and walked every
+ * matched resolution per crawl chunk, while statistics taken on a small table made it scan all
+ * listings instead. Each scoped listing now costs a few primary-key lookups whatever the statistics.
+ */
+export function upsertCatalogOffersSql(listingCount = 0): string {
+  const join = listingCount ? "CROSS JOIN" : "JOIN";
+  const scopeRows = Array.from({ length: listingCount }, () => "(?)").join(",");
+  const scope = listingCount ? `WITH scope(id) AS MATERIALIZED (VALUES ${scopeRows})` : "";
   return `
     INSERT INTO product_search_entity_offers(listing_product_id, entity_id, shop_key)
+    ${scope}
     SELECT p.id, e.id, p.shop_key
-    FROM products p
-    JOIN product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
-    JOIN knowledge_catalog_products kp
+    FROM ${listingCount ? "scope CROSS JOIN products p ON p.id = scope.id" : "products p"}
+    ${join} product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
+    ${join} knowledge_catalog_products kp
       ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-    JOIN product_search_entities e ON e.entity_key = 'c-' || kp.id
-    WHERE p.is_active = 1${listingScope}
+    ${join} product_search_entities e ON e.entity_key = 'c-' || kp.id
+    WHERE p.is_active = 1
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,
       shop_key = excluded.shop_key

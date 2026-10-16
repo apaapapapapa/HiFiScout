@@ -89,6 +89,9 @@ cases so removing a test cannot silently remove a requirement.
 - Retention: 500 parent deletions with 100, 1,000 and 10,000 unrelated foreign-key child rows.
   The original pre-index incident reproduction remains in the same suite.
 - Search: complete selective counts, pages and offer loading over 10,000 listings.
+- Search entity sync: an unchanged 29-listing crawl chunk at 100, 1,000 and 10,000 unrelated
+  catalog-matched listings, and its catalog offer upsert under statistics taken on a small catalog,
+  so the scoped statement walks neither every match nor every listing.
 - Listing replay: unchanged product/metadata/projection publication with zero physical writes.
 - Scheduling: every configured Cron firing over a whole UTC day, per-shop dispatch counts and
   the sum of configured initial-page ceilings, including disabled shops conservatively.
