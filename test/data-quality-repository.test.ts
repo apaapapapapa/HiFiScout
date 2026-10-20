@@ -40,6 +40,8 @@ function captureDb({
         async all() {
           calls.push({ kind: "all", sql, binds: statement.binds });
           if (/RETURNING revision/.test(sql)) return { results: [{ revision: 1 }] };
+          // No saved snapshot proves the armed revision, so these cases exercise the aggregate.
+          if (/latest\.source_revision = \?/.test(sql)) return { results: [] };
           return { results: allRows[allIndex++] || [] };
         },
         async run() {

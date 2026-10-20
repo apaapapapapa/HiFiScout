@@ -128,6 +128,56 @@ test("concurrent mutation and an out-of-order snapshot cannot clear newer covera
   }
 }, 30_000);
 
+test("a write after the capture is never certified by a reused snapshot", async () => {
+  const { db, dispose } = await database();
+  try {
+    await upsertProducts(db, "budget", [listing("reuse-fence")], AT);
+    await saveDataQualityRun(db, { shopKey: "budget", evaluatedAt: AT });
+    // Land a quality-input write between the revision capture and the covered-snapshot probe.
+    const racing: QueryableDatabase = {
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        if (!/latest\.source_revision = \?/.test(sql)) return statement;
+        return new Proxy(statement, {
+          get(target, property) {
+            if (property === "bind")
+              return (...values: unknown[]) => {
+                const bound = target.bind(...values);
+                return new Proxy(bound, {
+                  get(inner, key) {
+                    if (key === "all")
+                      return async () => {
+                        await db
+                          .prepare(
+                            "UPDATE products SET stock_status = 'unknown' WHERE shop_key = ?",
+                          )
+                          .bind("budget")
+                          .run();
+                        return inner.all();
+                      };
+                    const value: unknown = Reflect.get(inner, key);
+                    return typeof value === "function" ? value.bind(inner) : value;
+                  },
+                });
+              };
+            const value: unknown = Reflect.get(target, property);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+      },
+      batch: db.batch.bind(db),
+    };
+    const raced = await saveDataQualityRun(racing, { shopKey: "budget", evaluatedAt: AFTER });
+    assert.equal(raced.counts.inventoryUnknownCount, 0, "the reused counts predate the write");
+    assert.equal(await remediationNeedsDataQualitySnapshot(db, "budget"), true);
+    const repaired = await saveDataQualityRun(db, { shopKey: "budget", evaluatedAt: AFTER });
+    assert.equal(repaired.counts.inventoryUnknownCount, 1);
+    assert.equal(await remediationNeedsDataQualitySnapshot(db, "budget"), false);
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
 test("legacy snapshots and old-writer updates never inherit unproven coverage", async () => {
   const { db, dispose } = await database({ before: MIGRATION });
   try {

@@ -16,6 +16,9 @@ function captureDb(firstResult: unknown = null) {
         bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
+            async all() {
+              return { results: firstResult === null ? [] : [firstResult], meta: {} };
+            },
             async first() {
               return firstResult;
             },
@@ -34,13 +37,16 @@ test("candidate selection requires an old listing and a stale prior attempt", as
   const db = captureDb(row);
   const result = await selectInventoryRecheckCandidate(db, "audiounion", {
     staleBefore: "2026-08-10T10:00:00.000Z",
-    retryBefore: "2026-08-10T10:00:00.000Z",
+    retryBefore: "2026-08-11T10:00:00.000Z",
   });
 
   assert.equal(result, row);
+  // Never-attempted seek (shop, staleBefore), then oldest-attempt seek (shop, retryBefore, staleBefore).
   assert.deepEqual(db.calls[0].binds, [
     "audiounion",
     "2026-08-10T10:00:00.000Z",
+    "audiounion",
+    "2026-08-11T10:00:00.000Z",
     "2026-08-10T10:00:00.000Z",
   ]);
   assert.match(db.calls[0].sql, /is_active = 1/);

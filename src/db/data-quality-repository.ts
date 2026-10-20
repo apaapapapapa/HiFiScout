@@ -30,11 +30,17 @@ const MODEL_OPTIONAL_CATEGORIES = [
   "other_accessory",
   "other",
 ];
-const MODEL_OPTIONAL_SQL = MODEL_OPTIONAL_CATEGORIES.map((category) => `'${category}'`).join(",");
+// Spelled as equalities rather than `IN (...)`: outside WHERE, SQLite evaluates a constant IN-list
+// by probing an ephemeral index, and D1 counts each probe as a row read. The aggregate evaluates
+// this predicate up to three times per classified listing, so the IN form roughly doubled its rows
+// read. primary_category_id is NOT NULL TEXT, so both spellings select exactly the same rows.
+const MODEL_OPTIONAL_EQUALITIES = MODEL_OPTIONAL_CATEGORIES.map(
+  (category) => `p.primary_category_id = '${category}'`,
+).join("\n  OR ");
 const MODEL_OPTIONAL_PREDICATE = `(p.primary_category_id LIKE 'CAB.%'
   OR p.primary_category_id LIKE 'PWR.%'
   OR p.primary_category_id LIKE 'ACC.%'
-  OR p.primary_category_id IN (${MODEL_OPTIONAL_SQL}))`;
+  OR ${MODEL_OPTIONAL_EQUALITIES})`;
 const STATUS_RANK: Readonly<Record<QualityStatus, number>> = {
   unknown: 0,
   healthy: 1,
@@ -75,28 +81,84 @@ function nullableNumber(value: unknown): number | null {
   return value == null ? null : Number(value);
 }
 
+type DataQualitySnapshotCounts = Pick<
+  QualityCounts,
+  | "totalItems"
+  | "manufacturerMissingCount"
+  | "manufacturerUnresolvedCount"
+  | "categoryUnclassifiedCount"
+  | "otherCategoryCount"
+  | "identityMatchedCount"
+  | "identityUnresolvedCount"
+  | "identityVetoCount"
+  | "identityCandidateCount"
+  | "inventoryKnownCount"
+  | "inventoryUnknownCount"
+  | "modelExpectedCount"
+  | "modelExtractedCount"
+  | "modelMissingCount"
+>;
+
+function snapshotCounts(row: DataQualitySnapshotAggregateRow | null): DataQualitySnapshotCounts {
+  return {
+    totalItems: number(row?.total_items),
+    manufacturerMissingCount: number(row?.manufacturer_missing_count),
+    manufacturerUnresolvedCount: number(row?.manufacturer_unresolved_count),
+    categoryUnclassifiedCount: number(row?.category_unclassified_count),
+    otherCategoryCount: number(row?.other_category_count),
+    identityMatchedCount: number(row?.identity_matched_count),
+    identityUnresolvedCount: number(row?.identity_unresolved_count),
+    identityVetoCount: number(row?.identity_veto_count),
+    identityCandidateCount: number(row?.identity_candidate_count),
+    inventoryKnownCount: number(row?.inventory_known_count),
+    inventoryUnknownCount: number(row?.inventory_unknown_count),
+    modelExpectedCount: number(row?.model_expected_count),
+    modelExtractedCount: number(row?.model_extracted_count),
+    modelMissingCount: number(row?.model_missing_count),
+  };
+}
+
+/**
+ * The newest saved snapshot's counts, only while the revision it captured is still current.
+ *
+ * A row carrying `source_revision = R` holds counts read (or reused) after a capture armed R. The
+ * first trigger-tracked quality-input write after any capture advances the revision, so while a
+ * new capture still arms R no input has moved since R was first armed: every count read under R
+ * equals this capture's aggregate. Only the newest row is probed, through the same index seek as
+ * remediation coverage, so neither unrelated history nor a missing proof costs a scan.
+ */
+async function readCoveredDataQualitySnapshot(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceRevision: number,
+): Promise<DataQualitySnapshotCounts | null> {
+  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
+    db
+      .prepare(`
+      SELECT latest.* FROM (
+        SELECT q.source_revision, q.total_items,
+          q.manufacturer_missing_count, q.manufacturer_unresolved_count,
+          q.category_unclassified_count, q.other_category_count,
+          q.identity_matched_count, q.identity_unresolved_count,
+          q.identity_veto_count, q.identity_candidate_count,
+          q.inventory_known_count, q.inventory_unknown_count,
+          q.model_expected_count, q.model_extracted_count, q.model_missing_count
+        FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest
+        WHERE q.shop_key = ?
+        ORDER BY q.evaluated_at DESC, q.id DESC
+        LIMIT 1
+      ) latest
+      WHERE latest.source_revision = ?
+    `)
+      .bind(shopKey, sourceRevision),
+  );
+  return row ? snapshotCounts(row) : null;
+}
+
 export async function readDataQualitySnapshot(
   db: QueryableDatabase,
   shopKey: string,
-): Promise<
-  Pick<
-    QualityCounts,
-    | "totalItems"
-    | "manufacturerMissingCount"
-    | "manufacturerUnresolvedCount"
-    | "categoryUnclassifiedCount"
-    | "otherCategoryCount"
-    | "identityMatchedCount"
-    | "identityUnresolvedCount"
-    | "identityVetoCount"
-    | "identityCandidateCount"
-    | "inventoryKnownCount"
-    | "inventoryUnknownCount"
-    | "modelExpectedCount"
-    | "modelExtractedCount"
-    | "modelMissingCount"
-  >
-> {
+): Promise<DataQualitySnapshotCounts> {
   const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
     db
       .prepare(`
@@ -127,23 +189,7 @@ export async function readDataQualitySnapshot(
     `)
       .bind(shopKey),
   );
-
-  return {
-    totalItems: number(row?.total_items),
-    manufacturerMissingCount: number(row?.manufacturer_missing_count),
-    manufacturerUnresolvedCount: number(row?.manufacturer_unresolved_count),
-    categoryUnclassifiedCount: number(row?.category_unclassified_count),
-    otherCategoryCount: number(row?.other_category_count),
-    identityMatchedCount: number(row?.identity_matched_count),
-    identityUnresolvedCount: number(row?.identity_unresolved_count),
-    identityVetoCount: number(row?.identity_veto_count),
-    identityCandidateCount: number(row?.identity_candidate_count),
-    inventoryKnownCount: number(row?.inventory_known_count),
-    inventoryUnknownCount: number(row?.inventory_unknown_count),
-    modelExpectedCount: number(row?.model_expected_count),
-    modelExtractedCount: number(row?.model_extracted_count),
-    modelMissingCount: number(row?.model_missing_count),
-  };
+  return snapshotCounts(row);
 }
 
 function statusColumns(evaluation: QualityEvaluation): QualityStatus[] {
@@ -176,7 +222,9 @@ export async function saveDataQualityRun(
   // Arm the next quality-input mutation before reading the aggregate. Triggers coalesce writes
   // while dirty, then advance the revision once after each capture begins. Saving this captured
   // revision on the snapshot (never clearing a marker after the read) fences concurrent writers,
-  // failed INSERTs, hard kills and overlapping snapshot readers alike.
+  // failed INSERTs, hard kills and overlapping snapshot readers alike. When the newest snapshot
+  // already proves this revision, its counts are reused instead of re-reading every active
+  // listing; the new row still records the revision armed here, so the fence is unchanged.
   const coverage = await firstMeasured<{ revision: number }>(
     db
       .prepare(`
@@ -188,7 +236,11 @@ export async function saveDataQualityRun(
       .bind(shopKey),
   );
   const sourceRevision = coverage?.revision ?? null;
-  const snapshot = await readDataQualitySnapshot(db, shopKey);
+  const covered =
+    sourceRevision == null
+      ? null
+      : await readCoveredDataQualitySnapshot(db, shopKey, sourceRevision);
+  const snapshot = covered ?? (await readDataQualitySnapshot(db, shopKey));
   // A caller outside a crawl (the remediation sweep) has no crawl-time item count to pass; default
   // it to the snapshot's own active-listing total instead of falling through to zero, which would
   // otherwise read as the shop's inventory having emptied out.
