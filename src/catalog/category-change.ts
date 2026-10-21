@@ -1,4 +1,5 @@
 import { isRecord } from "../types.js";
+import { categoryClosureIds } from "./categories.js";
 
 /** Membership order is not a classification change; the primary is compared separately. */
 export function categorySet(value: readonly string[] | string | null | undefined): string[] {
@@ -26,14 +27,19 @@ export interface CategorySnapshot {
   display: string;
 }
 
+/** Legacy/admin rows may explicitly store the parent's implied membership. */
+export function categoryMembershipSet(value: CategorySnapshot["categories"]): string[] {
+  return [...new Set(categorySet(value).flatMap((id) => [id, ...categoryClosureIds(id)]))].sort();
+}
+
 export function categoryMembershipChanged(
   previous: CategorySnapshot,
   next: CategorySnapshot,
 ): boolean {
   return (
     previous.primary !== next.primary ||
-    JSON.stringify(categorySet(previous.categories)) !==
-      JSON.stringify(categorySet(next.categories)) ||
+    JSON.stringify(categoryMembershipSet(previous.categories)) !==
+      JSON.stringify(categoryMembershipSet(next.categories)) ||
     JSON.stringify(categorySet(previous.direct)) !== JSON.stringify(categorySet(next.direct))
   );
 }

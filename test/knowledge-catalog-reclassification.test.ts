@@ -9,6 +9,33 @@ import { upsertProducts } from "../src/db/product-write-repository.js";
 import { measureD1Cost } from "./helpers/harness-cost.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 
+function interceptCategoryBatch(
+  db: QueryableDatabase,
+  intercept: (batch: D1PreparedStatement[]) => D1PreparedStatement[],
+): QueryableDatabase {
+  const categoryWrites = new WeakSet<D1PreparedStatement>();
+  return {
+    prepare: (sql) => {
+      const statement = db.prepare(sql);
+      if (!/UPDATE products\s+SET category =/.test(sql)) return statement;
+      return new Proxy(statement, {
+        get(target, key) {
+          if (key === "bind")
+            return (...values: unknown[]) => {
+              const bound = target.bind(...values);
+              categoryWrites.add(bound);
+              return bound;
+            };
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+    batch: (statements) =>
+      db.batch(statements.some((s) => categoryWrites.has(s)) ? intercept(statements) : statements),
+  };
+}
+
 test("real D1 reclassification rejects stale snapshots, preserves atomic categories and resumes projection", async () => {
   const { db, dispose } = await database();
   try {
@@ -60,17 +87,12 @@ test("real D1 reclassification rejects stale snapshots, preserves atomic categor
       )?.primary_category_id,
       "unclassified",
     );
-    const aborting: QueryableDatabase = {
-      ...db,
-      prepare: (sql) => db.prepare(sql),
-      batch: (statements) =>
-        db.batch([
-          ...statements,
-          db.prepare(
-            "INSERT INTO product_categories(product_id,category_id,is_direct) VALUES (-1,'AMP.PRE',1)",
-          ),
-        ]),
-    };
+    const aborting = interceptCategoryBatch(db, (statements) => [
+      ...statements,
+      db.prepare(
+        "INSERT INTO product_categories(product_id,category_id,is_direct) VALUES (-1,'AMP.PRE',1)",
+      ),
+    ]);
     await assert.rejects(reclassifyProductsFromKnowledgeCatalog(aborting, NEXT), /FOREIGN KEY/);
     assert.equal(
       (
@@ -167,14 +189,10 @@ test("real D1 reclassification rejects stale snapshots, preserves atomic categor
       .bind(AT)
       .run();
     let batches = 0;
-    const partial: QueryableDatabase = {
-      ...db,
-      prepare: (sql) => db.prepare(sql),
-      batch: async (statements) => {
-        if (++batches === 2) throw new Error("second batch interrupted");
-        return db.batch(statements);
-      },
-    };
+    const partial = interceptCategoryBatch(db, (statements) => {
+      if (++batches === 2) throw new Error("second batch interrupted");
+      return statements;
+    });
     await assert.rejects(
       reclassifyProductsFromKnowledgeCatalog(partial, NEXT),
       /second batch interrupted/,

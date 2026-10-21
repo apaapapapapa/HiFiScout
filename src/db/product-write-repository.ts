@@ -20,6 +20,7 @@ import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { normalizeFacetFacts } from "../catalog/product-facets.js";
 import {
   categoryMembershipChanged,
+  categoryMembershipSet,
   categoryResultChanged,
   categoryRuleVersion,
   categorySet,
@@ -841,8 +842,8 @@ export async function upsertProducts(
         raw_category: fields.rawCategory,
         primary_category_id: fields.primaryCategoryId,
         category_ids:
-          JSON.stringify(categorySet(existing.category_ids)) ===
-          JSON.stringify(categorySet(fields.categoryIdsJson))
+          JSON.stringify(categoryMembershipSet(existing.category_ids)) ===
+          JSON.stringify(categoryMembershipSet(fields.categoryIdsJson))
             ? existing.category_ids
             : fields.categoryIdsJson,
         direct_category_ids:
