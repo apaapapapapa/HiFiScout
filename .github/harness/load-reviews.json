@@ -3374,32 +3374,32 @@
       "id": "manufacturer-alias-fresh-isolate-100",
       "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "ab2ce12956de9444d3582e1165e4fdd65e15516a0bfdbd9665e7f2afc7d62b4d",
-      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and two statements (the registry clock and one persisted snapshot row) for a fresh isolate's manufacturer alias evidence with 102 aliases stored. The same fixture on base abd8afc read 405 rows in three statements, scanning every alias, its table row and its manufacturer; the returned evidence is identical (snapshot equivalence and edit-invalidation tests).",
+      "afterDigest": "8f2aa04defac6daa8f840fcfcdd398cd40a6a9e5d80944ff5c7111fa52712a51",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement (the registry clock with its persisted snapshot row) for a fresh isolate's manufacturer alias evidence with 134 aliases stored, including the 32 that migrations seed. The same fixture on base abd8afc read 405 rows in three statements, scanning every alias, its table row and its manufacturer; the returned evidence is identical (snapshot equivalence and edit-invalidation tests).",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
     },
     {
       "id": "manufacturer-alias-fresh-isolate-1000",
       "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "5fce31e45a25fdaae63a0540f8c55065d774791eea5fac7d61e5e94b769bd627",
-      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and two statements for a fresh isolate's manufacturer alias evidence with 1,104 aliases stored, the same as with 102. The same fixture on base abd8afc read 2,955 rows in three statements. Production attributed about 1,613 rows to each such load (79 loads in 19 observed hours).",
+      "afterDigest": "01e54b9bf531b87ed2cd4150514a33753eaf7a35a87a9c17397568eafb41bc63",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement for a fresh isolate's manufacturer alias evidence with 1,136 aliases stored, the same as with 134. The same fixture on base abd8afc read 2,955 rows in three statements. Production attributed about 1,613 rows to each such load (79 loads in 19 observed hours).",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
     },
     {
       "id": "manufacturer-alias-rebuild-1000",
       "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "afterDigest": "ed2ef1798eeab795c26067a611efe4bfe00874ffb67f74be854874517dd8dc25",
-      "reason": "Reviewed initial real-workerd baseline: 2,958 reads, 1 write and five statements for the first fresh isolate after an alias edit with 1,104 aliases stored: the former scan (2,955 rows on base abd8afc), one snapshot probe and one conditional snapshot write. It runs once per registry revision; identical concurrent rebuilds write nothing.",
+      "afterDigest": "2fa3e303bace2ba72233c60bcf09d727c2adbb291b1435046c8424f292edf3ce",
+      "reason": "Reviewed initial real-workerd baseline: 2,957 reads, 1 write and three statements for a load after an alias edit with 1,136 aliases stored: the revision read that finds no current snapshot, the former scan and one conditional snapshot write, the same round trips as the base abd8afc load (2,955 rows in three statements). It runs until the first write of each registry revision lands; identical concurrent rebuilds write nothing.",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
     },
     {
       "id": "load-contracts",
       "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
       "beforeDigest": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a",
-      "afterDigest": "0f51c4a6fc60c16efdc2fd711e1a49ec1098b446e542c3e81d15e32df85df059",
-      "reason": "Register the manufacturer alias evidence boundary (src/db/manufacturer-repository.ts) with its existing alias suites, the new snapshot suite and three samples. Production attributed about 127,000 reads in 19 observed hours to fresh-isolate alias scans; a fresh isolate now reads one persisted snapshot row. Other contracts, ceilings and CPU policy are unchanged.",
+      "afterDigest": "bd4528568f6d9057c50167a8f3bd7bc8a0cce0ac8901e30f3c5818091ab5a6fc",
+      "reason": "Register the manufacturer alias evidence boundary (src/db/manufacturer-repository.ts) with its existing alias suites, the new snapshot suite and three samples. Production attributed about 127,000 reads in 19 observed hours to fresh-isolate alias scans; a fresh isolate now reads the revision and one persisted snapshot row in one statement, and a rebuild keeps the former three round trips, so the remediation sweep's call floor is unchanged. Other contracts, ceilings and CPU policy are unchanged.",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
     }
   ]
