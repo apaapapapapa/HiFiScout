@@ -33,6 +33,8 @@ const EXCLUDED_TABLE_NAMES = new Set([
   // This singleton is derived from restored registry rows. Keeping the destination generation
   // prevents an isolate-local alias cache from being reused if a binding moves to the restore.
   "admin_manufacturer_registry_clock",
+  // A derived copy of the alias rows keyed by that clock's generation; the restore rebuilds it.
+  "manufacturer_alias_evidence_snapshot",
   // Migrations create the singleton at zero and entity INSERT triggers rebuild it during restore.
   // Dumping this derived row could pair a newer total with an older entity snapshot.
   "product_search_totals",

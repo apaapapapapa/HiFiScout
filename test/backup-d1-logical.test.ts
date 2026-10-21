@@ -45,6 +45,7 @@ test("logical D1 backup rebuilds the derived in-stock total from restored entiti
 test("logical D1 backup preserves the restore database cache generation", () => {
   const tables = selectBackupTables([
     { schema: "main", name: "admin_manufacturer_registry_clock", type: "table", wr: 0 },
+    { schema: "main", name: "manufacturer_alias_evidence_snapshot", type: "table", wr: 0 },
     { schema: "main", name: "knowledge_catalog_manufacturer_aliases", type: "table", wr: 0 },
   ]);
 

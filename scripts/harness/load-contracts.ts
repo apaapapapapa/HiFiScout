@@ -372,6 +372,24 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Each crawl's PREPARE and FETCH pick one recheck candidate by seeking the active-listing attempt index: never-attempted stale listings by last_seen_at, then the oldest attempt within the retry window. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
   },
   {
+    id: "manufacturer-alias-evidence",
+    sources: ["src/db/manufacturer-repository.ts"],
+    suites: [
+      "test/manufacturer-alias-snapshot.test.ts",
+      "test/manufacturer-alias-cache.test.ts",
+      "test/manufacturer-alias-scope.test.ts",
+      "test/manufacturer-repository.test.ts",
+    ],
+    samples: {
+      "manufacturer-alias-fresh-isolate-100": d1(5, 0, 2),
+      "manufacturer-alias-fresh-isolate-1000": d1(5, 0, 2),
+      // 1,104 stored aliases: the clock twice, the snapshot probe, the full scan and one write.
+      "manufacturer-alias-rebuild-1000": d1(3700, 1, 5),
+    },
+    reason:
+      "A fresh isolate reads resolver-visible alias evidence from one persisted snapshot row keyed by the trigger-maintained registry clock and the query definition, so its cost does not grow with the alias tables. Only the first fresh isolate after a resolver-visible edit or a changed query scans every alias, its table row and its manufacturer, and stores the result once.",
+  },
+  {
     id: "retention-and-schema",
     sources: ["src/maintenance.ts", "migrations/*"],
     suites: [

@@ -12,6 +12,7 @@ import type {
   ModelResolutionResult,
 } from "../catalog/types.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { firstMeasured } from "./read-accounting.js";
 import { remediationEventStatement } from "./remediation-event-repository.js";
 import type {
   KnowledgeCatalogManufacturerAliasRow,
@@ -32,6 +33,62 @@ interface ManufacturerAliasCache extends ManufacturerAliasRevision {
 }
 
 let manufacturerAliasCache: ManufacturerAliasCache | null = null;
+
+const ALIAS_EVIDENCE_SQL = `
+      WITH aliases AS (
+        SELECT a.*, '' AS shop_key FROM knowledge_catalog_manufacturer_aliases a INDEXED BY idx_knowledge_catalog_manufacturer_alias_lookup
+        UNION ALL
+        SELECT id, manufacturer_id, alias, normalized_alias, verification_status, source,
+          provenance_json, rule_version, created_at, updated_at, shop_key
+          FROM knowledge_catalog_shop_manufacturer_aliases INDEXED BY idx_shop_alias_lookup
+      )
+      SELECT a.*, m.canonical_name FROM aliases a
+      JOIN knowledge_catalog_manufacturers m ON m.id = a.manufacturer_id
+      WHERE m.verification_status = 'verified'
+        AND (a.verification_status IN ('pending', 'verified') OR a.source='admin_alias_control')
+      ORDER BY a.normalized_alias, a.manufacturer_id, a.id
+    `;
+
+/** The only columns evidence is built from; a persisted snapshot keeps exactly these, in order. */
+const ALIAS_EVIDENCE_COLUMNS = [
+  "manufacturer_id",
+  "shop_key",
+  "canonical_name",
+  "alias",
+  "normalized_alias",
+  "verification_status",
+  "source",
+  "rule_version",
+] as const satisfies readonly (keyof KnowledgeCatalogManufacturerAliasRow)[];
+
+type AliasEvidenceRow = Pick<
+  KnowledgeCatalogManufacturerAliasRow,
+  (typeof ALIAS_EVIDENCE_COLUMNS)[number]
+>;
+
+/** A string longer than this is left uncached rather than approaching D1's 2 MB row limit. */
+const MAX_ALIAS_SNAPSHOT_CHARACTERS = 1_000_000;
+
+/** 32-bit FNV-1a, enough to tell one deployed alias query from another. */
+function fnv1a(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The query and columns a persisted snapshot was built from. The registry clock proves that no
+ * resolver-visible row moved, not that this code still selects the same rows; a deploy that edits
+ * either rebuilds the snapshot once, and an older Worker's rows are never reused.
+ */
+const ALIAS_EVIDENCE_DEFINITION = `fnv1a:${fnv1a(
+  `${ALIAS_EVIDENCE_SQL}\n${JSON.stringify(ALIAS_EVIDENCE_COLUMNS)}`,
+)}`;
+
+const VERIFICATION_STATUSES: ReadonlySet<unknown> = new Set(["pending", "verified", "rejected"]);
 
 export interface SaveManufacturerAliasInput {
   manufacturerId: string;
@@ -166,26 +223,8 @@ async function manufacturerAliasRevision(
     : null;
 }
 
-async function loadManufacturerAliasEvidence(
-  db: ReadableDatabase,
-): Promise<ManufacturerAliasEvidence[]> {
-  const result = await db
-    .prepare(`
-      WITH aliases AS (
-        SELECT a.*, '' AS shop_key FROM knowledge_catalog_manufacturer_aliases a INDEXED BY idx_knowledge_catalog_manufacturer_alias_lookup
-        UNION ALL
-        SELECT id, manufacturer_id, alias, normalized_alias, verification_status, source,
-          provenance_json, rule_version, created_at, updated_at, shop_key
-          FROM knowledge_catalog_shop_manufacturer_aliases INDEXED BY idx_shop_alias_lookup
-      )
-      SELECT a.*, m.canonical_name FROM aliases a
-      JOIN knowledge_catalog_manufacturers m ON m.id = a.manufacturer_id
-      WHERE m.verification_status = 'verified'
-        AND (a.verification_status IN ('pending', 'verified') OR a.source='admin_alias_control')
-      ORDER BY a.normalized_alias, a.manufacturer_id, a.id
-    `)
-    .all<KnowledgeCatalogManufacturerAliasRow>();
-  return (result.results || []).map((row) => ({
+function aliasEvidence(row: AliasEvidenceRow): ManufacturerAliasEvidence {
+  return {
     manufacturerId: row.manufacturer_id,
     ...(row.shop_key ? { shopKey: row.shop_key } : {}),
     canonicalName: row.canonical_name,
@@ -194,17 +233,157 @@ async function loadManufacturerAliasEvidence(
     verificationStatus: row.verification_status,
     source: row.source,
     ruleVersion: Number(row.rule_version) || 1,
+  };
+}
+
+async function loadManufacturerAliasRows(db: ReadableDatabase): Promise<AliasEvidenceRow[]> {
+  const result = await db.prepare(ALIAS_EVIDENCE_SQL).all<KnowledgeCatalogManufacturerAliasRow>();
+  return (result.results || []).map((row) => ({
+    manufacturer_id: row.manufacturer_id,
+    shop_key: row.shop_key,
+    canonical_name: row.canonical_name,
+    alias: row.alias,
+    normalized_alias: row.normalized_alias,
+    verification_status: row.verification_status,
+    source: row.source,
+    rule_version: row.rule_version,
   }));
 }
 
+function isSnapshotSchemaMissing(error: unknown): boolean {
+  // Historical migration tests and a rollout's first moments may run before migration 0140.
+  return /no such table: manufacturer_alias_evidence_snapshot/u.test(String(error));
+}
+
+/** Stored tuples are revalidated: a malformed row is a cache miss, never resolver evidence. */
+function snapshotRows(rowsJson: unknown): AliasEvidenceRow[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(rowsJson));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const rows: AliasEvidenceRow[] = [];
+  for (const tuple of parsed) {
+    if (!Array.isArray(tuple) || tuple.length !== ALIAS_EVIDENCE_COLUMNS.length) return null;
+    const [manufacturerId, shopKey, canonicalName, alias, normalizedAlias, status, source, rule] =
+      tuple as unknown[];
+    if (
+      typeof manufacturerId !== "string" ||
+      (shopKey !== null && typeof shopKey !== "string") ||
+      typeof canonicalName !== "string" ||
+      typeof alias !== "string" ||
+      typeof normalizedAlias !== "string" ||
+      !VERIFICATION_STATUSES.has(status) ||
+      typeof source !== "string" ||
+      typeof rule !== "number"
+    ) {
+      return null;
+    }
+    rows.push({
+      manufacturer_id: manufacturerId,
+      shop_key: shopKey ?? undefined,
+      canonical_name: canonicalName,
+      alias,
+      normalized_alias: normalizedAlias,
+      verification_status: status as AliasEvidenceRow["verification_status"],
+      source,
+      rule_version: rule,
+    });
+  }
+  return rows;
+}
+
+async function readPersistedAliasRows(
+  db: ReadableDatabase,
+  revision: ManufacturerAliasRevision,
+): Promise<AliasEvidenceRow[] | null> {
+  let row: { rows_json: string } | null;
+  try {
+    row = await firstMeasured<{ rows_json: string }>(
+      db
+        .prepare(`
+          SELECT rows_json FROM manufacturer_alias_evidence_snapshot
+          WHERE id = 1 AND generation = ? AND version = ? AND definition = ?
+        `)
+        .bind(revision.generation, revision.version, ALIAS_EVIDENCE_DEFINITION),
+    );
+  } catch (error) {
+    if (isSnapshotSchemaMissing(error)) return null;
+    throw error;
+  }
+  return row ? snapshotRows(row.rows_json) : null;
+}
+
 /**
- * Load resolver-visible manufacturer evidence with revision-checked isolate reuse.
+ * Persist rows read entirely within one registry revision. The write lands only while the clock
+ * still shows that revision, so a concurrent edit can never be filed under it, and it is skipped
+ * when an identical snapshot is already stored; a malformed one is replaced. Persisting is an
+ * optimization: a failed write,
+ * such as an exhausted write quota, leaves this invocation's evidence untouched.
+ */
+async function persistAliasRows(
+  db: ReadableDatabase,
+  revision: ManufacturerAliasRevision,
+  rows: readonly AliasEvidenceRow[],
+): Promise<void> {
+  const rowsJson = JSON.stringify(
+    rows.map((row) => ALIAS_EVIDENCE_COLUMNS.map((column) => row[column] ?? null)),
+  );
+  if (rowsJson.length > MAX_ALIAS_SNAPSHOT_CHARACTERS) return;
+  try {
+    await db
+      .prepare(`
+        INSERT INTO manufacturer_alias_evidence_snapshot(
+          id, generation, version, definition, rows_json, built_at
+        )
+        SELECT 1, ?1, ?2, ?3, ?4, ?5
+        WHERE EXISTS (
+          SELECT 1 FROM admin_manufacturer_registry_clock
+          WHERE id = 1 AND generation = ?1 AND version = ?2
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          generation = excluded.generation,
+          version = excluded.version,
+          definition = excluded.definition,
+          rows_json = excluded.rows_json,
+          built_at = excluded.built_at
+        WHERE manufacturer_alias_evidence_snapshot.generation IS NOT excluded.generation
+          OR manufacturer_alias_evidence_snapshot.version IS NOT excluded.version
+          OR manufacturer_alias_evidence_snapshot.definition IS NOT excluded.definition
+          OR manufacturer_alias_evidence_snapshot.rows_json IS NOT excluded.rows_json
+      `)
+      .bind(
+        revision.generation,
+        revision.version,
+        ALIAS_EVIDENCE_DEFINITION,
+        rowsJson,
+        new Date().toISOString(),
+      )
+      .run();
+  } catch (error) {
+    if (isSnapshotSchemaMissing(error)) return;
+    console.error(
+      JSON.stringify({
+        event: "manufacturer_alias_snapshot_persist_failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+/**
+ * Load resolver-visible manufacturer evidence with revision-checked reuse.
  *
  * Alias and canonical-manufacturer edits advance the existing administrative registry clock.
- * Cache hits therefore cost one singleton lookup instead of scanning and returning the complete
- * alias snapshot. A second revision read prevents a concurrent edit from making a partially stale
- * snapshot reusable; that invocation still gets the same point-in-time result the old query would
- * have returned, while the next invocation reloads it.
+ * Isolate cache hits therefore cost one singleton lookup instead of scanning and returning every
+ * alias. A fresh isolate next reads the persisted snapshot for the current revision: one more
+ * row instead of every alias, its table row and its manufacturer. Only the first fresh isolate
+ * after an edit, or after a deploy that changes the query, scans; it stores the result for the
+ * isolates that follow. A second revision read prevents a concurrent edit from making a partially
+ * stale scan reusable; that invocation still gets the same point-in-time result the old query
+ * would have returned, while the next invocation reloads it.
  */
 export async function listManufacturerAliasEvidence(
   db: ReadableDatabase,
@@ -218,10 +397,19 @@ export async function listManufacturerAliasEvidence(
     return manufacturerAliasCache.aliases.slice();
   }
 
-  const aliases = await loadManufacturerAliasEvidence(db);
+  const persisted = before ? await readPersistedAliasRows(db, before) : null;
+  if (before && persisted) {
+    const aliases = persisted.map(aliasEvidence);
+    manufacturerAliasCache = { ...before, aliases };
+    return aliases.slice();
+  }
+
+  const rows = await loadManufacturerAliasRows(db);
+  const aliases = rows.map(aliasEvidence);
   const after = before ? await manufacturerAliasRevision(db) : null;
   if (before && after?.generation === before.generation && after.version === before.version) {
     manufacturerAliasCache = { ...after, aliases };
+    await persistAliasRows(db, after, rows);
   }
   return aliases.slice();
 }
