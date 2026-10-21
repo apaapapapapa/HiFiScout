@@ -23,7 +23,7 @@ runs:
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.vite-plus
-        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-0.2.9
+        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-1.3.0
     - name: Activate cached Vite+
       if: steps.vite-plus-runtime.outputs.cache-hit == 'true'
       shell: bash
@@ -33,9 +33,9 @@ runs:
         "${HOME}/.vite-plus/bin/vp" --version
     - name: Install Vite+ on runtime cache miss
       if: steps.vite-plus-runtime.outputs.cache-hit != 'true'
-      uses: voidzero-dev/setup-vp@v1.17.0
+      uses: voidzero-dev/setup-vp@v1.21.2
       with:
-        version: "0.2.9"
+        version: "1.3.0"
         cache: false
         run-install: false
     - name: Restore locked dependencies
@@ -43,7 +43,7 @@ runs:
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: node_modules
-        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
+        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-1.3.0-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
     - name: Install locked dependencies on cache miss
       if: steps.locked-dependencies.outputs.cache-hit != 'true'
       shell: bash
@@ -61,10 +61,10 @@ runs:
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: node_modules
-        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
+        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-1.3.0-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
     - name: Save Vite+ runtime
       if: inputs.cache-write == 'true' && steps.vite-plus-runtime.outputs.cache-hit != 'true'
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.vite-plus
-        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-0.2.9
+        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-1.3.0

@@ -1527,6 +1527,622 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/801",
         "https://github.com/apaapapapapa/HiFiScout/pull/802"
       ]
+    },
+    {
+      "id": "notification-candidates",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "9d3375fe140ac701e9012442fe461a3b6bd3e306ebfd55fedf6d6fd99c95e061",
+      "afterDigest": "cb0066746eb8186d2602a60f73941564e34381e4a321bb6ce56efcc3221ca215",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 20, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "notification-matches",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "8ded482ce87b627687b4777279bb744b02b1dc8ff5f06a60151d8cfdfbf3279c",
+      "afterDigest": "0fb9b8768db9a26f094739e543fd029f8dacfaf199e781892621cc3511275a9e",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 78, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "notification-outbox-replay",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "7922fcdc1206ecda2d4aab06919f6decbeffe8b172411735d7f5e59ed12a5cc2",
+      "afterDigest": "58eb2e474b444a8a8f48039339b26376fc81c7a270e85fa403752a0e6bea58ae",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 6, rowsWritten 0, sqlStatements 5), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-replay",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "66ffb365ea5c2bd1a43bdc34143020ed2124d69854ad0ad90a3972b796e29a26",
+      "afterDigest": "66be4b1cad2c0efb8fa87e7efd0e1bb43c31172db920373df00ddd9a43a2e866",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 2, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-price-change",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "94bc0b660c36b25da805d68828e8c83827ae43e4738e49ea00f117660bd914b0",
+      "afterDigest": "054e7f480e6cb01e127adbce44cc1d25adb213bab14a5734783ede6d1f8a0dc5",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 3, rowsWritten 5, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-catalog-shared",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "c94e00ba11dc99e039062f309398b7d553dfb523a1ef9c93b919ac6e2a7276c1",
+      "afterDigest": "0c6b4cea4906c8795ed60a5f424473e22c5441cdb65a6e1712926210b9509ba4",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 17, rowsWritten 0, sqlStatements 8), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-catalog-replay",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "83c99612621d034fac1125c3f6e120ce53ebc90a4c370092f5c3aed3d51332dc",
+      "afterDigest": "5f40021dae2a0aeec250b239e2f7eaed8ecb43d78db08c64d198854267390cfa",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 4, rowsWritten 0, sqlStatements 3), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-search-page",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "2ea1f5b306a285132661faf826552959a8dfc002bec9e324686188ba7dcded67",
+      "afterDigest": "448e917efa416cf3daafe5ec4cd1ba701cf283269d86e702be319595e2c85f65",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 53, rowsWritten 0, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-search-filtered",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "999da644193478c70a9d8cff780a79cf86028e816a264a36aedea1b6891d92d0",
+      "afterDigest": "7cb03362ba972bd0d11c0335fae2e9b3b91f251ac1a3d715640de2207ef8298d",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 12001, rowsWritten 0, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "auction-admin-status",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "0665677853d641043aa686967fc68a4630c0f8b4c3219a476960165abfc0e8d9",
+      "afterDigest": "1c955474bb9b1ed0bc22a97fbe0ecdd3b69fcdf4d17b9393bd2fa5d8156ceeb7",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 8002, rowsWritten 0, sqlStatements 6), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "1ad088ae8ca1d5ac3087e2714ce5ebf534c8baafeb2977e85da3944cc6cfa284",
+      "afterDigest": "7753531daec43d1dc1887e768f5f101cc158e8a7816aae3ffdc99de92ca37880",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 196, rowsWritten 176, sqlStatements 59), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "a0b9b43023ee334cc713e93a093d09f6da1bcbe51d1491e579489aaae73ebe1d",
+      "afterDigest": "423c155392b208ba8e3a9d2c9f32128b451ae4eeec328cd8ab62de7529138416",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 316, rowsWritten 256, sqlStatements 99), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-do-retry",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "c5831a3e6b9f3e06654c41457043031ed0a672ebb41304c7178e8e98547428e4",
+      "afterDigest": "7bcc7c49e6c4e5f7e9dc624e8454972934881c47dd63514329802e4e2abf211b",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (doAlarms 3, doStorageWrites 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "queue-export-redelivery",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "8ec018a99a996e0d52c0f1a7d0ef090af029dbd58578911480a2fee612c97f5b",
+      "afterDigest": "265d2a3eae82e904dc391376ecc7495ec1da696f092eaa6cbe91eb763434c267",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (queueSends 0, queueRetries 0), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "category-prune",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "aa01235e915bbf2990e7f3150cdb44a049f8e55cf2abff4a578b6ea583be33fd",
+      "afterDigest": "e0476fc62a1844dd80bd18f03ef147070811423509ec3a3776b2cf61753831b4",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 241, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "search-new-total",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "411bbe439b5e862286f09f4e9c0e1aff772411458ea955742d6d79b0c8a4c4aa",
+      "afterDigest": "cadfe2aa75274f877711bf1fbc28aab5c7edfce5df1f5044ba21116e8764ef15",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 145, rowsWritten 0, sqlStatements 5), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "search-price-drop-total",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "c8460d6a222b1398482441265e2e763cf3c47f411178a4f63bb7362f09e3f4ac",
+      "afterDigest": "113879a331aee20e8785fd243811fa99a6ae5eefd0400c7c3ca536f6d843df28",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 181, rowsWritten 0, sqlStatements 5), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "e013a04f020b0c976c9198028cb1675f74d4ea397a2d568c7693501297cfe229",
+      "afterDigest": "c8c6941de8b0ef4fe590ce9359ababa88f996b442e0b9000a2826ef0519718ff",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 110, rowsWritten 0, sqlStatements 34), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "90bf0a3c5d30d624397e1b7b5635dddcd85e0f0d8b3d885f78c86410627b14a4",
+      "afterDigest": "01665dd40b93a5c5a8302fde9b117342ea4596c690b953a73c32de5f90d65676",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 3519, rowsWritten 0, sqlStatements 51), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "5f3810eeca8301a241f1e71eeedbe151fc250b24e8ea436579a459c9e1461a98",
+      "afterDigest": "30373b2ed3510d1166d4d1af69250a7eb1e36579a91110306d1c546a87ece13d",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 3519, rowsWritten 0, sqlStatements 51), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "b59cf17568fcabfdf6d39d4a3ab9dec08465a059f7b9f32835504733a937b512",
+      "afterDigest": "e7000dc748e7a25c3150e7f69f4ef07c768bc37c8edf32ce9715d256a46d78bf",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 3519, rowsWritten 0, sqlStatements 51), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "0ad6292287c0d3a6201e526428111b3e074b474a53fa9a7f5a5c87199c5805a1",
+      "afterDigest": "427c3c7c64b6f4b96233495089724bd553e2f090e354deb8a486c728ec7c9937",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 816, rowsWritten 601, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "5ca2eca59179aa8b5945d50552dbb814ca57337bad2233906b27269adec56f50",
+      "afterDigest": "470578a9d83fa4ae58c0af6db253ee957d1af6a0cb5eebffbc51c46bf2b51a53",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 817, rowsWritten 600, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "5063a1722795c4241a96f7ccdd6af7806eb7efa0f386323f61c54922ee1e59a2",
+      "afterDigest": "7b2698cb111a50f5e09c2becb936af931f66a9431a0975fe308b442688b9d8a3",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 817, rowsWritten 600, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "4f469a2474a1e5632ee2cb5e7dafc0867362a95582a8c702da275552a1cd2210",
+      "afterDigest": "8c7aa3e7326a3fd24309ad7cc87e6c76e3f32bf12ed79a1044ee366213148887",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 161, rowsWritten 0, sqlStatements 4), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "2453e834ed8fcc52b9a37e876bbea06215239ee5d5781547e7423626bf17c83b",
+      "afterDigest": "b94c3cb775bb3ef3d6ab4da589964ae99c176f2ff1b37b3ca34428786a8b024c",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 161, rowsWritten 0, sqlStatements 4), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-photo-replay",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "d05c6c7149ed5f0c7e3843bca578e3935e07832737ac96e677ec0be239b78421",
+      "afterDigest": "2d757317e78b4f0380c1e4266333ace9c5d84bc6775cb2acaaf26fc40b1c3b55",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 2, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-photo-update",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "5bd37fd454004104ad483b5561f3811f295f33697624de13863f1f3ffea5797c",
+      "afterDigest": "793a028dab073564744c0a07849c60876e699c4a447413f0ed7b439281d5a343",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 7, rowsWritten 1, sqlStatements 3), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-rows-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "d7fcdacce77c5c7875a44637a3fe0728ded6fb8f05cf0303d00cb4d756774d9f",
+      "afterDigest": "8312726841db4d2af85018ca5e8e841f2b8dea4af33f4948a721a2624a993041",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 120, rowsWritten 0, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-rows-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "73617c772f7284d156c0639aa8b3d3197cc757fed72197da856554af9038478c",
+      "afterDigest": "dbb13bd34fc5592c057796b0322d73275de52d8ed0772aeaa2ae7ec2487c07bf",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 120, rowsWritten 0, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-rows-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "4050028db8ad29979c4b83489d1e4a59c3c5fa963668194ccd2a4a68ca069a8a",
+      "afterDigest": "15f2c5c1fc1a2d69fee0eb26d6ad845b93ae0067f5db74782ca6f185cd775e08",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 120, rowsWritten 0, sqlStatements 2), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "47e89269b02a0e1f7103d364e54684b25ee19da9acd134f5974bc012be4cd487",
+      "afterDigest": "3292fef0eaae9f5dbe3eb3ed3c036fa384106ca34c6f37cccf50a1890c572d8a",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 46, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "aa00b861629fd4cf36724d3b5fc42a8f7ace58f72dd69fa18b86c752ef869e8c",
+      "afterDigest": "50677b6edb2c7d71ff67b6f37bb677068add0148eb54acfef0faa92bf5c6bb2e",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 46, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "7cd11788b3be8143bc38afea604aa01ffefe44a9b66fbcb5dd71c0f42e9f8f32",
+      "afterDigest": "e22894424df44062acbd19150c789a743b34605fe49f737bedcf994000847c01",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 46, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "504ce59dc2667f7f41643389006f655eb7e24cbdccc1d11c57179dcee6e5ebce",
+      "afterDigest": "7305920d6e0fa74af9c76a7bd0e5b28e7bfde93ff1f8aee210d32a8721c2c539",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 37, rowsWritten 8, sqlStatements 18), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "f8fa8f9082d97243e3a0cb163dce5c864ccc9e9ce0bacc91db6944259b4bc762",
+      "afterDigest": "71c2f42680168c35d66993a5289fa688850d21206dd7a3bf1ae7d60c182d8128",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 37, rowsWritten 8, sqlStatements 18), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "6e33e1cdedceddda23a3cb9a98d95a3eeab8c0b1748b691093d5bc41019698bb",
+      "afterDigest": "9fcda8fad1c7891af56868b0b21f599b44dd0db7494046f70446a6f9ba57212f",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 37, rowsWritten 8, sqlStatements 18), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "87f71417c49b6d424a4ae35de2bf45430de00b264259694259d301ff727e1143",
+      "afterDigest": "aef6f08e22847998118ed358b13cc3e0f337720a980b05985ea2c3eff70cc8ec",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 32, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "e8615c451119b78937fd31ed9bd6ae35406d15355b6a4532214d1f309d056fd2",
+      "afterDigest": "8deaf70e5f174f3466baafdc6df21296ff5dd78e808a759973a4e114bc4bccd0",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 32, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "23d7f91e410841858ea0a4fa1d67ccdf1e34dccc3ab9bf6f1d0fe33ca62ced84",
+      "afterDigest": "0c2f02dd5394c540056a10d97c8f992e87d7e135da37cbfda3bd123ca2ae63f9",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 32, rowsWritten 0, sqlStatements 1), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "730c1d4b8fc21feda63fa1c08d0664caab16805994bedc00e751e20299b06c94",
+      "afterDigest": "68fbfaea0bcc645132a783070edf8ef088cdedb7a2b4612b79eaec9397efc38d",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 67, rowsWritten 5, sqlStatements 4), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "1cb7ab98c1e05d4556b81dc8cd32ca36e151c88e8ab5ce950368184ea5c96d81",
+      "afterDigest": "b8fbda2c056f9751d363c607e9b321e2386538d6cf78ac58c0f835a96faa8287",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 67, rowsWritten 5, sqlStatements 4), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "78763b95575f0ff1b875147b351112fcdcfe1f989165f6155c53fa554c42d9d0",
+      "afterDigest": "20eeb88502ad85773b8ed7b28402023ffcbc4199f37c3ebd9cfa8e84fac78ab7",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 67, rowsWritten 5, sqlStatements 4), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "retention-history-100",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "48d0f9e7fb09f9b3844f98c151d0a38d6a5b9f37af4cc42564806b8593fde69e",
+      "afterDigest": "fe4f4b8853c413482d41261fa3b393df6f2aceae3ddde2b6cd726aba744fe419",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 2528, rowsWritten 500, sqlStatements 10), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "retention-history-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "59265f3705f6991f3e9af27064f6f6d690a8bb86453d84e08f0a7c766b1b0a54",
+      "afterDigest": "6941bd7d22208a717b099af78e542231c8667d3ffe35a85aba65adafa53560d5",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 2528, rowsWritten 500, sqlStatements 10), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "retention-history-10000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "a0ebb67f886f50f2dd10f185c74fd3bc3d6a93d778eebc741dbc368ff25a601b",
+      "afterDigest": "6f354406e8e88bc2cf97490cc96b83053e89946f6b0724b035e6101bdb782802",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (rowsRead 2528, rowsWritten 500, sqlStatements 10), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "maintenance-continuation",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "fe8bcb5988463a3a5925568665f373446afee9eae18cd871180e4a643cbc37f3",
+      "afterDigest": "a72d0a16be5c11ca7267e51cb7b36dc61b9ff857c0cde1f955c8a15e6dfaa0ae",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (d1Calls 49, sqlStatements 49), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "dd17096925bb01ee5a0d5a36de62d0e3845092f80fe5e90305e133a3e253b5bc",
+      "afterDigest": "b2c5137b4291fc9efb133694f86962f4ecbe23a8b0699d60425861c5026ab23a",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. All 48 deterministic samples, including this case (scheduledInvocations 391, crawlDispatches 61, plannedPages 1619), have exactly identical measured metrics against base 243fcc4c; wrangler, miniflare and workerd keep their versions, and fixtures, application queries, policy and absolute limits are unchanged. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "7fcc249b8a72fc0e6869f8e6791faf6002fb03c431a6bed9041e442400187255",
+      "afterDigest": "7806efd1ee52fa45c04794ee9b6760f07921c5bb2fb0d9f33164d94d619db4f0",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 16.656 at base 243fcc4c vs 18.444 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "d7ee9e09178c18d56bd3af538bee73e8f93823e590237414f359e886b4ec4424",
+      "afterDigest": "704130b4b2a7f16608528f06026f2742dbb3ea8a009faff58f58136d67a6dfd9",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 271.563 at base 243fcc4c vs 248.366 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "96416b46de4f0f7e7414eb79e2b5994b96308b491de1a7845d254edad77fd978",
+      "afterDigest": "eb7a3d6854d89c32c22fb38f93721d7356799c1003c26f44d34af25aeb4d28af",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 0.575 at base 243fcc4c vs 0.592 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "c38d91af248993b3867adaf76cbaab0622a67db7e5a34a16d221d410663689ea",
+      "afterDigest": "4aa4fccb17e7bdcc52ba70929e65129ffa1a93bf6df80f90c6187cc9c29127c1",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 14.334 at base 243fcc4c vs 15.885 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "9b14edc8cfa2cd4555689a93c44aa498e69e42599caee5f008faa6e1d183a595",
+      "afterDigest": "e669a56d22c71d252bcedd245dcbedb53e81adfc6e91de1882409ebf56aa0efa",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 332.942 at base 243fcc4c vs 265.448 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "78b9df0adc78423040bad882cb7f979f893d8454086b298a73b59b2c75957915",
+      "afterDigest": "cca22b20561e8e928559e53a1ffad9c855a2a6305e0a979a7e4787665e717f53",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 63.406 at base 243fcc4c vs 61.458 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "dfaff972ce3227a59925f1c0c4b02cba479549fcbdb9bd648ca7b5dcb9ebe338",
+      "afterDigest": "a812e54fe5b09496daab5fb587c3189b0b06ff4f81d124b71bd4abdb9e94cf96",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 423.754 at base 243fcc4c vs 261.803 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "431478780428e545fd6914b790958d38ef91884537f2bd06377aa73715e85e12",
+      "afterDigest": "fdfee0056f0e1f79faa9e3cb7dcd126d6da2942a7875c2ae8b70c97c0c64c908",
+      "reason": "Reviewed Vite+ 0.2.9 -> 1.3.0 security upgrade (bundled Vitest 4.1.10 -> 5.0.5, launch-editor advisories) changes the lockfile profile. Same-runner alternating median-of-three parser CPU: relative 2.908 at base 243fcc4c vs 2.958 with the candidate; the parser sources, fixtures and absolute ceilings are unchanged. All 48 deterministic samples have exactly identical metrics against the base. This accepts the measured dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/805",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39586810732"
+      ]
     }
   ]
 }
