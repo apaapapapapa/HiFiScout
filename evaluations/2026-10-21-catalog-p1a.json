@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "issue": 807,
+  "pr": 809,
+  "baselineSha": "66a4ae613b711e4dc869bd96ea73afe2b7cc8212",
+  "candidateSha": "d7b4d2275a75a6931e7b32d880ce47e66e186e4b",
+  "ciMergeSha": "7ec031508bd7c83dff46cf1a65b9d975051d6319",
+  "ciRun": 39604671941,
+  "environment": "local-workerd; not production billing or Worker CPU",
+  "verification": {
+    "command": "vp run verify",
+    "tasksPassed": 11,
+    "testFilesPassed": 449,
+    "testsPassed": 2537
+  },
+  "measurements": [
+    {
+      "id": "candidate-publication-few-changes-100",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 215,
+        "rowsWritten": 6,
+        "sqlStatements": 1,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 416,
+        "rowsWritten": 6,
+        "sqlStatements": 2,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-few-changes-1000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 2150,
+        "rowsWritten": 60,
+        "sqlStatements": 10,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 4160,
+        "rowsWritten": 60,
+        "sqlStatements": 20,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-few-changes-10000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 21500,
+        "rowsWritten": 600,
+        "sqlStatements": 100,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 41600,
+        "rowsWritten": 600,
+        "sqlStatements": 200,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-many-changes-100",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 803,
+        "rowsWritten": 446,
+        "sqlStatements": 1,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 1004,
+        "rowsWritten": 446,
+        "sqlStatements": 2,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-many-changes-1000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 8030,
+        "rowsWritten": 4460,
+        "sqlStatements": 10,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 10040,
+        "rowsWritten": 4460,
+        "sqlStatements": 20,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-many-changes-10000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 80300,
+        "rowsWritten": 44600,
+        "sqlStatements": 100,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 100400,
+        "rowsWritten": 44600,
+        "sqlStatements": 200,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-timestamps-100",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 709,
+        "rowsWritten": 451,
+        "sqlStatements": 1,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 610,
+        "rowsWritten": 250,
+        "sqlStatements": 2,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-timestamps-1000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 7090,
+        "rowsWritten": 4510,
+        "sqlStatements": 10,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 6100,
+        "rowsWritten": 2500,
+        "sqlStatements": 20,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-timestamps-10000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 70900,
+        "rowsWritten": 45100,
+        "sqlStatements": 100,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 61000,
+        "rowsWritten": 25000,
+        "sqlStatements": 200,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-unchanged-100",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 210,
+        "rowsWritten": 0,
+        "sqlStatements": 1,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 411,
+        "rowsWritten": 0,
+        "sqlStatements": 2,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-unchanged-1000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 2100,
+        "rowsWritten": 0,
+        "sqlStatements": 10,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 4110,
+        "rowsWritten": 0,
+        "sqlStatements": 20,
+        "d1Calls": 1
+      }
+    },
+    {
+      "id": "candidate-publication-unchanged-10000",
+      "profileHash": "127e9e1767ca3430d529973e8418b7ff6c28191720e82c0d2bd436523ef2ca21",
+      "before": {
+        "rowsRead": 21000,
+        "rowsWritten": 0,
+        "sqlStatements": 100,
+        "d1Calls": 1
+      },
+      "after": {
+        "rowsRead": 41100,
+        "rowsWritten": 0,
+        "sqlStatements": 200,
+        "d1Calls": 1
+      }
+    }
+  ],
+  "ciExistingCosts": "all existing comparisons passed; only policy and twelve intentional initial samples required review",
+  "pairedCpu": {
+    "schemaVersion": 1,
+    "method": "same-runner-alternating-median-3",
+    "rounds": 3,
+    "status": "pass",
+    "baselineSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+    "sourceSha": "7ec031508bd7c83dff46cf1a65b9d975051d6319",
+    "exits": [
+      {
+        "side": "baseline",
+        "round": 1,
+        "exit": 0
+      },
+      {
+        "side": "candidate",
+        "round": 1,
+        "exit": 0
+      },
+      {
+        "side": "candidate",
+        "round": 2,
+        "exit": 0
+      },
+      {
+        "side": "baseline",
+        "round": 2,
+        "exit": 0
+      },
+      {
+        "side": "baseline",
+        "round": 3,
+        "exit": 0
+      },
+      {
+        "side": "candidate",
+        "round": 3,
+        "exit": 0
+      }
+    ],
+    "problem": null
+  },
+  "tradeoffs": [
+    "Exact last_seen_at timestamps preserved; narrow timestamp UPDATE avoids full-row index churn.",
+    "Unchanged 10k: reads 21000 -> 41100, writes stay zero; timestamp-only reads 70900 -> 61000, writes 45100 -> 25000.",
+    "100-row statement count doubles, but one D1 batch roundtrip and existing budget admission are retained.",
+    "Full accumulator collect/clean rebuild remains; same-value UPSERT replay guard does not avoid genuinely changed aggregate values.",
+    "No new tables, Queues, DOs or historical-storage amplification."
+  ],
+  "production": {
+    "reviewCompletion": "pending three consecutive natural daily successes",
+    "sqlFamilyImprovement": "pending comparable post-deploy Adaptive Analytics intervals; no simple previous-day attribution"
+  }
+}

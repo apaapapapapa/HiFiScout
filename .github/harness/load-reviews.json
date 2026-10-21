@@ -2463,6 +2463,136 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/808"
       ]
+    },
+    {
+      "id": "candidate-publication-unchanged-100",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "55072be08a2fec486e26c5e3b8e7a0923106f77628a8ca116bb94d6007a145e5",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 210, 'rowsWritten': 0, 'sqlStatements': 1, 'd1Calls': 1} -> {'rowsRead': 411, 'rowsWritten': 0, 'sqlStatements': 2, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-100",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "c5db3079c188d320b1792c508a3c082b90e6fb4bca552c56e7047c269a856b2f",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 709, 'rowsWritten': 451, 'sqlStatements': 1, 'd1Calls': 1} -> {'rowsRead': 610, 'rowsWritten': 250, 'sqlStatements': 2, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-100",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1ed36d7753e1709e065c4b59270c0f40fb55e697d887a8914a2a7315c7e136f5",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 215, 'rowsWritten': 6, 'sqlStatements': 1, 'd1Calls': 1} -> {'rowsRead': 416, 'rowsWritten': 6, 'sqlStatements': 2, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-100",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "347985def4319fbc2475bc5033ec70a0d3a273e9686d28d69c3ed8a5fcefbd08",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 803, 'rowsWritten': 446, 'sqlStatements': 1, 'd1Calls': 1} -> {'rowsRead': 1004, 'rowsWritten': 446, 'sqlStatements': 2, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-unchanged-1000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "d7d6adf5da6f19f292163ebb82b63fc5428f03b746da04f9d2579e88ebfa427c",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 2100, 'rowsWritten': 0, 'sqlStatements': 10, 'd1Calls': 1} -> {'rowsRead': 4110, 'rowsWritten': 0, 'sqlStatements': 20, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-1000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "aadffa09029f3770e402f0871a593b59ccf70a3e3976c231c847e849d7dded85",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 7090, 'rowsWritten': 4510, 'sqlStatements': 10, 'd1Calls': 1} -> {'rowsRead': 6100, 'rowsWritten': 2500, 'sqlStatements': 20, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-1000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "22e6db610ecd2cc90cbc299b39b1709162430f5a040383211c3fd7ce33ab2aa4",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 2150, 'rowsWritten': 60, 'sqlStatements': 10, 'd1Calls': 1} -> {'rowsRead': 4160, 'rowsWritten': 60, 'sqlStatements': 20, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-1000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "b84cc0f579cbf3cb5e51c3551f47703ec719051d057d12621c64f0b97d0b08f1",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 8030, 'rowsWritten': 4460, 'sqlStatements': 10, 'd1Calls': 1} -> {'rowsRead': 10040, 'rowsWritten': 4460, 'sqlStatements': 20, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-unchanged-10000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "e1aa6f68c18ad7f2cb0e77bc717e07b72e10140c5e2ae6d13375ec2f17bc2b66",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 21000, 'rowsWritten': 0, 'sqlStatements': 100, 'd1Calls': 1} -> {'rowsRead': 41100, 'rowsWritten': 0, 'sqlStatements': 200, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-10000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "7e3110ff7144fc8bad5b763ba419c1d1d6cfc14305196f222f7768cde6d11203",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 70900, 'rowsWritten': 45100, 'sqlStatements': 100, 'd1Calls': 1} -> {'rowsRead': 61000, 'rowsWritten': 25000, 'sqlStatements': 200, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-10000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "6bf67f7e7ba1c689c97faefc1da4ba5f73ae084a336ff6afef2bd19dce25d104",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 21500, 'rowsWritten': 600, 'sqlStatements': 100, 'd1Calls': 1} -> {'rowsRead': 41600, 'rowsWritten': 600, 'sqlStatements': 200, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-10000",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "75ecc0f3dcafc84d24416edd98837fd4b814b337c96e34ac0c1ba7bd8bd7ffe9",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "reason": "Reviewed initial real-workerd publication sample. Exact same fixture on clean pre-optimization 66a4ae61 and candidate d7b4d227: {'rowsRead': 80300, 'rowsWritten': 44600, 'sqlStatements': 100, 'd1Calls': 1} -> {'rowsRead': 100400, 'rowsWritten': 44600, 'sqlStatements': 200, 'd1Calls': 1}. Base main does not contain this new measurement, so this accepts an initial sample, not a missing baseline test. Existing budgets and samples are unchanged. Timestamp precision, first discovery, manual ignore, attributes and completed refresh replay are asserted. Extra indexed reads and twice the statements within the same single batch are explicit tradeoffs, with no new storage or remote calls.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "f18fda2f75d128ffa2dd9cd0b02a744e7298d5a7",
+      "beforeDigest": "dd781de43a4a78860a999397c70b2f5f7ef7596dbe934eeb1e3352bab547dfa9",
+      "afterDigest": "3782c2ad51222d5ef3552bafc3d4f3cee0e1e586f67281abbf65fd792af454f0",
+      "reason": "Register candidate-publication ownership and twelve new bounded 100/1000/10000 measurements (unchanged, timestamps, 1% attributes and many attributes). All pre-existing samples and ceilings are unchanged; clean pre-optimization same-fixture measurements, complete local verify, 335 candidate load tests, all CI existing cost comparisons and six alternating CPU sessions pass. The new accumulator replay test asserts zero repeated writes. No failing baseline is waived. See evaluations/2026-10-21-catalog-p1a.json for read/write and statement tradeoffs.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/809"
+      ]
     }
   ]
 }

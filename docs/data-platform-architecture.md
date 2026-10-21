@@ -193,6 +193,22 @@ or concurrent continuation cannot double-count a page. Temporary groups are dele
 pages after retirement. These checkpoints add bounded reads and writes; unchanged published candidate rows
 and their AUTOINCREMENT sequence remain untouched.
 
+Accumulator JSON uses deterministic property/set/map order and skips equal conflict updates without
+an extra lookup. Collection still rebuilds a generation's groups and cleans them after publication;
+every newly accumulated listing changes a count, so the equality guard is not claimed as eliminating
+that necessary rebuild. No membership table, DO or Queue is added. Candidate attribute/status
+publication retains its existing difference guard. Exact `last_seen_at` freshness is consumed by
+exports, so timestamp-only changes use a narrow UPDATE in the same fenced batch rather than day
+rounding. First discovery, source verification and listing confirmation times keep separate meanings.
+
+The mixed pending/manual-ignore fixture at 100/1,000/10,000 candidates measures unchanged,
+observation-only, one-percent and near-total attribute changes. At 10,000, observation-only writes
+fall from 45,100 to 25,000 and reads from 70,900 to 61,000. Unchanged rows still write zero; their
+reads rise from 21,000 to 41,100 because the timestamp guard is a second indexed statement per 100
+rows. Both statements share one existing batch roundtrip. Attribute-only writes remain equal. This
+bounded read/statement tradeoff is measured explicitly; it is not an account-wide billing claim.
+
+
 Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
 the pending maintenance task and its original due date, and resumes preparation before claiming a verifier rollout or recovery
 run; the ordinary hourly bootstrap no-op does not start a refresh or consume the daily date key.

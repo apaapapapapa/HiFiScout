@@ -46,15 +46,21 @@ type StoredAccumulator = Omit<
   identityRejectionReasons: [string, number][];
 };
 
-function serialize(value: KnowledgeCatalogCandidateAccumulator): string {
-  return JSON.stringify({
+export function serializeCandidateAccumulator(value: KnowledgeCatalogCandidateAccumulator): string {
+  const stored: StoredAccumulator = {
     ...value,
-    shops: [...value.shops],
-    categories: [...value.categories],
-    rawModelVariants: [...value.rawModelVariants],
-    sourceUrls: [...value.sourceUrls],
-    identityRejectionReasons: [...value.identityRejectionReasons],
-  } satisfies StoredAccumulator);
+    shops: [...value.shops].sort(),
+    categories: [...value.categories].sort(),
+    rawModelVariants: [...value.rawModelVariants].sort(),
+    sourceUrls: [...value.sourceUrls].sort(),
+    identityRejectionReasons: [...value.identityRejectionReasons].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    ),
+  };
+  // Stored sets/maps and caller object property order must not create a semantic difference.
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(stored).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+  );
 }
 
 function deserialize(row: GroupRow): KnowledgeCatalogCandidateAccumulator {
@@ -133,9 +139,12 @@ async function collectPage(db: QueryableDatabase, state: RefreshState): Promise<
           .prepare(`INSERT INTO knowledge_catalog_candidate_refresh_groups(candidate_key, accumulator_json)
       SELECT json_extract(payload.value, '$[0]'), json_extract(payload.value, '$[1]')
       FROM json_each(?) payload WHERE ${guardSql}
-      ON CONFLICT(candidate_key) DO UPDATE SET accumulator_json = excluded.accumulator_json`)
+      ON CONFLICT(candidate_key) DO UPDATE SET accumulator_json = excluded.accumulator_json
+      WHERE knowledge_catalog_candidate_refresh_groups.accumulator_json IS NOT excluded.accumulator_json`)
           .bind(
-            JSON.stringify([...grouped].map(([key, value]) => [key, serialize(value)])),
+            JSON.stringify(
+              [...grouped].map(([key, value]) => [key, serializeCandidateAccumulator(value)]),
+            ),
             state.generation,
             state.revision,
           ),

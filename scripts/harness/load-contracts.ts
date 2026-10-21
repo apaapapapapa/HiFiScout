@@ -265,6 +265,29 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Duplicate pages for the admin screen and the finalizer's convergence pass read the trigger-maintained bucket projection; unrelated verified singletons add no reads and the page writes nothing.",
   },
   {
+    id: "catalog-candidate-publication",
+    sources: [
+      "src/db/knowledge-catalog-candidate-refresh.ts",
+      "src/db/knowledge-catalog-review-repository.ts",
+    ],
+    suites: [
+      "test/knowledge-catalog-candidate-write-budget.test.ts",
+      "test/knowledge-catalog-accumulator-diff.test.ts",
+      "test/knowledge-catalog-candidate-diff.test.ts",
+      "test/knowledge-catalog-candidate-refresh.test.ts",
+    ],
+    samples: Object.fromEntries(
+      [100, 1000, 10000].flatMap((size) => [
+        [`candidate-publication-unchanged-${size}`, d1(5 * size, 0, (2 * size) / 100)],
+        [`candidate-publication-timestamps-${size}`, d1(7 * size, 3 * size, (2 * size) / 100)],
+        [`candidate-publication-few-changes-${size}`, d1(5 * size, 0.08 * size, (2 * size) / 100)],
+        [`candidate-publication-many-changes-${size}`, d1(11 * size, 5 * size, (2 * size) / 100)],
+      ]),
+    ),
+    reason:
+      "Unchanged candidate publication and equal accumulator replay write zero. Observation-only updates retain exact timestamps through a narrow UPDATE instead of rewriting every status/category index; two statements per 100 candidates share the existing batch roundtrip. Attribute changes, manual ignore, linked verified identities and generation fencing remain guarded. Extra unchanged reads are bounded explicitly, and no temporary membership table or new queue is introduced.",
+  },
+  {
     id: "catalog-verification-queue",
     sources: [
       "src/db/knowledge-catalog-verification-queue-repository.ts",
