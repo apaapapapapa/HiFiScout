@@ -117,9 +117,11 @@ export async function listPendingKnowledgeCatalogCandidates(
     : null;
   if (supported && !supported.length) return [];
   const manufacturerFilter = supported
-    ? ` AND manufacturer_id IN (${supported.map(() => "?").join(", ")})`
+    ? ` AND manufacturer_id IN (SELECT value FROM json_each(?))`
     : "";
-  const params = supported ? [...supported, boundedLimit(limit)] : [boundedLimit(limit)];
+  const params = supported
+    ? [JSON.stringify(supported), boundedLimit(limit)]
+    : [boundedLimit(limit)];
   const retryOrder = preferRetries
     ? `CASE WHEN last_verification_at IS NULL THEN 1 ELSE 0 END,
        COALESCE(last_verification_at, '') DESC`

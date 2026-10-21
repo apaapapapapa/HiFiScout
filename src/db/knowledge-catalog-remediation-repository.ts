@@ -24,6 +24,19 @@ const LOOKUP_CHUNK_SIZE = 50;
 const WRITE_BATCH_SIZE = 50;
 const MODEL_RESOLUTION_STATUSES = ["resolved", "candidate", "unresolved"] as const;
 
+/** D1 allows at most five terms per compound, including compounds nested in another SELECT.
+ * Keep the indexed, independently limited streams; grouping them does not widen any scan or
+ * add a round trip. A six-model page has eighteen streams and ninety-one bindings.
+ */
+function boundedUnion(streams: readonly string[]): string {
+  if (streams.length <= 5) return streams.join(" UNION ALL ");
+  const groups: string[] = [];
+  for (let offset = 0; offset < streams.length; offset += 5) {
+    groups.push(`SELECT * FROM (${boundedUnion(streams.slice(offset, offset + 5))})`);
+  }
+  return boundedUnion(groups);
+}
+
 export interface CatalogRemediationTarget {
   catalogProductId: number;
   manufacturerId: string;
@@ -225,8 +238,8 @@ export async function selectListingsForCatalogRemediation(
       .flatMap((identityModel) =>
         MODEL_RESOLUTION_STATUSES.map((status) => ({ identityModel, status })),
       );
-    const candidates = streams
-      .map(
+    const candidates = boundedUnion(
+      streams.map(
         () => `SELECT * FROM (
           SELECT id, shop_key, source_id
           FROM products INDEXED BY idx_products_exact_identity
@@ -237,8 +250,8 @@ export async function selectListingsForCatalogRemediation(
           ORDER BY id
           LIMIT ?
         )`,
-      )
-      .join(" UNION ALL ");
+      ),
+    );
     const bindings = streams.flatMap(({ identityModel, status }) => [
       target.manufacturerId,
       identityModel,

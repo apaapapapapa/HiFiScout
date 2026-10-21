@@ -241,6 +241,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/maintenance-read-budget.test.ts",
       "test/remediation-query-plans.test.ts",
       "test/catalog-remediation-backlog-budget.test.ts",
+      "test/knowledge-catalog-remediation-limit.test.ts",
     ],
     samples: Object.fromEntries([
       ...[100, 1000, 10000].map((size) => [`catalog-remediation-${size}`, d1(60, 0, 1)]),
@@ -268,12 +269,21 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     sources: [
       "src/db/knowledge-catalog-verification-queue-repository.ts",
       "src/knowledge-catalog/consumer.ts",
+      "src/knowledge-catalog/dispatch.ts",
+      "src/knowledge-catalog/types.ts",
+      "src/db/knowledge-catalog-candidate-refresh.ts",
+      "src/db/knowledge-catalog-review-repository.ts",
+      "src/db/knowledge-catalog-verification-repository.ts",
     ],
     suites: [
       "test/knowledge-catalog-verification-claim-budget.test.ts",
       "test/knowledge-catalog-verification-claim-equivalence.test.ts",
       "test/knowledge-catalog-verification-queue-behavior.test.ts",
       "test/knowledge-catalog-run-wakeup.test.ts",
+      "test/knowledge-catalog-candidate-refresh.test.ts",
+      "test/knowledge-catalog-verification-dispatch.test.ts",
+      "test/knowledge-catalog-candidate-selection.test.ts",
+      "test/knowledge-catalog-stranded-review-run.test.ts",
       "test/control-plane-query-plans.test.ts",
     ],
     samples: Object.fromEntries([

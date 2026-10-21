@@ -89,12 +89,16 @@ export interface KnowledgeCatalogQueueEnv extends KnowledgeCatalogConfigEnv {
 
 export interface DispatchOptions {
   now?: Date;
+  /** Original scheduled UTC date; continuations keep this date after midnight. */
+  requestKey?: string;
   /** Prefers candidates that already failed once, for a retry-focused run. */
   preferRetries?: boolean;
   /** Non-zero while a verifier rollout is in flight, so finalization can close it out. */
   verifierVersion?: number;
   /** Existing atomically-claimed run row used only by failed-run recovery. */
   runId?: number;
+  /** Failed predecessor whose sealed target snapshot/outcomes survive finalizer recovery. */
+  recoveryOfRunId?: number;
 }
 
 export interface DispatchRunOptions extends DispatchOptions {

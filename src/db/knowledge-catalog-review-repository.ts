@@ -1,4 +1,5 @@
 import { knowledgeCatalogKey } from "../catalog/knowledge-catalog.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { ScoredKnowledgeCatalogCandidate } from "../catalog/types.js";
 import type {
   KnowledgeCatalogReviewRunRow,
@@ -269,6 +270,39 @@ export async function startKnowledgeCatalogReviewRun(
   return run.meta.last_row_id;
 }
 
+/** An interrupted scheduled dispatch reuses its run, including already completed targets. */
+export async function claimScheduledKnowledgeCatalogReviewRun(
+  db: QueryableDatabase,
+  input: { key: string; generation: string; targetDate: string; startedAt: string; runId?: number },
+): Promise<{ id: number; status: string; ready: boolean }> {
+  if (input.runId) {
+    await db
+      .prepare(`UPDATE knowledge_catalog_review_runs
+      SET dispatch_key = ?, candidate_generation = ?, target_date = ?
+      WHERE id = ? AND dispatch_key IS NULL AND status = 'running'`)
+      .bind(input.key, input.generation, input.targetDate, input.runId)
+      .run();
+  } else {
+    await db
+      .prepare(`INSERT INTO knowledge_catalog_review_runs
+      (started_at, status, dispatch_key, candidate_generation, target_date)
+      SELECT ?, 'running', ?, ?, ?
+      WHERE NOT EXISTS (SELECT 1 FROM knowledge_catalog_review_runs WHERE dispatch_key = ?)`)
+      .bind(input.startedAt, input.key, input.generation, input.targetDate, input.key)
+      .run();
+  }
+  const run = await firstMeasured<{ id: number; status: string; ready: number }>(
+    db
+      .prepare(`
+    SELECT id, status, EXISTS(SELECT 1 FROM knowledge_catalog_verification_jobs
+      WHERE run_id = r.id AND job_type = 'finalize') AS ready
+    FROM knowledge_catalog_review_runs r WHERE dispatch_key = ?`)
+      .bind(input.key),
+  );
+  if (!run) throw new Error("knowledge_catalog_dispatch_claim_missing");
+  return { id: Number(run.id), status: run.status, ready: Boolean(run.ready) };
+}
+
 export async function latestKnowledgeCatalogReviewRunState(
   db: QueryableDatabase,
 ): Promise<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message" | "started_at"> | null> {
@@ -276,7 +310,10 @@ export async function latestKnowledgeCatalogReviewRunState(
   // run has no timestamp of its own to age against.
   return db
     .prepare(
-      "SELECT id, status, message, started_at FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1",
+      `SELECT id, status, message, started_at FROM knowledge_catalog_review_runs
+       WHERE id = COALESCE(
+         (SELECT MAX(id) FROM knowledge_catalog_review_runs WHERE status = 'running'),
+         (SELECT MAX(id) FROM knowledge_catalog_review_runs))`,
     )
     .first<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message" | "started_at">>();
 }

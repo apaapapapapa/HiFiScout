@@ -10,8 +10,6 @@ import type {
   QueryableDatabase,
 } from "./types.js";
 
-const WRITE_BATCH_SIZE = 50;
-
 /**
  * Run-scoped selectors seek `(run_id, status IN live)` and `(run_id, job_type IN targets, status)`
  * instead of filtering a run's whole history. `job_type <> 'finalize'` and an OR across statuses
@@ -141,12 +139,6 @@ function addMilliseconds(iso: string, milliseconds: number): string {
   return new Date(new Date(iso).getTime() + Math.max(0, Number(milliseconds) || 0)).toISOString();
 }
 
-async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement[]): Promise<void> {
-  for (let index = 0; index < statements.length; index += WRITE_BATCH_SIZE) {
-    await db.batch(statements.slice(index, index + WRITE_BATCH_SIZE));
-  }
-}
-
 function number(value: unknown): number {
   return Number(value || 0);
 }
@@ -185,30 +177,34 @@ export async function createKnowledgeCatalogVerificationJobs(
   jobs: readonly KnowledgeCatalogVerificationJobSpec[],
   enqueuedAt: string,
 ): Promise<KnowledgeCatalogVerificationJob[]> {
-  const statements = jobs.map((job) =>
-    db
-      .prepare(`
+  const orderedJobs = [
+    ...jobs.filter((job) => job.jobType !== "finalize"),
+    ...jobs.filter((job) => job.jobType === "finalize"),
+  ];
+  const statements: D1PreparedStatement[] = [];
+  for (let offset = 0; offset < orderedJobs.length; offset += 100) {
+    statements.push(
+      db
+        .prepare(`
         INSERT INTO knowledge_catalog_verification_jobs (
           run_id, job_key, job_type, target_id, manufacturer_id, hostname, status,
           enqueued_at, available_at, payload_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
-        ON CONFLICT(job_key) DO NOTHING
+        ) SELECT ?1, json_extract(j.value,'$.jobKey'), json_extract(j.value,'$.jobType'),
+          json_extract(j.value,'$.targetId'), COALESCE(json_extract(j.value,'$.manufacturerId'),''),
+          COALESCE(json_extract(j.value,'$.hostname'),''), 'queued', ?2, ?2,
+          json_extract(j.value,'$.payloadJson'), ?2, ?2
+        FROM json_each(?3) j
+        WHERE NOT EXISTS (SELECT 1 FROM knowledge_catalog_verification_jobs existing
+          WHERE existing.job_key = json_extract(j.value,'$.jobKey'))
+          AND NOT EXISTS (SELECT 1 FROM knowledge_catalog_verification_jobs sealed
+            WHERE sealed.run_id = ?1 AND sealed.job_type = 'finalize')
       `)
-      .bind(
-        runId,
-        job.jobKey,
-        job.jobType,
-        job.targetId ?? null,
-        job.manufacturerId || "",
-        job.hostname || "",
-        enqueuedAt,
-        enqueuedAt,
-        job.payloadJson,
-        enqueuedAt,
-        enqueuedAt,
-      ),
-  );
-  await runBatches(db, statements);
+        .bind(runId, enqueuedAt, JSON.stringify(orderedJobs.slice(offset, offset + 100))),
+    );
+  }
+  // The finalizer is the durable completion marker for dispatch. No partial batch may expose it
+  // or leave a prefix of targets; 2,000 targets require only 21 three-binding statements.
+  if (statements.length) await db.batch(statements);
   const result = await db
     .prepare(`
       SELECT *
@@ -221,6 +217,55 @@ export async function createKnowledgeCatalogVerificationJobs(
   return (result.results || [])
     .map((row) => jobFromRow(row))
     .filter((job): job is KnowledgeCatalogVerificationJob => job !== null);
+}
+
+/**
+ * Carry a sealed failed run forward without verifying its completed targets again. The predecessor
+ * remains the failure receipt; the successor owns fresh claims only for abandoned work/finalization.
+ * Old Workers' partially inserted, unsealed runs fall back to ordinary target selection.
+ */
+export async function inheritKnowledgeCatalogVerificationJobs(
+  db: QueryableDatabase,
+  runId: number,
+  predecessorId: number,
+  enqueuedAt: string,
+): Promise<boolean> {
+  const sealed = `EXISTS (SELECT 1 FROM knowledge_catalog_verification_jobs
+    WHERE run_id = ?2 AND job_type = 'finalize')`;
+  const unsealed = `NOT EXISTS (SELECT 1 FROM knowledge_catalog_verification_jobs
+    WHERE run_id = ?1 AND job_type = 'finalize')`;
+  const retained = `old.job_type <> 'finalize' AND old.status IN ('completed','dead_letter')
+    AND old.last_message NOT LIKE 'abandoned_after_failed_run:%'`;
+  const result = await db.batch([
+    db
+      .prepare(`UPDATE knowledge_catalog_review_runs
+      SET candidate_generation = (SELECT candidate_generation FROM knowledge_catalog_review_runs WHERE id=?2),
+          target_date = (SELECT target_date FROM knowledge_catalog_review_runs WHERE id=?2),
+          active_products_before = (SELECT active_products_before FROM knowledge_catalog_review_runs WHERE id=?2),
+          unclassified_before = (SELECT unclassified_before FROM knowledge_catalog_review_runs WHERE id=?2),
+          other_before = (SELECT other_before FROM knowledge_catalog_review_runs WHERE id=?2)
+      WHERE id=?1 AND status='running' AND ${sealed} AND ${unsealed}`)
+      .bind(runId, predecessorId),
+    db
+      .prepare(`INSERT INTO knowledge_catalog_verification_jobs
+      (run_id,job_key,job_type,target_id,manufacturer_id,hostname,status,outcome,
+       delivery_attempts,source_attempts,promoted,rechecked,enqueued_at,available_at,finished_at,
+       last_message,payload_json,created_at,updated_at)
+      SELECT ?1, 'knowledge-catalog:'||?1||':'||old.job_type||
+        CASE WHEN old.job_type='finalize' THEN '' ELSE ':'||old.target_id END,
+        old.job_type,old.target_id,old.manufacturer_id,old.hostname,
+        CASE WHEN ${retained} THEN old.status ELSE 'queued' END,
+        CASE WHEN ${retained} THEN old.outcome ELSE '' END,
+        0,old.source_attempts,old.promoted,old.rechecked,?3,?3,
+        CASE WHEN ${retained} THEN old.finished_at ELSE NULL END,
+        CASE WHEN ${retained} THEN old.last_message ELSE 'resumed_failed_run:'||?2 END,
+        old.payload_json,?3,?3
+      FROM knowledge_catalog_verification_jobs old
+      WHERE old.run_id=?2 AND ${sealed} AND ${unsealed}
+      ORDER BY old.job_type='finalize', old.id`)
+      .bind(runId, predecessorId, enqueuedAt),
+  ]);
+  return Number(result[1]?.meta?.changes || 0) > 0;
 }
 
 /**
@@ -688,7 +733,9 @@ export async function setKnowledgeCatalogReviewRunQueueBaseline(
           unclassified_before = ?,
           other_before = ?,
           message = ?
-      WHERE id = ?
+      WHERE id = ? AND status = 'running'
+        AND NOT EXISTS (SELECT 1 FROM knowledge_catalog_verification_jobs sealed
+          WHERE sealed.run_id = knowledge_catalog_review_runs.id AND sealed.job_type = 'finalize')
     `)
     .bind(
       baseline.activeProducts || 0,

@@ -214,8 +214,8 @@ test("daily and monthly maintenance piggyback on the five-minute general cron", 
   assert.match(schedulerSource, /isKnowledgeCatalogMonthlySlot\(at\)/);
   assert.match(schedulerSource, /name: "daily_retention"/);
   assert.match(schedulerSource, /runRetentionCleanup\(env, \{ now \}\)/);
-  assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env, \{ now \}\)/);
-  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env, \{ now \}\)/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env, \{/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env, \{/);
 });
 
 test("large item-count drops are rejected only after a meaningful baseline", () => {
