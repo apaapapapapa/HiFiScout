@@ -81,6 +81,7 @@ test("a fresh isolate reads the persisted snapshot instead of scanning every ali
           JSON.stringify({ sample: `manufacturer-alias-rebuild-${size}`, ...rebuildCost }),
         );
         assert.equal(rebuildCost.rowsWritten, 1, JSON.stringify(rebuildCost));
+        assert.equal(rebuildCost.sqlStatements, 3, "no more round trips than the former load");
       }
 
       const reuse = measureD1Cost(db);
@@ -89,10 +90,10 @@ test("a fresh isolate reads the persisted snapshot instead of scanning every ali
       assert.deepEqual(reused, built, "the snapshot returns exactly what the scan returned");
       const sample = `manufacturer-alias-fresh-isolate-${size}`;
       await recordCostSample(sample, "local-workerd", reuseCost, fixture, [
-        `A fresh isolate's alias evidence with ${stored} aliases stored: the clock and one snapshot row.`,
+        `A fresh isolate's alias evidence with ${stored} aliases stored: the clock and its snapshot row in one statement.`,
       ]);
       console.log(JSON.stringify({ sample, ...reuseCost }));
-      assert.equal(reuseCost.sqlStatements, 2);
+      assert.equal(reuseCost.sqlStatements, 1);
       assert.equal(reuseCost.rowsWritten, 0);
       assert.ok(reuseCost.rowsRead !== null && reuseCost.rowsRead <= 3, JSON.stringify(reuseCost));
       assert.ok(
@@ -137,6 +138,32 @@ test("snapshot reuse returns the scan's evidence and follows every resolver-visi
     assert.ok(final.every((alias) => alias.canonicalName !== "Snap Brand"));
     assert.ok(final.some((alias) => alias.manufacturerId === "snap-hidden"));
     assert.ok(!final.some((alias) => alias.shopKey === "shop-a"));
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a warm isolate behind an edit adopts another isolate's snapshot without scanning", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    sqlite.exec(seedSql(20));
+    const warm = await freshIsolate();
+    await warm(db);
+    sqlite.exec(
+      "UPDATE knowledge_catalog_manufacturer_aliases SET rule_version=9 WHERE normalized_alias='snapalias00003'",
+    );
+    const rebuilt = await (await freshIsolate())(db);
+    assert.ok(snapshotRow(sqlite)?.current);
+
+    let statements = 0;
+    const counted = preparing(db, () => {
+      statements += 1;
+    });
+    assert.deepEqual(await warm(counted), rebuilt);
+    assert.equal(statements, 1, "the revision and the new snapshot arrive in one statement");
+    statements = 0;
+    assert.deepEqual(await warm(counted), rebuilt);
+    assert.equal(statements, 1, "and are then reused from the isolate");
   } finally {
     sqlite.close();
   }
@@ -265,6 +292,34 @@ test("alias evidence survives a missing snapshot table and a failed snapshot wri
 
     sqlite.exec("DROP TABLE manufacturer_alias_evidence_snapshot");
     assert.deepEqual(await (await freshIsolate())(db), expected, "schemas before 0140 still scan");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a snapshot over the UTF-8 byte limit is left unstored rather than failing every write", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    // About 360,000 characters: below the limit in UTF-16 code units, above it in UTF-8 bytes.
+    sqlite.exec(`
+      INSERT INTO knowledge_catalog_manufacturers(
+        id,canonical_name,verification_status,source,created_at,updated_at
+      ) VALUES ('wide-brand','ワイド','verified','test','2026','2026');
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<120)
+      INSERT INTO knowledge_catalog_manufacturer_aliases(
+        manufacturer_id,alias,normalized_alias,verification_status,source,created_at,updated_at
+      ) SELECT 'wide-brand', replace(printf('%3000s', ''), ' ', 'あ'), printf('wide%04d', i),
+               'verified', 'test', '2026', '2026' FROM n;
+    `);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const evidence = await (await freshIsolate())(db);
+      assert.equal(evidence.filter((alias) => alias.manufacturerId === "wide-brand").length, 120);
+      assert.equal(snapshotRow(sqlite), undefined);
+      assert.equal(errors.mock.calls.length, 0, "the oversized write is never attempted");
+    } finally {
+      errors.mockRestore();
+    }
   } finally {
     sqlite.close();
   }

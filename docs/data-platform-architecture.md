@@ -705,12 +705,14 @@ Fuzzy matching never auto-links a listing. It can only produce a low-confidence 
 
 Step 1 and the model resolver read the resolver-visible manufacturer alias evidence through
 `listManufacturerAliasEvidence`. An isolate reuses its in-memory copy while the trigger-maintained
-`admin_manufacturer_registry_clock` shows the same generation and version. A fresh isolate, such
-as the Durable Object of a crawl, reads `manufacturer_alias_evidence_snapshot` instead: one row
-holding the evidence columns, valid only for the clock's current generation and version and the
-deployed query definition. The first fresh isolate after a resolver-visible edit or a changed
-query scans every alias and stores the result once, and only when both clock reads around the
-scan and the clock at write time agree. A failed write leaves that invocation's evidence intact.
+`admin_manufacturer_registry_clock` shows the same generation and version. An isolate without that
+revision -- a fresh one, such as the Durable Object of a crawl, or one that saw an edit -- reads
+`manufacturer_alias_evidence_snapshot` in the same statement: one row holding the evidence columns,
+valid only for the clock's current generation and version and the deployed query definition. Only
+while no such snapshot is stored does a load scan every alias. Its write is conditional on the clock
+still showing the scanned revision, which also proves no edit overtook the scan, so a rebuild costs
+no more round trips than the former load; concurrent rebuilds of one revision store it once. A
+failed write leaves that invocation's evidence intact and falls back to confirming the revision.
 The registry triggers are the snapshot's only invalidation, so a migration that rewrites alias or
 manufacturer rows without firing them must advance the clock as well. Logical backups omit the
 snapshot like the clock; the restored database rebuilds it.

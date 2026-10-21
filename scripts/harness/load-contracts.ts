@@ -381,13 +381,13 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/manufacturer-repository.test.ts",
     ],
     samples: {
-      "manufacturer-alias-fresh-isolate-100": d1(5, 0, 2),
-      "manufacturer-alias-fresh-isolate-1000": d1(5, 0, 2),
-      // 1,104 stored aliases: the clock twice, the snapshot probe, the full scan and one write.
-      "manufacturer-alias-rebuild-1000": d1(3700, 1, 5),
+      "manufacturer-alias-fresh-isolate-100": d1(5, 0, 1),
+      "manufacturer-alias-fresh-isolate-1000": d1(5, 0, 1),
+      // 1,136 stored aliases: the revision with its absent snapshot, the full scan, one write.
+      "manufacturer-alias-rebuild-1000": d1(3700, 1, 3),
     },
     reason:
-      "A fresh isolate reads resolver-visible alias evidence from one persisted snapshot row keyed by the trigger-maintained registry clock and the query definition, so its cost does not grow with the alias tables. Only the first fresh isolate after a resolver-visible edit or a changed query scans every alias, its table row and its manufacturer, and stores the result once.",
+      "A fresh isolate reads resolver-visible alias evidence from one persisted snapshot row keyed by the trigger-maintained registry clock and the query definition, so its cost does not grow with the alias tables. Only while no snapshot of the current revision and query is stored does a load scan every alias, its table row and its manufacturer; the first conditional write stores it, in no more round trips than the former load.",
   },
   {
     id: "retention-and-schema",

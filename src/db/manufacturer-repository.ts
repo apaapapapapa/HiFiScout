@@ -12,6 +12,7 @@ import type {
   ModelResolutionResult,
 } from "../catalog/types.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { InvocationBudgetExceeded } from "./invocation-budget.js";
 import { firstMeasured } from "./read-accounting.js";
 import { remediationEventStatement } from "./remediation-event-repository.js";
 import type {
@@ -66,8 +67,8 @@ type AliasEvidenceRow = Pick<
   (typeof ALIAS_EVIDENCE_COLUMNS)[number]
 >;
 
-/** A string longer than this is left uncached rather than approaching D1's 2 MB row limit. */
-const MAX_ALIAS_SNAPSHOT_CHARACTERS = 1_000_000;
+/** A larger UTF-8 payload is left uncached rather than approaching D1's 2,000,000-byte row limit. */
+const MAX_ALIAS_SNAPSHOT_BYTES = 1_000_000;
 
 /** 32-bit FNV-1a, enough to tell one deployed alias query from another. */
 function fnv1a(value: string): string {
@@ -295,45 +296,68 @@ function snapshotRows(rowsJson: unknown): AliasEvidenceRow[] | null {
   return rows;
 }
 
-async function readPersistedAliasRows(
-  db: ReadableDatabase,
-  revision: ManufacturerAliasRevision,
-): Promise<AliasEvidenceRow[] | null> {
-  let row: { rows_json: string } | null;
-  try {
-    row = await firstMeasured<{ rows_json: string }>(
-      db
-        .prepare(`
-          SELECT rows_json FROM manufacturer_alias_evidence_snapshot
-          WHERE id = 1 AND generation = ? AND version = ? AND definition = ?
-        `)
-        .bind(revision.generation, revision.version, ALIAS_EVIDENCE_DEFINITION),
-    );
-  } catch (error) {
-    if (isSnapshotSchemaMissing(error)) return null;
-    throw error;
-  }
-  return row ? snapshotRows(row.rows_json) : null;
+interface AliasEvidenceHead {
+  revision: ManufacturerAliasRevision | null;
+  /** The persisted rows for `revision`; only read when the isolate's cache is not current. */
+  rowsJson: string | null;
 }
 
 /**
- * Persist rows read entirely within one registry revision. The write lands only while the clock
- * still shows that revision, so a concurrent edit can never be filed under it, and it is skipped
- * when an identical snapshot is already stored; a malformed one is replaced. Persisting is an
- * optimization: a failed write,
- * such as an exhausted write quota, leaves this invocation's evidence untouched.
+ * The registry revision and, unless the isolate already holds that revision, its persisted
+ * snapshot: one round trip either way. `CASE` skips the snapshot row on a current cache.
+ */
+async function aliasEvidenceHead(
+  db: ReadableDatabase,
+  cached: ManufacturerAliasRevision | null,
+): Promise<AliasEvidenceHead> {
+  type HeadRow = { generation: string; version: number; rows_json: string | null };
+  let row: HeadRow | null;
+  try {
+    row = await firstMeasured<HeadRow>(
+      db
+        .prepare(`
+          SELECT c.generation, c.version,
+            CASE WHEN c.generation = ?1 AND c.version = ?2 THEN NULL ELSE (
+              SELECT s.rows_json FROM manufacturer_alias_evidence_snapshot s
+              WHERE s.id = 1 AND s.generation = c.generation AND s.version = c.version
+                AND s.definition = ?3
+            ) END AS rows_json
+          FROM admin_manufacturer_registry_clock c
+          WHERE c.id = 1
+        `)
+        .bind(cached?.generation ?? "", cached?.version ?? -1, ALIAS_EVIDENCE_DEFINITION),
+    );
+  } catch (error) {
+    // Before migration 0140 (or 0134) the revision alone is read, with its own fallback.
+    if (!/no such (?:table|column)/u.test(String(error))) throw error;
+    return { revision: await manufacturerAliasRevision(db), rowsJson: null };
+  }
+  const generation = String(row?.generation || "");
+  const version = Number(row?.version);
+  return generation && Number.isSafeInteger(version) && version >= 0
+    ? { revision: { generation, version }, rowsJson: row?.rows_json ?? null }
+    : { revision: null, rowsJson: null };
+}
+
+/**
+ * Persist rows scanned under `revision`. The write lands only while the clock still shows that
+ * revision; the clock only advances, so a landed write also proves that no edit preceded the scan
+ * and the rows may be cached. It is skipped when an identical snapshot is already stored and
+ * replaces a malformed one. `true` means it landed, `false` that the revision moved or the row
+ * was already current, and `null` that no write was attempted or it failed (an exhausted write
+ * quota, an oversized payload): persisting is an optimization that never fails the evidence read.
  */
 async function persistAliasRows(
   db: ReadableDatabase,
   revision: ManufacturerAliasRevision,
   rows: readonly AliasEvidenceRow[],
-): Promise<void> {
+): Promise<boolean | null> {
   const rowsJson = JSON.stringify(
     rows.map((row) => ALIAS_EVIDENCE_COLUMNS.map((column) => row[column] ?? null)),
   );
-  if (rowsJson.length > MAX_ALIAS_SNAPSHOT_CHARACTERS) return;
+  if (new TextEncoder().encode(rowsJson).byteLength > MAX_ALIAS_SNAPSHOT_BYTES) return null;
   try {
-    await db
+    const result = await db
       .prepare(`
         INSERT INTO manufacturer_alias_evidence_snapshot(
           id, generation, version, definition, rows_json, built_at
@@ -362,14 +386,19 @@ async function persistAliasRows(
         new Date().toISOString(),
       )
       .run();
+    return Number(result.meta?.changes || 0) > 0;
   } catch (error) {
-    if (isSnapshotSchemaMissing(error)) return;
-    console.error(
-      JSON.stringify({
-        event: "manufacturer_alias_snapshot_persist_failed",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    // A cooperative budget stop must reach the scheduler, not be mistaken for a lost optimization.
+    if (error instanceof InvocationBudgetExceeded) throw error;
+    if (!isSnapshotSchemaMissing(error)) {
+      console.error(
+        JSON.stringify({
+          event: "manufacturer_alias_snapshot_persist_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+    return null;
   }
 }
 
@@ -378,26 +407,25 @@ async function persistAliasRows(
  *
  * Alias and canonical-manufacturer edits advance the existing administrative registry clock.
  * Isolate cache hits therefore cost one singleton lookup instead of scanning and returning every
- * alias. A fresh isolate next reads the persisted snapshot for the current revision: one more
- * row instead of every alias, its table row and its manufacturer. Only the first fresh isolate
- * after an edit, or after a deploy that changes the query, scans; it stores the result for the
- * isolates that follow. A second revision read prevents a concurrent edit from making a partially
- * stale scan reusable; that invocation still gets the same point-in-time result the old query
- * would have returned, while the next invocation reloads it.
+ * alias. An isolate without the current revision -- a fresh one, such as a crawl's Durable
+ * Object, or one that saw an edit -- gets the persisted snapshot for that revision in the same
+ * round trip. Only while no snapshot of the current revision and query is stored does a load scan;
+ * the first conditional write stores it for the isolates that follow, and costs no more round
+ * trips than the former confirming revision read. A scan that a concurrent edit may have
+ * overtaken is never cached: that invocation still gets the same point-in-time result the old
+ * query would have returned, while the next invocation reloads it. The read may therefore issue
+ * one best-effort conditional write.
  */
 export async function listManufacturerAliasEvidence(
   db: ReadableDatabase,
 ): Promise<ManufacturerAliasEvidence[]> {
-  const before = await manufacturerAliasRevision(db);
-  if (
-    before &&
-    manufacturerAliasCache?.generation === before.generation &&
-    manufacturerAliasCache.version === before.version
-  ) {
-    return manufacturerAliasCache.aliases.slice();
+  const cached = manufacturerAliasCache;
+  const { revision: before, rowsJson } = await aliasEvidenceHead(db, cached);
+  if (before && cached?.generation === before.generation && cached.version === before.version) {
+    return cached.aliases.slice();
   }
 
-  const persisted = before ? await readPersistedAliasRows(db, before) : null;
+  const persisted = before && rowsJson !== null ? snapshotRows(rowsJson) : null;
   if (before && persisted) {
     const aliases = persisted.map(aliasEvidence);
     manufacturerAliasCache = { ...before, aliases };
@@ -406,10 +434,15 @@ export async function listManufacturerAliasEvidence(
 
   const rows = await loadManufacturerAliasRows(db);
   const aliases = rows.map(aliasEvidence);
-  const after = before ? await manufacturerAliasRevision(db) : null;
-  if (before && after?.generation === before.generation && after.version === before.version) {
-    manufacturerAliasCache = { ...after, aliases };
-    await persistAliasRows(db, after, rows);
+  if (!before) return aliases.slice();
+  const stored = await persistAliasRows(db, before, rows);
+  // Without a landed write, confirm the revision as before so a write outage keeps isolate reuse.
+  const after = stored === null ? await manufacturerAliasRevision(db) : null;
+  if (
+    stored === true ||
+    (after?.generation === before.generation && after.version === before.version)
+  ) {
+    manufacturerAliasCache = { ...before, aliases };
   }
   return aliases.slice();
 }
