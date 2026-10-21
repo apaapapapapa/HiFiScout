@@ -40,12 +40,13 @@ import {
   invocationBudget,
   InvocationBudgetExceeded,
   withD1Finalization,
+  withinD1Budget,
 } from "./db/invocation-budget.js";
 import type { InvocationBudget } from "./db/invocation-budget.js";
 import {
   enqueueMaintenance,
   pendingMaintenance,
-  claimMaintenance,
+  claimMaintenanceWithDueDate,
   completeMaintenance,
   MAINTENANCE_PENDING,
 } from "./db/scheduled-maintenance-repository.js";
@@ -349,6 +350,7 @@ const STRANDED_REVIEW_RUN_MESSAGE = "knowledge_catalog_review_run_stranded_witho
 interface StrandedReviewRun {
   runId: number;
   totalJobs: number;
+  liveJobs: number;
   lastActivityAt: string;
 }
 
@@ -380,7 +382,7 @@ async function strandedKnowledgeCatalogReviewRun(
   const deliverable = liveness.liveJobs > 0 || liveness.totalJobs === 0;
   const idleFor = deliverable ? STALLED_REVIEW_RUN_MS : STRANDED_REVIEW_RUN_MS;
   if (now.getTime() - lastActivity < idleFor) return null;
-  return { runId, totalJobs: liveness.totalJobs, lastActivityAt };
+  return { runId, totalJobs: liveness.totalJobs, liveJobs: liveness.liveJobs, lastActivityAt };
 }
 
 /**
@@ -441,6 +443,19 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
     if (!stranded) {
       return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
     }
+    if (stranded.liveJobs > 0 && env.KNOWLEDGE_CATALOG_QUEUE?.send) {
+      // Queue may have accepted an earlier wake whose acknowledgement was lost, or a finalizer
+      // may have lost its continuation. Re-deliver the run, keeping terminal target results.
+      await env.KNOWLEDGE_CATALOG_QUEUE.send({
+        kind: "knowledge_catalog_run_wakeup",
+        runId: stranded.runId,
+      });
+      return {
+        status: "queued",
+        reason: "knowledge_catalog_stalled_run_rewoken",
+        runId: stranded.runId,
+      };
+    }
     // Nothing can advance this run any more, and `running` is what makes the branch above skip
     // every later tick, so leaving it would block Knowledge Catalog review forever.
     await finishKnowledgeCatalogReviewRunFailure(
@@ -472,13 +487,13 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
     }
     // Complete/resume preparation before claiming a successor run. Budget yields own no run.
     await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
-    const recoveryRunId = failedRunId
-      ? await startKnowledgeCatalogRecoveryReviewRun(env.DB, failedRunId, startedAt)
-      : null;
-    if (!recoveryRunId) {
-      return { status: "skipped", reason: "knowledge_catalog_recovery_already_claimed" };
-    }
-    try {
+    return withinD1Budget(env.DB, 11, async () => {
+      const recoveryRunId = failedRunId
+        ? await startKnowledgeCatalogRecoveryReviewRun(env.DB, failedRunId, startedAt)
+        : null;
+      if (!recoveryRunId) {
+        return { status: "skipped", reason: "knowledge_catalog_recovery_already_claimed" };
+      }
       const abandonedJobs = await deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
         env.DB,
         failedRunId,
@@ -499,20 +514,11 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
         preferRetries: true,
         verifierVersion,
         runId: recoveryRunId,
+        recoveryOfRunId: failedRunId,
       });
-    } catch (error) {
-      // A yield can occur after claiming the recovery run but before dispatch takes ownership.
-      await withD1Finalization(env.DB, () =>
-        finishKnowledgeCatalogReviewRunFailure(
-          env.DB,
-          recoveryRunId,
-          new Date().toISOString(),
-          `knowledge_catalog_recovery_dispatch_failed:${errorMessage(error)}`,
-        ),
-      );
-      throw error;
-    }
+    });
   }
+
   if (latestVerificationRunId) {
     return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
   }
@@ -632,7 +638,7 @@ export interface ScheduledWork {
    * work uses this to yield before its first write instead of repeating partial work next tick.
    */
   minimumRemainingCalls?: number;
-  run(env: Env, scheduledAt?: Date): Promise<unknown>;
+  run(env: Env, scheduledAt?: Date, dueAt?: Date): Promise<unknown>;
 }
 
 interface MaintenanceTask extends ScheduledWork {
@@ -799,12 +805,20 @@ const DAILY_TASKS: readonly ScheduledWork[] = [
   { name: "daily_projection_repair", run: (env) => repairDailyProjectionGaps(env.DB) },
   {
     name: "daily_catalog_verification",
-    run: (env, now) => dispatchKnowledgeCatalogDailyVerification(env, { now }),
+    run: (env, now, dueAt) =>
+      dispatchKnowledgeCatalogDailyVerification(env, {
+        now,
+        requestKey: dueAt?.toISOString().slice(0, 10),
+      }),
   },
 ];
 const MONTHLY_TASK: ScheduledWork = {
   name: "knowledge_catalog_monthly_recheck",
-  run: (env, now) => dispatchKnowledgeCatalogMonthlyRecheck(env, { now }),
+  run: (env, now, dueAt) =>
+    dispatchKnowledgeCatalogMonthlyRecheck(env, {
+      now,
+      requestKey: dueAt?.toISOString().slice(0, 10),
+    }),
 };
 const ALL_MAINTENANCE = [...MAINTENANCE_TASKS, ...DAILY_TASKS, MONTHLY_TASK];
 
@@ -838,15 +852,19 @@ export async function runPendingMaintenance(
       budget.defer();
       break;
     }
-    const token = await claimMaintenance(env.DB, name, scheduledAt);
-    if (!token) continue;
+    const claim = await claimMaintenanceWithDueDate(env.DB, name, scheduledAt);
+    if (!claim) continue;
     const accounting = accountReads(env.DB);
     try {
-      const result = await task.run({ ...env, DB: accounting.db } as Env, scheduledAt);
+      const result = await task.run(
+        { ...env, DB: accounting.db } as Env,
+        scheduledAt,
+        new Date(claim.dueAt),
+      );
       if (result === MAINTENANCE_PENDING) continue;
       // Successful work may have used the last normal call or crossed the wall deadline while
       // sending a wake-up. Persist completion so the next tick does not dispatch another run.
-      await withD1Finalization(env.DB, () => completeMaintenance(env.DB, name, token));
+      await withD1Finalization(env.DB, () => completeMaintenance(env.DB, name, claim.token));
     } catch (error) {
       if (error instanceof InvocationBudgetExceeded) break;
       console.error(

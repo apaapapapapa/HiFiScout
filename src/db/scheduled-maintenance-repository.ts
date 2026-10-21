@@ -38,17 +38,25 @@ export async function claimMaintenance(
   name: string,
   now: Date,
 ): Promise<string | null> {
+  return (await claimMaintenanceWithDueDate(db, name, now))?.token ?? null;
+}
+
+export async function claimMaintenanceWithDueDate(
+  db: QueryableDatabase,
+  name: string,
+  now: Date,
+): Promise<{ token: string; dueAt: string } | null> {
   const token = crypto.randomUUID();
-  const row = await firstMeasured<{ claim_token: string }>(
+  const row = await firstMeasured<{ claim_token: string; due_at: string }>(
     db
       .prepare(`
     UPDATE scheduled_maintenance_pending SET claimed_at = ?, claim_token = ?
     WHERE task_name = ? AND (claimed_at IS NULL OR claimed_at < ?)
-    RETURNING claim_token
+    RETURNING claim_token, due_at
   `)
       .bind(now.toISOString(), token, name, new Date(now.getTime() - LEASE_MS).toISOString()),
   );
-  return row?.claim_token || null;
+  return row ? { token: row.claim_token, dueAt: row.due_at } : null;
 }
 
 export async function completeMaintenance(db: QueryableDatabase, name: string, token: string) {

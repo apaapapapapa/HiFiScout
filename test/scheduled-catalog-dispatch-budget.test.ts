@@ -159,7 +159,7 @@ async function dispatchCost(dispatch: (typeof MODES)[number][1]): Promise<number
   return budget.metrics().d1Calls;
 }
 
-test("a recovery run claimed just before a yield is closed before dispatch takes ownership", async () => {
+test("a recovery yield happens before claiming a successor run", async () => {
   const { db, sqlite } = fixture();
   sqlite
     .prepare(
@@ -185,13 +185,13 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
       .prepare("SELECT status FROM knowledge_catalog_review_runs ORDER BY id")
       .all()
       .map((row) => row.status),
-    ["failed", "failed"],
+    ["failed"],
   );
-  assert.equal(budget.metrics().d1Calls, 7);
+  assert.equal(budget.metrics().d1Calls, 4);
 });
 
 for (const [name, dispatch] of MODES) {
-  test(`${name}: a yield after job persistence closes the orphan and retries on a later tick`, async () => {
+  test(`${name}: insufficient dispatch allowance yields before creating a run or any jobs`, async () => {
     const cost = await dispatchCost(dispatch);
     const { db, sqlite } = fixture();
     await enqueueMaintenance(db, [name], AT);
@@ -204,11 +204,10 @@ for (const [name, dispatch] of MODES) {
     assert.equal(queue.sent.length, 0);
     assert.equal(
       sqlite.prepare("SELECT status FROM knowledge_catalog_review_runs").get()?.status,
-      "failed",
+      undefined,
     );
     const jobs = sqlite.prepare("SELECT status FROM knowledge_catalog_verification_jobs").all();
-    assert.equal(jobs.length, 2);
-    assert.ok(jobs.every((job) => job.status === "dead_letter"));
+    assert.equal(jobs.length, 0);
     assert.ok(budget.metrics().d1Calls <= maxCalls);
     assert.deepEqual(await pendingMaintenance(db, LATER), [name]);
 
@@ -221,8 +220,8 @@ for (const [name, dispatch] of MODES) {
         .prepare("SELECT status FROM knowledge_catalog_review_runs ORDER BY id")
         .all()
         .map((row) => row.status),
-      ["failed", "running"],
-      "the successor must not hide an older running orphan",
+      ["running"],
+      "a cooperative yield must not create a failed predecessor",
     );
   });
 
@@ -262,7 +261,7 @@ for (const [name, dispatch] of MODES) {
     });
   }
 
-  test(`${name}: Queue failure at the call limit closes jobs, run and verifier state within the reserve`, async () => {
+  test(`${name}: Queue failure at the call limit preserves the run for idempotent redelivery`, async () => {
     const cost = await dispatchCost(dispatch);
     const { db, sqlite } = fixture();
     const maxCalls = cost + RESERVE;
@@ -278,21 +277,21 @@ for (const [name, dispatch] of MODES) {
       dispatch(queueEnv(accounting.db, queue), { now: AT, verifierVersion: 1 }),
       (error) => error === failure,
     );
-    assert.equal(budget.metrics().d1Calls, cost + 3);
+    assert.equal(budget.metrics().d1Calls, cost);
     assert.ok(budget.metrics().d1Calls <= maxCalls);
     const run = sqlite.prepare("SELECT status, message FROM knowledge_catalog_review_runs").get();
-    assert.equal(run?.status, "failed");
-    assert.equal(run?.message, "knowledge_catalog_run_wakeup_enqueue_failed");
+    assert.equal(run?.status, "running");
+    assert.match(String(run?.message), /queue dispatch started/);
     assert.equal(
       sqlite.prepare("SELECT status FROM knowledge_catalog_verifier_state WHERE version = 1").get()
         ?.status,
-      "failed",
+      "running",
     );
     assert.ok(
       sqlite
         .prepare("SELECT status FROM knowledge_catalog_verification_jobs")
         .all()
-        .every((job) => job.status === "dead_letter"),
+        .every((job) => job.status === "queued"),
     );
   });
 }

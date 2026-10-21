@@ -9,11 +9,251 @@ import {
 import { dispatchKnowledgeCatalogDailyVerification } from "../src/knowledge-catalog/dispatch.js";
 import { bootstrapKnowledgeCatalogReview, runPendingMaintenance } from "../src/scheduled.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../src/catalog/knowledge-verification/verifier.js";
+import { createKnowledgeCatalogVerificationJobs } from "../src/db/knowledge-catalog-verification-queue-repository.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queueBinding, queueEnv } from "./helpers/knowledge-queue.js";
 
 const AT = new Date("2030-01-01T00:00:00.000Z");
+
+test("failed finalizer recovery inherits terminal outcomes and the original generation/date", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    insertListing(sqlite, "200");
+    sqlite
+      .prepare(`INSERT INTO knowledge_catalog_verifier_state(version,status,started_at)
+      VALUES (?,'success',?)`)
+      .run(KNOWLEDGE_CATALOG_VERIFIER_VERSION, AT.toISOString());
+    const initial = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db), { now: AT });
+    const before = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_review_runs WHERE id=?")
+      .get(initial.runId)!;
+    sqlite.exec(`UPDATE knowledge_catalog_review_runs SET status='failed';
+      UPDATE knowledge_catalog_verification_jobs SET status='dead_letter',last_message='finalizer failed'
+      WHERE job_type='finalize';
+      UPDATE knowledge_catalog_verification_jobs SET status='completed',outcome='not_found',source_attempts=2
+      WHERE job_type='candidate' AND target_id=(SELECT MIN(id) FROM knowledge_catalog_candidates);`);
+    const result = await bootstrapKnowledgeCatalogReview(
+      queueEnv(db) as Env,
+      new Date("2030-01-02T00:00:00Z"),
+    );
+    assert.equal(result.status, "queued");
+    const after = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1")
+      .get()!;
+    assert.equal(after.candidate_generation, before.candidate_generation);
+    assert.equal(after.target_date, before.target_date);
+    const jobs = sqlite
+      .prepare(
+        "SELECT job_type,status,outcome,source_attempts FROM knowledge_catalog_verification_jobs WHERE run_id=? ORDER BY id",
+      )
+      .all(after.id);
+    assert.deepEqual(
+      jobs.map((row) => ({ ...row })),
+      [
+        { job_type: "candidate", status: "completed", outcome: "not_found", source_attempts: 2 },
+        { job_type: "candidate", status: "queued", outcome: "", source_attempts: 0 },
+        { job_type: "finalize", status: "queued", outcome: "", source_attempts: 0 },
+      ],
+    );
+    await bootstrapKnowledgeCatalogReview(queueEnv(db) as Env, new Date("2030-01-02T00:05:00Z"));
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_review_runs").get()?.n,
+      2,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a newer failed run cannot hide an older stalled run with durable jobs", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    sqlite
+      .prepare(`INSERT INTO knowledge_catalog_verifier_state(version,status,started_at)
+      VALUES (?,'success',?)`)
+      .run(KNOWLEDGE_CATALOG_VERIFIER_VERSION, AT.toISOString());
+    const initial = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db), { now: AT });
+    sqlite
+      .prepare("INSERT INTO knowledge_catalog_review_runs(status,started_at) VALUES ('failed',?)")
+      .run(AT.toISOString());
+    const queue = queueBinding();
+    const result = await bootstrapKnowledgeCatalogReview(
+      queueEnv(db, queue.binding) as Env,
+      new Date(AT.getTime() + 3 * 60 * 60_000),
+    );
+    assert.deepEqual(result, {
+      status: "queued",
+      reason: "knowledge_catalog_stalled_run_rewoken",
+      runId: initial.runId,
+    });
+    assert.deepEqual(queue.sent[0]?.body, {
+      kind: "knowledge_catalog_run_wakeup",
+      runId: initial.runId,
+    });
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_review_runs").get()?.n,
+      2,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("lost Queue acknowledgement and midnight retry reuse the sealed run and terminal outcomes", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    const sent: unknown[] = [];
+    const broken = {
+      async send(body: unknown) {
+        sent.push(body);
+        throw new Error("lost Queue acknowledgement");
+      },
+    };
+    await assert.rejects(
+      dispatchKnowledgeCatalogDailyVerification(queueEnv(db, broken as never), { now: AT }),
+      /lost Queue acknowledgement/,
+    );
+    const initial = sqlite.prepare("SELECT * FROM knowledge_catalog_review_runs").get()!;
+    const jobs = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_verification_jobs ORDER BY id")
+      .all();
+    assert.equal(jobs.length, 2);
+    sqlite
+      .prepare(
+        "UPDATE knowledge_catalog_verification_jobs SET status='completed', outcome='not_found', source_attempts=1 WHERE job_type='candidate'",
+      )
+      .run();
+    const terminal = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE job_type='candidate'")
+      .get();
+    const queue = queueBinding();
+    const retry = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db, queue.binding), {
+      now: new Date("2030-01-02T00:05:00Z"),
+      requestKey: "2030-01-01",
+    });
+    assert.equal(retry.runId, initial.id);
+    assert.deepEqual(queue.sent[0]?.body, sent[0]);
+    assert.deepEqual(
+      sqlite
+        .prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE job_type='candidate'")
+        .get(),
+      terminal,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_review_runs").get()?.n,
+      1,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT generation FROM knowledge_catalog_candidate_refresh").get()
+        ?.generation,
+      initial.candidate_generation,
+    );
+    assert.equal(initial.target_date, "2030-01-01");
+    sqlite.prepare("UPDATE knowledge_catalog_review_runs SET status='success'").run();
+    const done = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db, queue.binding), {
+      now: AT,
+    });
+    assert.equal(done.status, "skipped");
+    assert.equal(queue.sent.length, 1);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a committed dispatch with a lost D1 acknowledgement resumes the same jobs", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    await prepareScheduledKnowledgeCatalogCandidates(db, AT);
+    let interrupted = false;
+    const flaky: QueryableDatabase = {
+      ...db,
+      async batch<T>(statements: D1PreparedStatement[]) {
+        const result = await db.batch<T>(statements);
+        if (!interrupted) {
+          interrupted = true;
+          throw new Error("lost dispatch commit acknowledgement");
+        }
+        return result;
+      },
+    };
+    await assert.rejects(
+      dispatchKnowledgeCatalogDailyVerification(queueEnv(flaky), { now: AT }),
+      /lost dispatch commit/,
+    );
+    const before = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_verification_jobs ORDER BY id")
+      .all();
+    assert.equal(before.length, 2);
+    await dispatchKnowledgeCatalogDailyVerification(queueEnv(db), { now: AT });
+    assert.deepEqual(
+      sqlite.prepare("SELECT * FROM knowledge_catalog_verification_jobs ORDER BY id").all(),
+      before,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_review_runs").get()?.n,
+      1,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a sealed dispatch cannot grow when another dispatcher observed a different candidate set", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    const first = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db), { now: AT });
+    const before = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_verification_jobs ORDER BY id")
+      .all();
+    await createKnowledgeCatalogVerificationJobs(
+      db,
+      first.runId,
+      [
+        {
+          jobKey: `knowledge-catalog:${first.runId}:candidate:999`,
+          jobType: "candidate",
+          targetId: 999,
+          manufacturerId: "luxman",
+          hostname: "example.test",
+          payloadJson: "{}",
+        },
+      ],
+      AT.toISOString(),
+    );
+    assert.deepEqual(
+      sqlite.prepare("SELECT * FROM knowledge_catalog_verification_jobs ORDER BY id").all(),
+      before,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a delayed older task never replaces a completed newer refresh generation", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    await prepareScheduledKnowledgeCatalogCandidates(db, new Date("2030-01-02T01:00:00Z"));
+    const before = sqlite.prepare("SELECT * FROM knowledge_catalog_candidate_refresh").get();
+    await prepareScheduledKnowledgeCatalogCandidates(db, AT);
+    assert.deepEqual(
+      sqlite.prepare("SELECT * FROM knowledge_catalog_candidate_refresh").get(),
+      before,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
 
 function insertListing(sqlite: ReturnType<typeof migratedSqlite>["sqlite"], id: string) {
   sqlite

@@ -276,10 +276,18 @@ async function completeCandidateRefresh(
     (state?.phase !== "complete" ? state?.request_key : undefined) ??
     crypto.randomUUID();
   for (;;) {
-    if (state?.phase === "complete" && state.request_key === requestedKey) return;
+    if (
+      state?.phase === "complete" &&
+      (state.request_key === requestedKey ||
+        (/^\d{4}-\d{2}-\d{2}$/.test(requestedKey) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(state.request_key) &&
+          state.request_key > requestedKey))
+    )
+      return state;
     if (!state || state.phase === "complete") {
-      await db
-        .prepare(`INSERT INTO knowledge_catalog_candidate_refresh
+      await withinD1Budget(db, 2, () =>
+        db
+          .prepare(`INSERT INTO knowledge_catalog_candidate_refresh
         (id, generation, request_key, started_at, phase, listing_horizon)
         VALUES (1, ?, ?, ?, 'collect', (SELECT COALESCE(MAX(id), 0) FROM products))
         ON CONFLICT(id) DO UPDATE SET generation = excluded.generation, request_key = excluded.request_key,
@@ -287,21 +295,22 @@ async function completeCandidateRefresh(
           listing_cursor = 0, publish_cursor = '', retire_cursor = 0, revision = 0
         WHERE knowledge_catalog_candidate_refresh.phase = 'complete'
           AND knowledge_catalog_candidate_refresh.request_key <> excluded.request_key`)
-        .bind(crypto.randomUUID(), requestedKey, reviewedAt)
-        .run();
+          .bind(crypto.randomUUID(), requestedKey, reviewedAt)
+          .run(),
+      );
     } else {
       switch (state.phase) {
         case "collect":
-          await collectPage(db, state);
+          await withinD1Budget(db, 4, () => collectPage(db, state!));
           break;
         case "publish":
-          await publishPage(db, state);
+          await withinD1Budget(db, 6, () => publishPage(db, state!));
           break;
         case "retire":
-          await retirePage(db, state);
+          await withinD1Budget(db, 4, () => retirePage(db, state!));
           break;
         case "clean":
-          await cleanPage(db, state);
+          await withinD1Budget(db, 3, () => cleanPage(db, state!));
           break;
       }
     }
@@ -317,8 +326,12 @@ export async function refreshKnowledgeCatalogCandidates(db: QueryableDatabase, r
   return knowledgeCatalogCandidateStats(db);
 }
 
-export function prepareScheduledKnowledgeCatalogCandidates(db: QueryableDatabase, now: Date) {
+export function prepareScheduledKnowledgeCatalogCandidates(
+  db: QueryableDatabase,
+  now: Date,
+  requestKey = now.toISOString().slice(0, 10),
+) {
   return completeCandidateRefresh(db, now.toISOString(), {
-    requestKey: now.toISOString().slice(0, 10),
+    requestKey,
   });
 }

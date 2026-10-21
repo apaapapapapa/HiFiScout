@@ -180,7 +180,7 @@ Repair is driven by change instead. The triggers in migration 0074 record the **
 
 Dirty identities are claimed atomically with `UPDATE ... RETURNING`. Member lookups and clean-claim deletion are grouped below D1's bind limit: 25 clean identities cost four D1 round trips, including stale-lease recovery. Expensive resyncs have a separate per-pass limit; deferred claims retain their original queue age. Entity aggregate refreshes are batched, and the scheduler admits a complete entity transition before its first write so an intentional budget yield cannot strand its aggregates.
 
-General cron shares a 45-call D1 budget across watchdogs, maintenance and bookkeeping. Five calls are reserved for finalization: ordinary work stops at 40, while bounded dispatch cleanup and successful task completion may use the reserve without exceeding 45. A failed catalog dispatch closes its incomplete run and jobs; a successful Queue wake always records maintenance completion, including when it used the final work call. SQL statements inside each batch are logged separately from binding calls. A 20-second wall-time deadline controls admission between work units; finalization may cross that deadline, which is not a CPU-time measurement or proof of Workers Free CPU compliance. `scheduled_maintenance_pending` retains due work across ticks, including separate daily retention, projection and verification tasks. Lease tokens fence late completion, and attempt ordering gives untouched work a turn after a budget yield. `general_cron_d1_usage` reports calls, statement count, elapsed time, rows read/written and deferrals; per-task failure logs include partial write usage too. Watchdog and task errors still use their existing durable recovery paths.
+General cron shares a 45-call D1 budget across watchdogs, maintenance and bookkeeping. Five calls are reserved for finalization: ordinary work stops at 40, while successful task completion may use the reserve without exceeding 45. Catalog dispatch admits its complete D1 unit before claiming a run. An ambiguous Queue send preserves the sealed run and its results for redelivery; a successful wake records maintenance completion, including when it used the final work call. SQL statements inside each batch are logged separately from binding calls. A 20-second wall-time deadline controls admission between work units; finalization may cross that deadline, which is not a CPU-time measurement or proof of Workers Free CPU compliance. `scheduled_maintenance_pending` retains due work across ticks, including separate daily retention, projection and verification tasks. Lease tokens fence late completion, and attempt ordering gives untouched work a turn after a budget yield. `general_cron_d1_usage` reports calls, statement count, elapsed time, rows read/written and deferrals; per-task failure logs include partial write usage too. Watchdog and task errors still use their existing durable recovery paths.
 
 Catalog candidate preparation also persists its progress in `knowledge_catalog_candidate_refresh`.
 It walks primary-key listing windows up to a captured ID horizon and stores per-identity accumulators
@@ -194,14 +194,32 @@ pages after retirement. These checkpoints add bounded reads and writes; unchange
 and their AUTOINCREMENT sequence remain untouched.
 
 Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
-the pending maintenance task and resumes preparation before claiming a verifier rollout or recovery
+the pending maintenance task and its original due date, and resumes preparation before claiming a verifier rollout or recovery
 run; the ordinary hourly bootstrap no-op does not start a refresh or consume the daily date key.
 When an older generation crosses midnight, it is completed and cleaned before the requested day's
 new horizon is processed. Review runs and Queue wake-ups are created only after that requested
-preparation completes. The pages are
+preparation completes. A completed newer daily generation also satisfies delayed older work without
+replacing it. Each collect/publish/retire/clean unit reserves its bounded D1 allowance before entry;
+its generation/revision transaction remains the durable checkpoint. The pages are
 eventually consistent observations, not a transaction-wide snapshot: edits behind the cursor and
 new listings beyond the horizon enter the next refresh. Explicit repository refreshes can request a
 new generation independently of that scheduled daily cache.
+
+A unique dispatch key (mode, original due date and verifier version) identifies a scheduled run.
+The run records its candidate generation and target date. All target jobs and the finalizer are
+inserted in one atomic batch; the finalizer seals the snapshot against a racing dispatcher. Lost
+D1/Queue acknowledgements reuse this snapshot. The watchdog searches running rows even when a
+newer failed row exists, and re-wakes stalled live work. A failed sealed run's successor inherits
+its target payloads, terminal outcomes, classification baseline and generation/date; only abandoned
+work and the finalizer get new claims. Legacy runs without a sealed snapshot use normal selection.
+The predecessor remains the failure receipt. Nullable dispatch keys preserve old-Worker inserts
+through rollout. A green dispatch is not review success: finalization and the natural daily
+completion streak are observed separately.
+
+Remediation identity aliases retain page-limited exact-index streams, grouped into compound SELECTs
+of at most five terms. Six aliases and three resolution states need eighteen streams, which cannot
+be a single D1 compound SELECT. Nested groups preserve the same merged ID order, lookahead and
+single roundtrip per six aliases without relaxing the platform limit.
 
 A run wake-up then drains its review run from D1. Each claim enumerates the run's waiting
 manufacturer domains through a partial index of queued and retrying jobs and takes the earliest

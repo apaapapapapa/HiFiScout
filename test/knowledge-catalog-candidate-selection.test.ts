@@ -36,15 +36,15 @@ test("pending catalog candidates are limited to manufacturers with source adapte
   await listPendingKnowledgeCatalogCandidates(db, 25, ["luxman", "esoteric", "luxman"]);
 
   assert.equal(db.calls.length, 1);
-  assert.match(db.calls[0].sql, /manufacturer_id IN \(\?, \?\)/);
+  assert.match(db.calls[0].sql, /manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.match(db.calls[0].sql, /CASE WHEN last_verification_at IS NULL THEN 0 ELSE 1 END/);
-  assert.deepEqual(db.calls[0].params, ["luxman", "esoteric", 25]);
+  assert.deepEqual(db.calls[0].params, ['["luxman","esoteric"]', 25]);
 });
 
 test("candidate selection supports queue batches larger than the old 100-item ceiling", async () => {
   const db = queryDb();
   await listPendingKnowledgeCatalogCandidates(db, 200, ["denon"]);
-  assert.deepEqual(db.calls[0].params, ["denon", 200]);
+  assert.deepEqual(db.calls[0].params, ['["denon"]', 200]);
 });
 
 test("an explicitly empty supported manufacturer set spends no verification budget", async () => {

@@ -24,6 +24,8 @@ const RUN_ID = 42;
 function dispatchDatabase() {
   return queueDatabase((sql) => {
     if (sql.includes("INSERT INTO knowledge_catalog_review_runs")) return { lastRowId: RUN_ID };
+    if (sql.includes("FROM knowledge_catalog_review_runs r WHERE dispatch_key"))
+      return { row: { id: RUN_ID, status: "running", ready: 0 } };
     if (sql.includes("FROM knowledge_catalog_verification_jobs") && sql.includes("ORDER BY id")) {
       return {
         rows: [
@@ -102,6 +104,8 @@ test("a full daily run writes one Queue message for hundreds of durable jobs", a
   }));
   const db = queueDatabase((sql) => {
     if (sql.includes("INSERT INTO knowledge_catalog_review_runs")) return { lastRowId: RUN_ID };
+    if (sql.includes("FROM knowledge_catalog_review_runs r WHERE dispatch_key"))
+      return { row: { id: RUN_ID, status: "running", ready: 0 } };
     if (sql.includes("FROM knowledge_catalog_candidates")) return { rows: targets };
     if (sql.includes("FROM knowledge_catalog_verification_jobs") && sql.includes("ORDER BY id")) {
       return {
@@ -172,7 +176,7 @@ test("dispatch refuses to start when the queue binding is missing", async () => 
   assert.equal(db.ran("INSERT INTO knowledge_catalog_review_runs").length, 0);
 });
 
-test("an initial wake-up failure closes every persisted job for recovery", async () => {
+test("an initial wake-up failure preserves durable jobs for same-run recovery", async () => {
   const db = dispatchDatabase();
   const binding = {
     async send() {
@@ -185,10 +189,10 @@ test("an initial wake-up failure closes every persisted job for recovery", async
     /daily Queue write limit exceeded/,
   );
 
-  assert.equal(db.ran("status IN ('queued', 'processing', 'retrying')").length, 1);
+  assert.equal(db.ran("status IN ('queued', 'processing', 'retrying')").length, 0);
   assert.equal(
     db.ran("SET finished_at = ?, status = 'failed'").length,
-    1,
-    "failed-run recovery must see a terminal predecessor rather than a stranded run",
+    0,
+    "an accepted wake with a lost acknowledgement must retain its job results",
   );
 });
