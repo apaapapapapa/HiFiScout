@@ -161,7 +161,14 @@ test("the model-optional equalities count exactly what the original IN-list coun
     // Every optional category, its case/space variants and prefixed or plain neighbours.
     const categories = [
       ...MODEL_OPTIONAL_CATEGORIES.flatMap((id) => [id, id.toUpperCase(), `${id} `]),
-      ...["CAB.RCA", "cab.rca", "PWR.X", "ACC.Y", "AMP.INTEGRATED", "rec.media", "Other", ""],
+      "CAB.RCA",
+      "cab.rca",
+      "PWR.X",
+      "ACC.Y",
+      "AMP.INTEGRATED",
+      "rec.media",
+      "Other",
+      "",
     ];
     const insert = sqlite.prepare(`INSERT INTO products(shop_key,source_id,title,source_url,
         first_seen_at,last_seen_at,last_changed_at,stock_status,is_active,classification_status,
