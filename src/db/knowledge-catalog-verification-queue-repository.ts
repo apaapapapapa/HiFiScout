@@ -21,6 +21,83 @@ const WRITE_BATCH_SIZE = 50;
  */
 const LIVE_JOB_STATUSES = "'queued', 'processing', 'retrying'";
 const TARGET_JOB_TYPES = "'candidate', 'product_recheck'";
+/**
+ * Waiting jobs: the ones a claim can take once they are due. Must stay textually identical to the
+ * WHERE clause of `idx_knowledge_catalog_verification_jobs_run_host_waiting` (migration 0138), or
+ * SQLite cannot prove a query implies it and reads the run's live range instead.
+ */
+const WAITING_JOB_STATUSES = "'queued', 'retrying'";
+
+/*
+ * The run claim and wake-state reads below bind `?1` to the run and `?2` to the observation time.
+ * Neither walks the run's live jobs. Targets cluster on a few manufacturer domains and the
+ * dominant one is usually paced between requests, so a per-job walk made every claim -- and the
+ * wake-state read after each empty one -- visit the whole live run, which made a run quadratic in
+ * its size.
+ *
+ * - `run_hosts` enumerates the distinct domains that still have a waiting job, one partial-index
+ *   seek each (a recursive skip scan; D1 also counts each row the recursion reads back). Each
+ *   statement references it once, joined to the domain's active lease: no lease row means nobody
+ *   holds the domain at `?2` (an empty hostname is never leased), and a `0` holder is the pacing
+ *   gap a release leaves.
+ * - A domain's waiting jobs sit in the partial index in `(available_at, id)` order. For a job with
+ *   an availability that is the claim order `COALESCE(available_at, enqueued_at), id`, and every
+ *   due job precedes every job not yet due, so the first entry at or before `?2` is the domain's
+ *   earliest due job.
+ * - The queue never writes a waiting job without an availability, nor a queued one that becomes
+ *   available after its enqueue. Both are still read, through their own normally empty seeks, so
+ *   the selectors stay exact for every stored state rather than for the states the consumer writes.
+ * - D1 rejects a compound SELECT of more than five terms; none here has more than four.
+ */
+
+/** The finalizer is eligible only once no target of the run is live: one existence seek. */
+const NO_LIVE_TARGETS = `NOT EXISTS (
+  SELECT 1
+  FROM knowledge_catalog_verification_jobs
+  WHERE run_id = ?1
+    AND job_type IN (${TARGET_JOB_TYPES})
+    AND status IN (${LIVE_JOB_STATUSES})
+)`;
+
+/** Whether `alias` may be considered at all: the finalizer waits behind every live target. */
+function gateOpenFor(alias: string): string {
+  return `(${alias}.job_type <> 'finalize' OR ${NO_LIVE_TARGETS})`;
+}
+
+const RUN_HOSTS_CTE = `
+  run_hosts(hostname) AS (
+    SELECT MIN(hostname)
+    FROM knowledge_catalog_verification_jobs
+    WHERE run_id = ?1 AND status IN (${WAITING_JOB_STATUSES})
+    UNION ALL
+    SELECT (
+      SELECT MIN(later.hostname)
+      FROM knowledge_catalog_verification_jobs later
+      WHERE later.run_id = ?1
+        AND later.status IN (${WAITING_JOB_STATUSES})
+        AND later.hostname > run_hosts.hostname
+    )
+    FROM run_hosts
+    WHERE run_hosts.hostname IS NOT NULL
+  )`;
+
+/** Every enumerated domain, with `domain_lease` NULL unless someone holds it at `?2`. */
+const RUN_HOSTS_WITH_ACTIVE_LEASE = `
+  FROM run_hosts
+  LEFT JOIN knowledge_catalog_verification_domain_leases domain_lease
+    ON domain_lease.hostname = run_hosts.hostname
+   AND run_hosts.hostname <> ''
+   AND domain_lease.leased_until > ?2
+  WHERE run_hosts.hostname IS NOT NULL`;
+
+/** The domain's due waiting jobs the run may take, in claim order from the partial index. */
+const DUE_WAITING_JOBS_OF_HOST = `
+  FROM knowledge_catalog_verification_jobs due
+  WHERE due.run_id = ?1
+    AND due.hostname = run_hosts.hostname
+    AND due.status IN (${WAITING_JOB_STATUSES})
+    AND due.available_at <= ?2
+    AND ${gateOpenFor("due")}`;
 
 interface VerificationRunStatsRow {
   target_jobs: number | null;
@@ -152,6 +229,15 @@ export async function createKnowledgeCatalogVerificationJobs(
  * Source jobs are preferred and a finalizer is invisible until every source job is terminal. An
  * active domain lease also removes that hostname from the candidate set, allowing another domain
  * in the same run to make progress without violating source pacing.
+ *
+ * The winner is chosen in the original order from a short candidate list that provably contains
+ * it: each free domain's earliest due waiting job, which is eligible as it stands; each held
+ * domain's lease holder, the only one of its waiting jobs that can be; the run's processing jobs
+ * whose job lease has lapsed; and any waiting job without an availability. All but the first are
+ * re-checked against the original eligibility predicate. Among eligible jobs the finalizer key is
+ * constant -- the finalizer is eligible only once no target is live -- so a domain's earliest due
+ * job is its best. A held domain costs one lease read however many of the run's jobs it owns, and
+ * a claim's reads follow the run's domains rather than its live jobs.
  */
 export async function claimNextKnowledgeCatalogVerificationJobForRun(
   db: QueryableDatabase,
@@ -165,34 +251,53 @@ export async function claimNextKnowledgeCatalogVerificationJobForRun(
     const selected = await firstMeasured<{ id?: number | null }>(
       db
         .prepare(`
+        WITH RECURSIVE ${RUN_HOSTS_CTE},
+        candidate(id, eligible) AS (
+          SELECT CASE
+                   WHEN domain_lease.hostname IS NULL THEN (
+                     SELECT due.id
+                     ${DUE_WAITING_JOBS_OF_HOST}
+                     ORDER BY due.available_at, due.id
+                     LIMIT 1
+                   )
+                   ELSE domain_lease.job_id
+                 END,
+                 domain_lease.hostname IS NULL
+          ${RUN_HOSTS_WITH_ACTIVE_LEASE}
+          UNION ALL
+          SELECT id, 0
+          FROM knowledge_catalog_verification_jobs
+          WHERE run_id = ?1
+            AND status = 'processing'
+            AND (lease_expires_at IS NULL OR lease_expires_at <= ?2)
+          UNION ALL
+          SELECT id, 0
+          FROM knowledge_catalog_verification_jobs
+          WHERE run_id = ?1 AND status IN (${WAITING_JOB_STATUSES}) AND available_at IS NULL
+        )
         SELECT job.id
-        FROM knowledge_catalog_verification_jobs job
-        WHERE job.run_id = ?
-          AND job.status IN (${LIVE_JOB_STATUSES})
-          AND (
-            (job.status IN ('queued', 'retrying')
-              AND (job.available_at IS NULL OR job.available_at <= ?))
-            OR (job.status = 'processing'
-              AND (job.lease_expires_at IS NULL OR job.lease_expires_at <= ?))
-          )
-          AND (
-            job.job_type <> 'finalize'
-            OR NOT EXISTS (
-              SELECT 1
-              FROM knowledge_catalog_verification_jobs target
-              WHERE target.run_id = job.run_id
-                AND target.job_type IN (${TARGET_JOB_TYPES})
-                AND target.status IN (${LIVE_JOB_STATUSES})
+        FROM candidate
+        CROSS JOIN knowledge_catalog_verification_jobs job ON job.id = candidate.id
+        WHERE candidate.eligible
+          OR (
+            job.run_id = ?1
+            AND job.status IN (${LIVE_JOB_STATUSES})
+            AND (
+              (job.status IN ('queued', 'retrying')
+                AND (job.available_at IS NULL OR job.available_at <= ?2))
+              OR (job.status = 'processing'
+                AND (job.lease_expires_at IS NULL OR job.lease_expires_at <= ?2))
             )
-          )
-          AND (
-            job.hostname = ''
-            OR NOT EXISTS (
-              SELECT 1
-              FROM knowledge_catalog_verification_domain_leases domain_lease
-              WHERE domain_lease.hostname = job.hostname
-                AND domain_lease.leased_until > ?
-                AND domain_lease.job_id <> job.id
+            AND ${gateOpenFor("job")}
+            AND (
+              job.hostname = ''
+              OR NOT EXISTS (
+                SELECT 1
+                FROM knowledge_catalog_verification_domain_leases domain_lease
+                WHERE domain_lease.hostname = job.hostname
+                  AND domain_lease.leased_until > ?2
+                  AND domain_lease.job_id <> job.id
+              )
             )
           )
         ORDER BY CASE WHEN job.job_type = 'finalize' THEN 1 ELSE 0 END,
@@ -200,7 +305,7 @@ export async function claimNextKnowledgeCatalogVerificationJobForRun(
                  job.id
         LIMIT 1
       `)
-        .bind(runId, claimedAt, claimedAt, claimedAt),
+        .bind(runId, claimedAt),
     );
     const jobId = number(selected?.id);
     if (!jobId) return null;
@@ -216,6 +321,115 @@ export interface KnowledgeCatalogVerificationRunWakeState {
   nextAvailableAt: string | null;
 }
 
+/**
+ * The earliest time each eligible live job may next be claimed, as one row per contribution:
+ *
+ * - a processing job: its job lease expiry (`?2` when it has none);
+ * - a retrying job not yet due: its availability -- only the earliest one can be the minimum;
+ * - a domain with a due waiting job: `?2` while the domain is free or one of those jobs holds it,
+ *   because a job is never delayed by its own lease, and otherwise the domain's lease expiry. That
+ *   is the per-job value of each such job collapsed to its minimum: one existence seek beside the
+ *   lease, plus the holder by id while the domain is held;
+ * - any other waiting job -- queued but available only later, or without an availability -- with
+ *   the former per-job `CASE` applied to it directly.
+ *
+ * The minimum over these is exactly the minimum of the former per-job `CASE` over every eligible
+ * live job. It is `NULL` precisely when the run has no live job left: while any job is live one
+ * is eligible, because the finalizer becomes eligible as soon as no target is live.
+ */
+const RUN_WAKE_AT_CTE = `
+  wake_at(at) AS (
+    SELECT COALESCE(job.lease_expires_at, ?2)
+    FROM knowledge_catalog_verification_jobs job
+    WHERE job.run_id = ?1 AND job.status = 'processing' AND ${gateOpenFor("job")}
+    UNION ALL
+    SELECT (
+      SELECT job.available_at
+      FROM knowledge_catalog_verification_jobs job
+      WHERE job.run_id = ?1
+        AND job.status = 'retrying'
+        AND job.available_at > ?2
+        AND ${gateOpenFor("job")}
+      ORDER BY job.available_at
+      LIMIT 1
+    )
+    UNION ALL
+    SELECT CASE
+             WHEN NOT EXISTS (SELECT 1 ${DUE_WAITING_JOBS_OF_HOST}) THEN NULL
+             WHEN domain_lease.hostname IS NULL
+               OR EXISTS (SELECT 1 ${DUE_WAITING_JOBS_OF_HOST} AND due.id = domain_lease.job_id)
+               THEN ?2
+             ELSE domain_lease.leased_until
+           END
+    ${RUN_HOSTS_WITH_ACTIVE_LEASE}
+    UNION ALL
+    SELECT CASE
+             WHEN job.hostname <> ''
+               AND domain_lease.leased_until > ?2
+               AND domain_lease.job_id <> job.id THEN domain_lease.leased_until
+             ELSE ?2
+           END
+    FROM (
+      SELECT id
+      FROM knowledge_catalog_verification_jobs
+      WHERE run_id = ?1 AND status = 'queued' AND available_at > ?2
+      UNION ALL
+      SELECT id
+      FROM knowledge_catalog_verification_jobs
+      WHERE run_id = ?1 AND status IN (${WAITING_JOB_STATUSES}) AND available_at IS NULL
+    ) AS unscheduled
+    CROSS JOIN knowledge_catalog_verification_jobs job ON job.id = unscheduled.id
+    LEFT JOIN knowledge_catalog_verification_domain_leases domain_lease
+      ON domain_lease.hostname = job.hostname
+    WHERE ${gateOpenFor("job")}
+  )`;
+
+/**
+ * When the run can next make progress, or `null` once it has no live job.
+ *
+ * This is the wake state without its outstanding-job count, for the in-invocation wait after an
+ * empty claim: it costs a few seeks per domain, where the count costs one index entry per live
+ * job. `null` here is equivalent to `outstandingJobs === 0` in the full wake state.
+ */
+export async function knowledgeCatalogVerificationRunNextAvailableAt(
+  db: QueryableDatabase,
+  runId: number,
+  now: string,
+): Promise<string | null> {
+  const row = await firstMeasured<VerificationRunWakeStateRow>(
+    db
+      .prepare(`
+      WITH RECURSIVE ${RUN_HOSTS_CTE}, ${RUN_WAKE_AT_CTE}
+      SELECT MIN(at) AS next_available_at
+      FROM wake_at
+    `)
+      .bind(runId, now),
+  );
+  return row?.next_available_at || null;
+}
+
+/**
+ * The run's queued, processing and retrying jobs, the finalizer included.
+ *
+ * Exact, so it reads one index entry per live job; callers that only need to know whether
+ * anything is outstanding use {@link knowledgeCatalogVerificationRunNextAvailableAt} instead.
+ */
+export async function knowledgeCatalogVerificationRunOutstandingJobs(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<number> {
+  const row = await firstMeasured<VerificationRunWakeStateRow>(
+    db
+      .prepare(`
+      SELECT COUNT(*) AS outstanding_jobs
+      FROM knowledge_catalog_verification_jobs
+      WHERE run_id = ? AND status IN (${LIVE_JOB_STATUSES})
+    `)
+      .bind(runId),
+  );
+  return number(row?.outstanding_jobs);
+}
+
 /** What a bounded wake invocation should do after its current slice. */
 export async function knowledgeCatalogVerificationRunWakeState(
   db: QueryableDatabase,
@@ -225,42 +439,17 @@ export async function knowledgeCatalogVerificationRunWakeState(
   const row = await firstMeasured<VerificationRunWakeStateRow>(
     db
       .prepare(`
-      WITH target_state AS (
-        SELECT COUNT(*) AS live_targets
-        FROM knowledge_catalog_verification_jobs
-        WHERE run_id = ?
-          AND job_type IN (${TARGET_JOB_TYPES})
-          AND status IN (${LIVE_JOB_STATUSES})
-      ), eligible_jobs AS (
-        SELECT job.*, domain_lease.leased_until AS domain_leased_until,
-               domain_lease.job_id AS domain_job_id
-        FROM knowledge_catalog_verification_jobs job
-        LEFT JOIN knowledge_catalog_verification_domain_leases domain_lease
-          ON domain_lease.hostname = job.hostname
-        CROSS JOIN target_state
-        WHERE job.run_id = ?
-          AND job.status IN ('queued', 'processing', 'retrying')
-          AND (job.job_type <> 'finalize' OR target_state.live_targets = 0)
-      )
+      WITH RECURSIVE ${RUN_HOSTS_CTE}, ${RUN_WAKE_AT_CTE}
       SELECT
         (
           SELECT COUNT(*)
           FROM knowledge_catalog_verification_jobs
-          WHERE run_id = ? AND status IN ('queued', 'processing', 'retrying')
+          WHERE run_id = ?1 AND status IN (${LIVE_JOB_STATUSES})
         ) AS outstanding_jobs,
-        MIN(
-          CASE
-            WHEN status = 'processing' THEN COALESCE(lease_expires_at, ?)
-            WHEN status = 'retrying' AND available_at > ? THEN available_at
-            WHEN hostname <> ''
-              AND domain_leased_until > ?
-              AND domain_job_id <> id THEN domain_leased_until
-            ELSE ?
-          END
-        ) AS next_available_at
-      FROM eligible_jobs
+        MIN(at) AS next_available_at
+      FROM wake_at
     `)
-      .bind(runId, runId, runId, now, now, now, now),
+      .bind(runId, now),
   );
   return {
     outstandingJobs: number(row?.outstanding_jobs),

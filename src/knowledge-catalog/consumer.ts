@@ -19,6 +19,8 @@ import {
   deadLetterKnowledgeCatalogVerificationJob,
   getKnowledgeCatalogVerificationJob,
   incrementKnowledgeCatalogVerificationSourceAttempt,
+  knowledgeCatalogVerificationRunNextAvailableAt,
+  knowledgeCatalogVerificationRunOutstandingJobs,
   knowledgeCatalogVerificationRunWakeState,
   releaseKnowledgeCatalogVerificationDomainLease,
   retryKnowledgeCatalogVerificationJob,
@@ -423,7 +425,9 @@ async function consumeKnowledgeCatalogRunWakeMessage(
   const wallBudgetMs = wakeWallBudgetMs(env);
   let processedJobs = 0;
   const outcomes: Record<string, number> = {};
-  let state: Awaited<ReturnType<typeof knowledgeCatalogVerificationRunWakeState>> | null = null;
+  // The run's next availability as observed after the most recent empty claim, or `undefined`
+  // once a job has been processed since. `null` already means nothing is outstanding.
+  let observedNextAvailableAt: string | null | undefined;
 
   while (
     processedJobs < maxJobs &&
@@ -438,29 +442,26 @@ async function consumeKnowledgeCatalogRunWakeMessage(
     );
     if (!job) {
       const observedAt = new Date();
-      state = await knowledgeCatalogVerificationRunWakeState(
+      // Only the time decides the wait. The exact outstanding count costs one index entry per
+      // live job, so it is read once per invocation, below.
+      observedNextAvailableAt = await knowledgeCatalogVerificationRunNextAvailableAt(
         env.DB,
         runId,
         observedAt.toISOString(),
       );
-      const nextAt = Date.parse(state.nextAvailableAt || "");
+      const nextAt = Date.parse(observedNextAvailableAt || "");
       const waitMs = Number.isFinite(nextAt) ? Math.max(0, nextAt - observedAt.getTime()) : 0;
       const remainingWallMs = wallBudgetMs - (Date.now() - startedAt);
-      if (
-        state.outstandingJobs > 0 &&
-        waitMs > 0 &&
-        waitMs < remainingWallMs &&
-        processedJobs < maxJobs
-      ) {
+      if (waitMs > 0 && waitMs < remainingWallMs && processedJobs < maxJobs) {
         // A sub-second persistent domain cooldown should not cost another Queue write. Waiting here
         // keeps the old per-domain request spacing while one wake still drains multiple jobs.
         await wait(waitMs);
-        state = null;
+        observedNextAvailableAt = undefined;
         continue;
       }
       break;
     }
-    state = null;
+    observedNextAvailableAt = undefined;
     const processed = await processClaimedKnowledgeCatalogVerificationJob(env, job, buildVerifier);
     processedJobs += 1;
     const status = String(processed.result.status || "unknown");
@@ -468,7 +469,16 @@ async function consumeKnowledgeCatalogRunWakeMessage(
   }
 
   const now = new Date();
-  state ??= await knowledgeCatalogVerificationRunWakeState(env.DB, runId, now.toISOString());
+  // A slice that ended on an empty claim reuses that observation, as it always has; one that ended
+  // on its job or wall budget reads the state afresh. The count is read either way: a drained run
+  // reads an empty index range, and the decision below never rests on the time alone.
+  const state =
+    observedNextAvailableAt === undefined
+      ? await knowledgeCatalogVerificationRunWakeState(env.DB, runId, now.toISOString())
+      : {
+          outstandingJobs: await knowledgeCatalogVerificationRunOutstandingJobs(env.DB, runId),
+          nextAvailableAt: observedNextAvailableAt,
+        };
   let nextDelaySeconds: number | null = null;
   if (state.outstandingJobs > 0) {
     const nextAt = Date.parse(state.nextAvailableAt || "");

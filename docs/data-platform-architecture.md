@@ -203,6 +203,12 @@ eventually consistent observations, not a transaction-wide snapshot: edits behin
 new listings beyond the horizon enter the next refresh. Explicit repository refreshes can request a
 new generation independently of that scheduled daily cache.
 
+A run wake-up then drains its review run from D1. Each claim enumerates the run's waiting
+manufacturer domains through a partial index of queued and retrying jobs and takes the earliest
+due job of a domain no other job holds, so a paced dominant domain or a backlog of retries adds no
+reads to a claim. The wait after an empty claim reads only the run's next availability; the exact
+outstanding count, one index entry per live job, is read once per wake for its summary.
+
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 
 Normal five-minute repair first consumes `product_search_catalog_pending` for verified Catalog membership transitions, then `listing_projection_pending` for full projections, then audits for omissions. Migration 0096 captures existing mismatched verified memberships and records new eligible Identity/Catalog transitions atomically, including one verified Catalog product changing to another. Membership repair verifies the current authoritative catalog ID without rerunning Identity decisions or acknowledging full projection obligations. Each successful repair clears only its captured token, so a later budget yield or concurrent edit cannot lose work. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
