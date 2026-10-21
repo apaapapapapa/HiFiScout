@@ -22,3 +22,4 @@ docs/public/db/
 dist/
 public/*.js
 admin-public/*.js
+.vitest/

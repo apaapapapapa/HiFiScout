@@ -292,7 +292,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
-      # Vite+ 0.2.9's `vp pm audit` does not accept npm's positional `signatures`
+      # Vite+ 1.3.0's `vp pm audit` does not accept npm's positional `signatures`
       # subcommand. Run the project-pinned npm inside the Vite+ environment instead.
       - name: Verify npm registry signatures and provenance
         run: vp env exec npm audit signatures
