@@ -205,9 +205,11 @@ new generation independently of that scheduled daily cache.
 
 A run wake-up then drains its review run from D1. Each claim enumerates the run's waiting
 manufacturer domains through a partial index of queued and retrying jobs and takes the earliest
-due job of a domain no other job holds, so a paced dominant domain or a backlog of retries adds no
-reads to a claim. The wait after an empty claim reads only the run's next availability; the exact
-outstanding count, one index entry per live job, is read once per wake for its summary.
+due job of a domain no other job holds. Further jobs on an enumerated domain, held by pacing or
+waiting out a retry, add no reads to a claim; each waiting domain costs a few index reads even when
+it holds a single job, which suits runs drawn from the registered manufacturer domains. The wait
+after an empty claim reads only the run's next availability; the exact outstanding count, one index
+entry per live job, is read once per wake for its summary.
 
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 

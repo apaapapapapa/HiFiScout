@@ -99,7 +99,8 @@ cases so removing a test cannot silently remove a requirement.
 - Inventory recheck: the next candidate among 1,000 and 5,000 active listings of the shop.
 - Knowledge Catalog verification queue: a claim plus wake state with 100, 1,000 and 10,000
   finished jobs in the run, and a claim, an empty claim and its wait with 50, 200 and 800 live
-  jobs spread over 15 domains, held by one paced domain or waiting out a retry backoff.
+  jobs spread over 15 domains, held by one paced domain or waiting out a retry backoff, and with
+  one live job on each of 20 and 60 domains.
 - Listing replay: unchanged product/metadata/projection publication with zero physical writes.
 - Scheduling: every configured Cron firing over a whole UTC day, per-shop dispatch counts and
   the sum of configured initial-page ceilings, including disabled shops conservatively.

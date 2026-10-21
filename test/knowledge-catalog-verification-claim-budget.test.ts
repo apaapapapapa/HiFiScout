@@ -281,3 +281,80 @@ for (const shape of LIVE_RUN_SHAPES) {
     }
   }, 60_000);
 }
+
+test("claims and waits cost a few index reads per waiting domain", async () => {
+  const { db, dispose } = await database();
+  const fixture = ["test/knowledge-catalog-verification-claim-budget.test.ts"];
+  const host = (index: number) => `spread-${String(index).padStart(2, "0")}.test`;
+  const pace = (count: number, leasedUntil: string) =>
+    db
+      .prepare(`UPDATE knowledge_catalog_verification_domain_leases
+        SET job_id = 0, leased_until = ? WHERE hostname < ?`)
+      .bind(leasedUntil, host(count));
+  try {
+    await db
+      .prepare(`INSERT INTO knowledge_catalog_review_runs(id,started_at,status)
+        VALUES (1,?,'success'),(2,?,'running')`)
+      .bind(AT, AT)
+      .run();
+    await db
+      .prepare(`INSERT INTO knowledge_catalog_verification_jobs(run_id,job_key,job_type,status,
+          enqueued_at,available_at,created_at,updated_at)
+        VALUES (2,'finalize-2','finalize','queued',?,?,?,?)`)
+      .bind(AT, AT, AT, AT)
+      .run();
+
+    // The least favourable shape: one due target on each domain, so no domain is read for more
+    // than one job. The registry's sources span about twenty domains; sixty is the adverse case.
+    const rows: number[] = [];
+    let previous = 0;
+    for (const domains of [20, 60]) {
+      await db.batch(
+        Array.from({ length: domains - previous }, (_, offset) => previous + offset).flatMap(
+          (index) => [
+            db
+              .prepare(`INSERT INTO knowledge_catalog_verification_jobs(run_id,job_key,job_type,
+                  target_id,hostname,status,enqueued_at,available_at,created_at,updated_at)
+                VALUES (2,?,'candidate',?,?,'queued',?,?,?,?)`)
+              .bind(`spread-${index}`, index + 1, host(index), AT, AT, AT, AT),
+            db
+              .prepare(`INSERT INTO knowledge_catalog_verification_domain_leases(hostname,job_id,
+                  leased_until,updated_at) VALUES (?,0,?,?)`)
+              .bind(host(index), EXPIRED, AT),
+          ],
+        ),
+      );
+      previous = domains;
+
+      const sample = `catalog-verification-live-claim-spread-${domains}`;
+      const boundary = measureD1Cost(db);
+      const claimed = await claimNextKnowledgeCatalogVerificationJobForRun(boundary.db, 2, NOW, 60);
+      await pace(domains, PACED_UNTIL).run();
+      const empty = await claimNextKnowledgeCatalogVerificationJobForRun(boundary.db, 2, NOW, 60);
+      const next = await knowledgeCatalogVerificationRunNextAvailableAt(boundary.db, 2, NOW);
+      const cost = boundary.metrics();
+      await recordCostSample(sample, "local-workerd", cost, fixture, [
+        `A claim, an empty claim and its wait with one live job on each of ${domains} domains.`,
+      ]);
+      console.log(JSON.stringify({ sample, ...cost }));
+      assert.equal(claimed?.hostname, host(0));
+      assert.equal(empty, null, "every domain with a due job is paced");
+      assert.equal(next, PACED_UNTIL);
+      assert.equal(cost.sqlStatements, 5);
+      assert.ok(cost.rowsRead !== null, JSON.stringify(cost));
+      rows.push(cost.rowsRead);
+
+      await db
+        .prepare(`UPDATE knowledge_catalog_verification_jobs
+          SET status='queued', delivery_attempts=0, claimed_at=NULL, lease_expires_at=NULL
+          WHERE run_id=2 AND status='processing'`)
+        .run();
+      await pace(domains, EXPIRED).run();
+    }
+    // Two claim selections and one wait each enumerate every waiting domain once.
+    const perDomain = (rows[1] - rows[0]) / 40;
+    assert.ok(perDomain <= 18, `${perDomain} rows per waiting domain: ${rows}`);
+  } finally {
+    await dispose();
+  }
+}, 60_000);
