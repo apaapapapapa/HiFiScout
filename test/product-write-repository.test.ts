@@ -12,6 +12,76 @@ import { captureDatabase } from "./helpers/d1.js";
 import type { CapturedStatement } from "./helpers/d1.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
+import { listing, AT, NEXT } from "./helpers/d1-write-budget.js";
+import { categorySearchAliases, getCategory } from "../src/catalog/categories.js";
+import { syncProductMetadata } from "../src/db/product-metadata-repository.js";
+
+test("manual and newer category decisions survive crawls while prices and stock remain immediate", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    const input = listing("authority");
+    await upsertProducts(db, "authority", [input], AT);
+    await syncProductMetadata(db, "authority", [input], AT);
+    const primary = getCategory("AMP.PRE")!;
+    sqlite
+      .prepare(`INSERT INTO product_admin_overrides(listing_product_id,primary_category_id,category_ids,category_name,search_aliases,created_at,updated_at)
+      SELECT id,?,'["AMP.PRE"]',?,?,?,? FROM products WHERE shop_key='authority'`)
+      .run(primary.id, primary.name, categorySearchAliases([primary.id]), AT, AT);
+    sqlite
+      .prepare(
+        `UPDATE products SET category=?,primary_category_id='AMP.PRE',category_ids='["AMP.PRE"]',direct_category_ids='["AMP.PRE"]',classification_status='classified',search_aliases=? WHERE shop_key='authority'`,
+      )
+      .run(primary.name, categorySearchAliases([primary.id]));
+    sqlite.exec("DELETE FROM listing_projection_pending");
+    const before = sqlite.prepare("SELECT total_changes() n").get()!.n;
+    const replay = await upsertProducts(db, "authority", [input], NEXT);
+    assert.equal(replay.changedCount, 0);
+    assert.deepEqual(replay.derivedSourceIds, []);
+    assert.equal(sqlite.prepare("SELECT total_changes() n").get()!.n, before);
+    const updated = { ...input, priceYen: 90000, stockStatus: "sold_out" as const };
+    assert.equal((await upsertProducts(db, "authority", [updated], NEXT)).changedCount, 1);
+    assert.deepEqual(
+      {
+        ...sqlite
+          .prepare(
+            "SELECT primary_category_id, price_yen, stock_status FROM products WHERE shop_key='authority'",
+          )
+          .get(),
+      },
+      { primary_category_id: "AMP.PRE", price_yen: 90000, stock_status: "sold_out" },
+    );
+    assert.equal((await upsertProducts(db, "authority", [input], AT)).changedCount, 0);
+    assert.equal(
+      sqlite.prepare("SELECT price_yen FROM products WHERE shop_key='authority'").get()!.price_yen,
+      90000,
+    );
+
+    sqlite.exec("DELETE FROM product_admin_overrides");
+    const currentMetadata = {
+      categoryClassification: { version: 100, evidence: [], ruleId: "current" },
+    };
+    sqlite
+      .prepare("UPDATE products SET metadata_json=? WHERE shop_key='authority'")
+      .run(JSON.stringify(currentMetadata));
+    const older = {
+      ...updated,
+      priceYen: 80000,
+      metadata: { categoryClassification: { version: 99, evidence: [], ruleId: "old" } },
+    };
+    await upsertProducts(db, "authority", [older], "2026-09-05T02:00:00.000Z");
+    await syncProductMetadata(db, "authority", [older], "2026-09-05T02:00:00.000Z");
+    const final = sqlite
+      .prepare(
+        "SELECT primary_category_id,price_yen,metadata_json FROM products WHERE shop_key='authority'",
+      )
+      .get()!;
+    assert.equal(final.primary_category_id, "AMP.PRE");
+    assert.equal(final.price_yen, 80000);
+    assert.deepEqual(JSON.parse(String(final.metadata_json)), currentMetadata);
+  } finally {
+    sqlite.close();
+  }
+});
 
 type ExistingFixture = Record<string, unknown> & { id: number; source_id: string };
 

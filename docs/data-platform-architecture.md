@@ -255,6 +255,27 @@ Both pending selectors materialize their indexed, limited work sets before looki
 
 `upsertProducts` packs complete per-listing groups into D1 batches. A group includes the listing mutation, required category/feature/facet changes and its price observation. It is never split between commits. A history INSERT uses the shop/source identity inside that transaction, so newly allocated listing IDs do not require a second commit. An unchanged replay creates no additional price observation.
 
+The crawl diff overlays a persisted manual category before comparing category columns, memberships
+and category-derived facets. This avoids writing an automatic category only for an override trigger
+to restore it. Seller facts, price, stock and new listings retain their normal immediate write path;
+the existing unchanged-observation heartbeat interval is not a blanket product update interval.
+An observation older than the stored last-seen time cannot replace newer listing facts, and an older
+classification rule version cannot replace a newer category decision while recording fresh prices.
+
+`category-change.ts` compares primary, membership/direct sets, classification status, display and
+search aliases. Evidence serialization is deterministic under source/set permutations. Audit rule,
+version, evidence and detail-cache changes remain durable; only order and an otherwise identical
+catalog decision clock are ignored. Metadata writes compare the observed metadata and last-seen
+snapshot at commit, so concurrent decisions survive.
+
+Knowledge Catalog historical reclassification uses the crawler's verified-evidence classifier.
+Conflicting verified leaves do not authorize a first-category choice. A manual override or unresolved
+Product Identity cannot acquire catalog category authority. Category writes compare the observed row
+snapshot and current identity/override at commit; their category relations require the new projection
+token and share the same atomic listing group. Only actual committed changes count as reclassified.
+Pending `category:` tokens still repair projections after partial batches or Worker interruption,
+including when a later catalog lookup no longer qualifies. A zero-change page adds no projection work.
+
 Migration 0090 records a token in `listing_projection_pending` in the same transaction as an inserted or materially updated listing, including deactivation. Heartbeats and same-value updates do not enqueue work. This obligation survives a failure before `recordCrawlRunWorkSet`; an unchanged crawl returns pending observed sources in its derived work set. Normal crawl continuations and remediation refreshes clear only the token captured before their projection work, after dependency-ordered completion. A concurrent newer edit therefore remains pending. The tables contain current work and constant-size audit cursors, not another append-only event log.
 
 ### Public response security headers

@@ -1,0 +1,434 @@
+{
+  "schemaVersion": 1,
+  "issue": 807,
+  "pr": 810,
+  "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
+  "baselineFixtureSha": "10dc67b534b488a409f01dee3b82b24317505b74",
+  "candidateSha": "4218a867684175bdd4764d4d36934f45d70f1144",
+  "ciMergeSha": "e67a9b6a07e685d525d407d66c998a21b038934f",
+  "ciRun": 39611042096,
+  "ciArtifact": 12351540126,
+  "environment": "local-workerd for D1 rows/statements/SQL duration; Node same-runner CPU harness; neither production billing nor Workers CPU",
+  "verification": {
+    "command": "vp run verify",
+    "tasksPassed": 11,
+    "testFilesPassed": 450,
+    "testsPassed": 2544,
+    "checkoutClean": true,
+    "baselineLoadCasesIncludingSuiteRecords": 398,
+    "candidateLoadCasesIncludingSuiteRecords": 457,
+    "baselineAndCandidateLoadStatus": "pass",
+    "coveredContracts": ["search-and-projection", "category-change-replay"]
+  },
+  "diagnosis": {
+    "reproduced": "Manual category override is restored by existing database triggers after a crawler writes a conflicting automatic category. Repeated identical crawls therefore cause real category/projection writes. Resolve manual authority before calculating changes.",
+    "productionEvidence": "Bounded read-only sample of 12 manually overridden products showed stored manual decisions differing from automatic classification evidence (38 rows read, zero written). This identifies an existing pathway, not the frequency of every SQL execution.",
+    "attributionLimit": "Adaptive Analytics has no bind values here; the observed 27,794 category UPDATE rows cannot all be attributed to repeated updates of the same products."
+  },
+  "measurements": [
+    {
+      "id": "category-override-unchanged-100",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 100,
+      "scenario": "unchanged",
+      "before": {
+        "rowsRead": 5900,
+        "rowsWritten": 3700,
+        "sqlStatements": 305,
+        "d1Calls": 12,
+        "sqlDurationMs": 38,
+        "elapsedMs": 1845.3413849999997,
+        "changedCount": 100
+      },
+      "after": {
+        "rowsRead": 700,
+        "rowsWritten": 0,
+        "sqlStatements": 5,
+        "d1Calls": 5,
+        "sqlDurationMs": 2,
+        "elapsedMs": 161.03909300000032,
+        "changedCount": 0
+      }
+    },
+    {
+      "id": "category-override-few-price-100",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 100,
+      "scenario": "few-price",
+      "before": {
+        "rowsRead": 5825,
+        "rowsWritten": 3606,
+        "sqlStatements": 306,
+        "d1Calls": 12,
+        "sqlDurationMs": 26,
+        "elapsedMs": 1466.3499380000003,
+        "changedCount": 100
+      },
+      "after": {
+        "rowsRead": 728,
+        "rowsWritten": 11,
+        "sqlStatements": 7,
+        "d1Calls": 6,
+        "sqlDurationMs": 4,
+        "elapsedMs": 140.09467700000005,
+        "changedCount": 1
+      }
+    },
+    {
+      "id": "category-override-many-price-100",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 100,
+      "scenario": "many-price",
+      "before": {
+        "rowsRead": 8275,
+        "rowsWritten": 4194,
+        "sqlStatements": 404,
+        "d1Calls": 14,
+        "sqlDurationMs": 39,
+        "elapsedMs": 1612.857398000001,
+        "changedCount": 100
+      },
+      "after": {
+        "rowsRead": 3472,
+        "rowsWritten": 1089,
+        "sqlStatements": 203,
+        "d1Calls": 9,
+        "sqlDurationMs": 13,
+        "elapsedMs": 2213.624597,
+        "changedCount": 99
+      }
+    },
+    {
+      "id": "category-override-unchanged-1000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 1000,
+      "scenario": "unchanged",
+      "before": {
+        "rowsRead": 59000,
+        "rowsWritten": 37000,
+        "sqlStatements": 3045,
+        "d1Calls": 108,
+        "sqlDurationMs": 330,
+        "elapsedMs": 12740.223145,
+        "changedCount": 1000
+      },
+      "after": {
+        "rowsRead": 7000,
+        "rowsWritten": 0,
+        "sqlStatements": 45,
+        "d1Calls": 45,
+        "sqlDurationMs": 26,
+        "elapsedMs": 1423.895353,
+        "changedCount": 0
+      }
+    },
+    {
+      "id": "category-override-few-price-1000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 1000,
+      "scenario": "few-price",
+      "before": {
+        "rowsRead": 58250,
+        "rowsWritten": 36060,
+        "sqlStatements": 3055,
+        "d1Calls": 108,
+        "sqlDurationMs": 324,
+        "elapsedMs": 13410.021491999996,
+        "changedCount": 1000
+      },
+      "after": {
+        "rowsRead": 7280,
+        "rowsWritten": 110,
+        "sqlStatements": 65,
+        "d1Calls": 46,
+        "sqlDurationMs": 15,
+        "elapsedMs": 1374.198837,
+        "changedCount": 10
+      }
+    },
+    {
+      "id": "category-override-many-price-1000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 1000,
+      "scenario": "many-price",
+      "before": {
+        "rowsRead": 82750,
+        "rowsWritten": 41940,
+        "sqlStatements": 4035,
+        "d1Calls": 129,
+        "sqlDurationMs": 440,
+        "elapsedMs": 18541.799956000003,
+        "changedCount": 1000
+      },
+      "after": {
+        "rowsRead": 34720,
+        "rowsWritten": 10890,
+        "sqlStatements": 2025,
+        "d1Calls": 85,
+        "sqlDurationMs": 210,
+        "elapsedMs": 18971.085166999997,
+        "changedCount": 990
+      }
+    },
+    {
+      "id": "category-override-unchanged-10000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 10000,
+      "scenario": "unchanged",
+      "before": {
+        "rowsRead": 590000,
+        "rowsWritten": 370000,
+        "sqlStatements": 30450,
+        "d1Calls": 1075,
+        "sqlDurationMs": 5975,
+        "elapsedMs": 210493.92760399997,
+        "changedCount": 10000
+      },
+      "after": {
+        "rowsRead": 70000,
+        "rowsWritten": 0,
+        "sqlStatements": 450,
+        "d1Calls": 450,
+        "sqlDurationMs": 209,
+        "elapsedMs": 11702.464021,
+        "changedCount": 0
+      }
+    },
+    {
+      "id": "category-override-few-price-10000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 10000,
+      "scenario": "few-price",
+      "before": {
+        "rowsRead": 582500,
+        "rowsWritten": 360600,
+        "sqlStatements": 30550,
+        "d1Calls": 1075,
+        "sqlDurationMs": 3479,
+        "elapsedMs": 154904.40642100002,
+        "changedCount": 10000
+      },
+      "after": {
+        "rowsRead": 72800,
+        "rowsWritten": 1100,
+        "sqlStatements": 650,
+        "d1Calls": 454,
+        "sqlDurationMs": 244,
+        "elapsedMs": 11906.584988000002,
+        "changedCount": 100
+      }
+    },
+    {
+      "id": "category-override-many-price-10000",
+      "profileHash": "42429ea72300c53052e9470d8e107c292abc53ad5b3e4b48bb578c70d215e120",
+      "size": 10000,
+      "scenario": "many-price",
+      "before": {
+        "rowsRead": 827500,
+        "rowsWritten": 419400,
+        "sqlStatements": 40350,
+        "d1Calls": 1284,
+        "sqlDurationMs": 6483,
+        "elapsedMs": 198030.69872,
+        "changedCount": 10000
+      },
+      "after": {
+        "rowsRead": 347200,
+        "rowsWritten": 108900,
+        "sqlStatements": 20250,
+        "d1Calls": 846,
+        "sqlDurationMs": 1401,
+        "elapsedMs": 101191.31971,
+        "changedCount": 9900
+      }
+    }
+  ],
+  "measurementConditions": [
+    "Exact same nine fixture profiles, clean checkouts, frozen dependencies and existing cost meter before/after. Setup excluded. Sizes 100/1000/10000 each have manual AMP.PRE authority conflicting with incoming automatic classification.",
+    "Sequential scenarios: unchanged input; 1% price changes; all prices set to the same new value (99% further changes because the prior 1% already has that price). Category authority and final prices are asserted.",
+    "D1 call counts include the existing invocation-budget accounting; SQL statements include batched statements separately. Production invocation budgets are not raised.",
+    "SQL duration and elapsed wall time are diagnostic only. Different local concurrency prevents attributing their change to production CPU. Missing production metrics remain unavailable, never zero."
+  ],
+  "existingCosts": {
+    "samples": 79,
+    "unchangedSamples": 78,
+    "exceptions": [
+      {
+        "id": "projection-unchanged",
+        "metric": "rowsRead",
+        "before": 110,
+        "after": 111
+      }
+    ],
+    "exceptionReason": "One extra indexed manual-authority lookup read. The sample still writes zero rows, executes 34 statements and remains below its existing 200-row read ceiling. No existing absolute budget changes.",
+    "allNinetySixCandidateDeterministicDigestsMatchPriorCI": true
+  },
+  "profileReview": {
+    "reason": "Existing shared test meter gains a separate SQL-duration diagnostic getter; every test helper contributes to fixture profile hashes. All 87 old sample profiles therefore change even where measured deterministic metrics are identical. Nine scale samples are newly registered.",
+    "reviewedSampleDigests": 96,
+    "policyReview": 1,
+    "policyDigests": {
+      "before": "3782c2ad51222d5ef3552bafc3d4f3cee0e1e586f67281abbf65fd792af454f0",
+      "after": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a"
+    },
+    "noWaiver": "Both complete load suites pass. Every existing deterministic comparison is checked above; CPU has independent same-profile evidence below. No failed baseline, missing sample, relaxed ceiling or timeout is accepted. The new fixture alone allows 600 seconds to measure the inefficient old implementation."
+  },
+  "pairedCpu": {
+    "localBaselineSha": "10dc67b534b488a409f01dee3b82b24317505b74",
+    "localCandidateSha": "4218a867684175bdd4764d4d36934f45d70f1144",
+    "sameProfileComparison": {
+      "method": "same-runner-alternating-median-3",
+      "rounds": 3,
+      "rows": [
+        {
+          "id": "cpu-dynamic-audio-discover",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 5.801,
+          "candidateCpuUs": 5.078,
+          "ratio": 0.8753663161523876,
+          "maximumRatio": 2.770408163265306,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-dynamic-audio-normalize",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 1135.102,
+          "candidateCpuUs": 1146.84,
+          "ratio": 1.0103409209040244,
+          "maximumRatio": 1.7523771263395107,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-dynamic-audio-parse",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 205.877,
+          "candidateCpuUs": 230.475,
+          "ratio": 1.1194791064567677,
+          "maximumRatio": 1.7799526747738572,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-hifido-normalize",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 3098.444,
+          "candidateCpuUs": 3173.333,
+          "ratio": 1.024169873652711,
+          "maximumRatio": 1.752017487582364,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-hifido-parse",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 556.024,
+          "candidateCpuUs": 454.818,
+          "ratio": 0.8179826770067479,
+          "maximumRatio": 1.7833044694598015,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-rewire-discover",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 19.539,
+          "candidateCpuUs": 24.752,
+          "ratio": 1.266799733865602,
+          "maximumRatio": 1.9671081198436822,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-rewire-normalize",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 6649.8,
+          "candidateCpuUs": 6205,
+          "ratio": 0.9331107702487292,
+          "maximumRatio": 1.7516559581373783,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        },
+        {
+          "id": "cpu-rewire-parse",
+          "metric": "cpuUsageRatio",
+          "unit": "ratio",
+          "baselineCpuUs": 634.949,
+          "candidateCpuUs": 609.418,
+          "ratio": 0.9597904713606921,
+          "maximumRatio": 1.757412788542794,
+          "status": "pass",
+          "reason": "same_runner_medians_with_common_baseline_reference"
+        }
+      ]
+    },
+    "ciAbsoluteChecks": {
+      "schemaVersion": 1,
+      "method": "same-runner-alternating-median-3",
+      "rounds": 3,
+      "status": "pass",
+      "baselineSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
+      "sourceSha": "e67a9b6a07e685d525d407d66c998a21b038934f",
+      "exits": [
+        {
+          "side": "baseline",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 3,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 3,
+          "exit": 0
+        }
+      ],
+      "problem": null
+    },
+    "ciProfileCaveat": "CI base predates the diagnostic helper, so cross-profile CPU ratios are not claimed as comparable. Six CI sessions pass their original absolute checks; six separate same-profile alternating local sessions provide the official eight comparative checks.",
+    "implementationRefinement": "A first JSON-stringifying sort comparator raised normalize CPU. Replaced with allocation-free field comparisons before final measurements; original CPU policy and limits retained."
+  },
+  "correctnessAndRecovery": [
+    "Canonical membership and audit evidence order; implied-parent compatibility; ambiguous verified catalog categories do not select an arbitrary first leaf.",
+    "Manual overrides and newer classifier decisions retain authority while new price/stock/raw facts can update. Older observed results cannot rewind stored observations.",
+    "Metadata retains evidence/version changes and original matching decision time when the decision is otherwise equal; metadata CAS rejects a concurrent snapshot change.",
+    "Catalog reclassification compares every category result field, performs a snapshot CAS and token-fenced dependent writes in an indivisible listing batch, and counts actual changes only.",
+    "Real D1 tests cover stale category snapshots, rollback, projection failure/retry, newer-token preservation and retry after 16 of 17 listing groups commit. Existing CSV/category and no-op projection contracts pass."
+  ],
+  "tradeoffs": [
+    "No migrations, additional production tables, Queues, DOs or high-frequency logs. Existing search projection/dirty-set recovery remains.",
+    "No daily throttle on product price, availability or newly observed listings. Last-seen policy remains existing behavior.",
+    "Source guards do not retroactively change already-running old binaries; production serving identity and existing per-shop crawl ownership must be checked at deployment."
+  ],
+  "production": {
+    "deployment": "pending delivery of PR 810; record exact merge SHA, deployment identity and receipts in issue 807",
+    "reviewCompletion": "pending three consecutive natural daily successes; legacy unfinished run recovery is not a substitute",
+    "sqlFamilyImprovement": "pending comparable post-deploy Adaptive Analytics intervals with product/change/completion denominators, coverage and deployment boundaries"
+  }
+}

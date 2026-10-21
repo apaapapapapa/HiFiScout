@@ -49,6 +49,10 @@ const CONFIDENCE_BY_STRENGTH = Object.freeze({
   supporting: 0.6,
 });
 
+function compareEvidenceText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function normalizedEvidence(
   evidence: readonly CategoryEvidenceInput[] = [],
 ): ResolvedCategoryEvidenceItem[] {
@@ -66,7 +70,15 @@ function normalizedEvidence(
         value: String(item.value || "").slice(0, 240),
       }));
     })
-    .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null);
+    .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null)
+    .sort(
+      (left, right) =>
+        compareEvidenceText(left.source, right.source) ||
+        compareEvidenceText(left.strength, right.strength) ||
+        compareEvidenceText(left.categoryId, right.categoryId) ||
+        compareEvidenceText(left.value, right.value) ||
+        compareEvidenceText(left.ruleId || "", right.ruleId || ""),
+    );
 }
 
 function unresolved(

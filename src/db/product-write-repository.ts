@@ -19,6 +19,14 @@ import {
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { normalizeFacetFacts } from "../catalog/product-facets.js";
 import {
+  categoryMembershipChanged,
+  categoryMembershipSet,
+  categoryResultChanged,
+  categoryRuleVersion,
+  categorySet,
+  type CategorySnapshot,
+} from "../catalog/category-change.js";
+import {
   manufacturerIdForFilter,
   normalizeManufacturerKey,
   storedManufacturerId,
@@ -105,6 +113,7 @@ interface UpsertProductsOptions {
 
 type ExistingProductWithOverrides = ExistingProductRow & {
   override_presentation_color?: string | null;
+  override_primary_category_id?: string | null;
 };
 
 async function runBatches(
@@ -327,7 +336,11 @@ export async function selectExistingProducts(
                SELECT presentation_color
                FROM product_admin_overrides
                WHERE listing_product_id = products.id
-             ) AS override_presentation_color
+             ) AS override_presentation_color,
+             (
+               SELECT primary_category_id FROM product_admin_overrides
+               WHERE listing_product_id = products.id
+             ) AS override_primary_category_id
       FROM products WHERE shop_key = ? AND source_id IN (${placeholders})
     `)
       .bind(shopKey, ...chunk)
@@ -410,6 +423,45 @@ export async function deactivateProductsBySourceIds(
 }
 
 /** Any stored column differing from the freshly parsed listing, including re-normalized fields. */
+function categorySnapshot(fields: ExistingCatalogFields, display = ""): CategorySnapshot {
+  return {
+    primary: fields.primaryCategoryId,
+    categories: fields.categoryIdsJson,
+    direct: fields.directCategoryIdsJson,
+    status: fields.classificationStatus,
+    aliases: fields.searchAliases,
+    display,
+  };
+}
+
+/** A manual decision or newer classifier remains authoritative while seller price/stock can move. */
+function effectiveCategoryProduct(
+  product: CatalogProductUpsertInput,
+  existing?: ExistingProductRow,
+): CatalogProductUpsertInput {
+  if (!existing) return product;
+  const incomingVersion = categoryRuleVersion(product.metadata);
+  if (
+    (existing as ExistingProductWithOverrides).override_primary_category_id == null &&
+    !(incomingVersion > 0 && incomingVersion < categoryRuleVersion(existing.metadata_json))
+  )
+    return product;
+  const current = existingCatalogFields(existing);
+  return {
+    ...product,
+    rawCategory: product.rawCategory ?? product.category,
+    category: existing.category,
+    primaryCategoryId: current.primaryCategoryId,
+    categoryIds: [current.primaryCategoryId],
+    directCategoryIds: listingDirectCategoryIds(
+      parseStoredCategoryIds(existing.direct_category_ids),
+      current.primaryCategoryId,
+    ),
+    classificationStatus: current.classificationStatus,
+    searchAliases: current.searchAliases,
+  };
+}
+
 function listingChanged(existing: ExistingProductRow, product: CatalogProductUpsertInput): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
@@ -435,13 +487,11 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
     previous.modelResolutionConfidence !== current.modelResolutionConfidence ||
     previous.modelResolverVersion !== current.modelResolverVersion ||
     existing.title !== product.title ||
-    existing.category !== product.category ||
     previous.rawCategory !== current.rawCategory ||
-    previous.primaryCategoryId !== current.primaryCategoryId ||
-    previous.categoryIdsJson !== current.categoryIdsJson ||
-    previous.directCategoryIdsJson !== current.directCategoryIdsJson ||
-    previous.classificationStatus !== current.classificationStatus ||
-    previous.searchAliases !== current.searchAliases ||
+    categoryResultChanged(
+      categorySnapshot(previous, existing.category),
+      categorySnapshot(current, product.category),
+    ) ||
     existing.condition_text !== product.conditionText ||
     existing.price_yen !== product.priceYen ||
     existing.stock_status !== product.stockStatus ||
@@ -490,10 +540,9 @@ function categoriesChanged(
 ): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
-  return (
-    previous.primaryCategoryId !== current.primaryCategoryId ||
-    previous.categoryIdsJson !== current.categoryIdsJson ||
-    previous.directCategoryIdsJson !== current.directCategoryIdsJson
+  return categoryMembershipChanged(
+    categorySnapshot(previous, existing.category),
+    categorySnapshot(current, product.category),
   );
 }
 
@@ -512,19 +561,21 @@ function shouldTouch(
 
 /** Each group is one listing's facts, history and trigger-created projection obligation.
  * Batch packing may combine groups but must never split one across commits. */
-async function runAtomicListingBatches(
+export async function runAtomicListingBatches(
   db: QueryableDatabase,
   groups: D1PreparedStatement[][],
-): Promise<void> {
+): Promise<D1Result[]> {
+  const results: D1Result[] = [];
   let batch: D1PreparedStatement[] = [];
   for (const group of groups) {
     if (batch.length && batch.length + group.length > 50) {
-      await db.batch(batch);
+      results.push(...(await db.batch(batch)));
       batch = [];
     }
     batch.push(...group);
   }
-  if (batch.length) await db.batch(batch);
+  if (batch.length) results.push(...(await db.batch(batch)));
+  return results;
 }
 
 function dependentListingWrites(
@@ -665,9 +716,12 @@ export async function upsertProducts(
   let featureFactCount = 0;
   const atomicGroups: D1PreparedStatement[][] = [];
 
-  for (const product of products) {
+  for (const observedProduct of products) {
+    const existing = existingBySource.get(observedProduct.sourceId);
+    if (existing?.last_seen_at && Date.parse(observedAt) < Date.parse(existing.last_seen_at))
+      continue;
+    const product = effectiveCategoryProduct(observedProduct, existing);
     const fields = catalogFields(product);
-    const existing = existingBySource.get(product.sourceId);
     if (!existing) {
       const firstActivity = initialActivity(product, observedAt);
       newSourceIds.push(product.sourceId);
@@ -787,8 +841,16 @@ export async function upsertProducts(
         category: product.category,
         raw_category: fields.rawCategory,
         primary_category_id: fields.primaryCategoryId,
-        category_ids: fields.categoryIdsJson,
-        direct_category_ids: fields.directCategoryIdsJson,
+        category_ids:
+          JSON.stringify(categoryMembershipSet(existing.category_ids)) ===
+          JSON.stringify(categoryMembershipSet(fields.categoryIdsJson))
+            ? existing.category_ids
+            : fields.categoryIdsJson,
+        direct_category_ids:
+          JSON.stringify(categorySet(existing.direct_category_ids)) ===
+          JSON.stringify(categorySet(fields.directCategoryIdsJson))
+            ? existing.direct_category_ids
+            : fields.directCategoryIdsJson,
         classification_status: fields.classificationStatus,
         search_aliases: fields.searchAliases,
         condition_text: product.conditionText,

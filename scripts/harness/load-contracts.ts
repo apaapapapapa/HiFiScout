@@ -192,6 +192,32 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. Deactivating a crawl's missing listings costs the same with 100 or 10,000 other active listings in the shop. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
   },
   {
+    id: "category-change-replay",
+    sources: [
+      "src/catalog/category-change.ts",
+      "src/catalog/category-classifier.ts",
+      "src/db/knowledge-catalog-repository.ts",
+      "src/db/product-write-repository.ts",
+      "src/db/product-metadata-repository.ts",
+    ],
+    suites: [
+      "test/category-repeat-write-budget.test.ts",
+      "test/product-write-repository.test.ts",
+      "test/product-metadata.test.ts",
+      "test/knowledge-catalog-reclassification.test.ts",
+      "test/category-enrichment-determinism.test.ts",
+    ],
+    samples: Object.fromEntries(
+      [100, 1000, 10000].flatMap((size) => [
+        [`category-override-unchanged-${size}`, d1(size * 8, 0, Math.ceil(size / 20))],
+        [`category-override-few-price-${size}`, d1(size * 9, size * 0.15, Math.ceil(size * 0.07))],
+        [`category-override-many-price-${size}`, d1(size * 40, size * 12, Math.ceil(size * 2.1))],
+      ]),
+    ),
+    reason:
+      "Manual category authority participates in the crawl diff: identical observations write zero; a 1% or near-total price change updates only those listings and history immediately. Shared classification evidence is order invariant. Catalog reclassification uses the same evidence decision, compares the full category result and atomically fences dependent writes; stale snapshots do no work and failed projections resume from their durable token.",
+  },
+  {
     id: "data-quality-snapshot",
     sources: ["src/db/data-quality-repository.ts"],
     suites: [

@@ -1,7 +1,13 @@
 import { loadCatalogLookupCandidates } from "./catalog-lookup-candidates.js";
 import { inferSaleSubject, isAccessoryCategory } from "../catalog/sale-subject.js";
-import { categorySearchAliases, getCategory } from "../catalog/categories.js";
-import { catalogModelLookupVariants, knowledgeCatalogKey } from "../catalog/knowledge-catalog.js";
+import { classifyCategoryEvidence } from "../catalog/category-classifier.js";
+import { categoryResultChanged } from "../catalog/category-change.js";
+import { runAtomicListingBatches } from "./product-write-repository.js";
+import {
+  catalogModelLookupVariants,
+  knowledgeCatalogKey,
+  knowledgeCatalogEvidence,
+} from "../catalog/knowledge-catalog.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type {
   CatalogMatchIndexEntry,
@@ -41,6 +47,12 @@ type ReclassificationProductRow = Pick<
   | "category"
   | "primary_category_id"
   | "category_ids"
+  | "direct_category_ids"
+  | "search_aliases"
+  | "metadata_json"
+  | "last_seen_at"
+  | "title"
+  | "raw_model"
   | "classification_status"
   | "remediation_projection_required"
   | "remediation_projection_token"
@@ -58,26 +70,14 @@ interface ReclassificationRefreshTarget {
 }
 
 interface ReclassificationPage {
-  statements: D1PreparedStatement[];
-  reclassifiedProducts: number;
+  groups: D1PreparedStatement[][];
+  changes: Array<{ offset: number; target: ReclassificationRefreshTarget }>;
   refreshTargets: ReclassificationRefreshTarget[];
 }
 
 export interface KnowledgeCatalogReclassificationDependencies {
   /** Test seam for deterministic downstream failure injection. */
   refreshListings?: typeof refreshListingProjections;
-}
-
-function parseCategoryIds(value: string | readonly string[] | null): string[] {
-  if (Array.isArray(value)) return value.filter((item): item is string => Boolean(item));
-  try {
-    const parsed: unknown = JSON.parse(typeof value === "string" ? value : "[]");
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item))
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 function pendingCategoryProjectionToken(product: ReclassificationProductRow): string | null {
@@ -248,9 +248,10 @@ function buildReclassificationStatements(
   products: readonly ReclassificationProductRow[],
   matches: ReadonlyMap<string, CatalogMatchIndexEntry>,
 ): ReclassificationPage {
-  const statements: D1PreparedStatement[] = [];
+  const groups: D1PreparedStatement[][] = [];
+  const changes: ReclassificationPage["changes"] = [];
+  let offset = 0;
   const refreshTargets: ReclassificationRefreshTarget[] = [];
-  let reclassifiedProducts = 0;
 
   for (const product of products) {
     const pendingProjectionToken = pendingCategoryProjectionToken(product);
@@ -280,69 +281,119 @@ function buildReclassificationStatements(
       continue;
     }
 
-    const categoryIds = match.categoryIds.filter(
-      (categoryId) => getCategory(categoryId)?.selectable,
+    // Use the crawler's evidence resolver: conflicting verified leaves never authorize an
+    // arbitrary first category, and included/accessory text cannot lend main-product authority.
+    const classification = classifyCategoryEvidence(
+      knowledgeCatalogEvidence(match, {
+        title: product.title,
+        rawModel: product.raw_model,
+      }),
     );
-    if (!categoryIds.length) continue;
-    const primary = getCategory(categoryIds[0]);
-    if (!primary) continue;
-    const currentIds = parseCategoryIds(product.category_ids);
-    const unchanged =
-      product.classification_status === "classified" &&
-      product.primary_category_id === primary.id &&
-      JSON.stringify(currentIds) === JSON.stringify(categoryIds) &&
-      product.category === primary.name;
-    if (unchanged) continue;
+    if (classification.classificationStatus !== "classified") continue;
+    const categoryIds = classification.categoryIds;
+    const primaryId = classification.primaryCategoryId;
+    if (
+      !categoryResultChanged(
+        {
+          primary: product.primary_category_id,
+          categories: product.category_ids,
+          direct: product.direct_category_ids,
+          status: product.classification_status,
+          aliases: product.search_aliases,
+          display: product.category,
+        },
+        {
+          primary: primaryId,
+          categories: categoryIds,
+          direct: [primaryId],
+          status: classification.classificationStatus,
+          aliases: classification.searchAliases,
+          display: classification.displayName,
+        },
+      )
+    )
+      continue;
 
     const projectionToken = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
-    statements.push(
+    const statements = [
       db
         .prepare(`
       UPDATE products
       SET category = ?, primary_category_id = ?, category_ids = ?, direct_category_ids = ?,
           classification_status = 'classified',
           search_aliases = ?, remediation_projection_required = 1, remediation_projection_token = ?
-      WHERE id = ?
+      WHERE id = ? AND category IS ? AND primary_category_id IS ? AND category_ids IS ?
+        AND direct_category_ids IS ? AND classification_status IS ? AND search_aliases IS ?
+        AND last_seen_at IS ? AND metadata_json IS ?
+        AND NOT EXISTS (SELECT 1 FROM product_admin_overrides o
+          WHERE o.listing_product_id = products.id AND o.primary_category_id IS NOT NULL)
+        AND EXISTS (SELECT 1 FROM product_identity_resolutions pir
+          WHERE pir.listing_product_id = products.id AND pir.status = 'matched' AND pir.catalog_product_id = ?)
     `)
         .bind(
-          primary.name,
-          primary.id,
+          classification.displayName,
+          primaryId,
           JSON.stringify(categoryIds),
-          // The catalog answered for one product, so the listing is directly in that one category.
-          JSON.stringify([primary.id]),
-          categorySearchAliases(categoryIds),
+          JSON.stringify([primaryId]),
+          classification.searchAliases,
           projectionToken,
           product.id,
+          product.category,
+          product.primary_category_id,
+          product.category_ids,
+          product.direct_category_ids ?? null,
+          product.classification_status,
+          product.search_aliases ?? null,
+          product.last_seen_at ?? null,
+          product.metadata_json ?? null,
+          match.id,
         ),
-    );
+    ];
+    // All dependent writes require the successful category CAS and stay in its atomic batch.
     statements.push(
-      db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(product.id),
+      db
+        .prepare(`DELETE FROM product_categories WHERE product_id = ?
+      AND EXISTS (SELECT 1 FROM products WHERE id = ? AND remediation_projection_token = ?)`)
+        .bind(product.id, product.id, projectionToken),
     );
     for (const categoryId of categoryIds) {
       statements.push(
         db
-          .prepare(
-            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
-          )
-          .bind(product.id, categoryId, categoryId === primary.id ? 1 : 0),
+          .prepare(`INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct)
+        SELECT id, ?, ? FROM products WHERE id = ? AND remediation_projection_token = ?`)
+          .bind(categoryId, categoryId === primaryId ? 1 : 0, product.id, projectionToken),
       );
     }
-
-    const existingTarget = refreshTargets.find((target) => target.id === Number(product.id));
-    if (existingTarget) {
-      existingTarget.projectionToken = projectionToken;
-    } else {
-      refreshTargets.push({
+    changes.push({
+      offset,
+      target: {
         id: Number(product.id),
         shop_key: product.shop_key,
         source_id: product.source_id,
         projectionToken,
-      });
-    }
-    reclassifiedProducts += 1;
+      },
+    });
+    groups.push(statements);
+    offset += statements.length;
   }
 
-  return { statements, reclassifiedProducts, refreshTargets };
+  return { groups, changes, refreshTargets };
+}
+
+async function applyReclassificationPage(
+  db: QueryableDatabase,
+  page: ReclassificationPage,
+): Promise<number> {
+  const results = await runAtomicListingBatches(db, page.groups);
+  let changed = 0;
+  for (const { offset, target } of page.changes) {
+    if (!Number(results[offset]?.meta?.changes)) continue;
+    changed++;
+    const existing = page.refreshTargets.findIndex((item) => item.id === target.id);
+    if (existing >= 0) page.refreshTargets[existing] = target;
+    else page.refreshTargets.push(target);
+  }
+  return changed;
 }
 
 async function refreshReclassificationPage(
@@ -383,6 +434,7 @@ export async function reclassifyProductsFromKnowledgeCatalog(
       SELECT p.id, p.shop_key, p.source_id,
              p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
              p.category, p.primary_category_id, p.category_ids, p.classification_status,
+             p.direct_category_ids, p.search_aliases, p.metadata_json, p.last_seen_at, p.title, p.raw_model,
              p.remediation_projection_required, p.remediation_projection_token,
              pir.status AS identity_status,
              pir.catalog_product_id AS identity_catalog_product_id,
@@ -401,9 +453,8 @@ export async function reclassifyProductsFromKnowledgeCatalog(
 
     const matches = await findVerifiedCatalogMatches(db, products);
     const page = buildReclassificationStatements(db, products, matches);
-    await runBatches(db, page.statements);
+    reclassifiedProducts += await applyReclassificationPage(db, page);
     await refreshReclassificationPage(db, page, evaluatedAt, refreshListings);
-    reclassifiedProducts += page.reclassifiedProducts;
 
     lastId = Number(products[products.length - 1].id);
     if (products.length < PRODUCT_PAGE_SIZE) break;
@@ -425,6 +476,7 @@ export async function reclassifyAdminCsvListings(
     SELECT p.id, p.shop_key, p.source_id,
            p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
            p.category, p.primary_category_id, p.category_ids, p.classification_status,
+             p.direct_category_ids, p.search_aliases, p.metadata_json, p.last_seen_at, p.title, p.raw_model,
            p.remediation_projection_required, p.remediation_projection_token,
            pir.status AS identity_status, pir.catalog_product_id AS identity_catalog_product_id,
            o.primary_category_id AS override_primary_category_id
@@ -438,6 +490,6 @@ export async function reclassifyAdminCsvListings(
   const products = observed.results || [];
   const matches = await findVerifiedCatalogMatches(db, products);
   const page = buildReclassificationStatements(db, products, matches);
-  await runBatches(db, page.statements);
+  await applyReclassificationPage(db, page);
   await refreshReclassificationPage(db, page, evaluatedAt);
 }

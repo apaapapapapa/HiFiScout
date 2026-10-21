@@ -7,6 +7,73 @@ import {
 
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
+test("audit set order is a no-op but a rule change is durable and stale metadata cannot replace it", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    const evidence = [
+      { source: "seller", categoryIds: ["AMP.PRE", "AMP.POWER"], ruleId: "v1" },
+      { source: "catalog", categoryIds: ["AMP.PRE"], value: "model" },
+    ];
+    const before = {
+      categoryClassification: { version: 27, evidence, catalogMatchedAt: "2026-09-05T00:00:00Z" },
+    };
+    sqlite
+      .prepare(`INSERT INTO products(shop_key,source_id,title,source_url,metadata_json,first_seen_at,last_seen_at,last_changed_at)
+      VALUES ('hifido','one','Example','https://example.test',?,'2026-09-05T00:00:00Z','2026-09-05T01:00:00Z','2026-09-05T00:00:00Z')`)
+      .run(JSON.stringify(before));
+    const reordered = {
+      categoryClassification: {
+        ...before.categoryClassification,
+        evidence: [...evidence]
+          .reverse()
+          .map((e) => ({ ...e, categoryIds: [...e.categoryIds].reverse() })),
+        catalogMatchedAt: "2026-09-05T02:00:00Z",
+      },
+    };
+    assert.equal(
+      await syncProductMetadata(
+        db,
+        "hifido",
+        [{ sourceId: "one", metadata: reordered }],
+        "2026-09-05T02:00:00Z",
+      ),
+      0,
+    );
+    const changed = {
+      categoryClassification: { ...reordered.categoryClassification, ruleId: "rule-v2" },
+    };
+    assert.equal(
+      await syncProductMetadata(
+        db,
+        "hifido",
+        [{ sourceId: "one", metadata: changed }],
+        "2026-09-05T02:00:00Z",
+      ),
+      1,
+    );
+    assert.equal(
+      await syncProductMetadata(
+        db,
+        "hifido",
+        [{ sourceId: "one", metadata: before }],
+        "2026-09-05T00:00:00Z",
+      ),
+      0,
+    );
+    assert.equal(
+      JSON.parse(
+        String(
+          sqlite.prepare("SELECT metadata_json FROM products WHERE shop_key='hifido'").get()!
+            .metadata_json,
+        ),
+      ).categoryClassification.ruleId,
+      "rule-v2",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("product metadata is stored as stable JSON", () => {
   assert.equal(
     normalizeMetadataJson({ warranty: "6 months", storeName: "Tokyo", rank: "A" }),
