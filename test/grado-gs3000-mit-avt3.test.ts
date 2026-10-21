@@ -24,6 +24,12 @@ import { productQuery } from "./helpers/product-query.js";
 
 const MIGRATION = "0131_grado_gs3000_and_mit_avt3.sql";
 const migration = readFileSync(new URL(`../migrations/${MIGRATION}`, import.meta.url), "utf8");
+// Current quality snapshots record their aggregate definition; the historical data migration under
+// test stays isolated from everything else that followed it.
+const SNAPSHOT_DEFINITION_SCHEMA = readFileSync(
+  new URL("../migrations/0137_data_quality_snapshot_definition.sql", import.meta.url),
+  "utf8",
+);
 const AT = "2026-09-15T00:55:00.000Z";
 const CURRENT_REPLAY_STATE = {
   manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
@@ -370,6 +376,7 @@ test("migration registers GS3000 once and targets only the reviewed stale rows",
 test("targeted replay is consumed once and retires requests for listings that became inactive", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    sqlite.exec(SNAPSHOT_DEFINITION_SCHEMA);
     sqlite.exec(`
       INSERT OR IGNORE INTO knowledge_catalog_manufacturers(
         id,canonical_name,verification_status,source,provenance_json,created_at,updated_at
@@ -452,6 +459,7 @@ test("targeted replay is consumed once and retires requests for listings that be
 test("scheduled sweeps prioritize migration-owned replay over an existing ordinary backlog", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    sqlite.exec(SNAPSHOT_DEFINITION_SCHEMA);
     sqlite.exec(`
       INSERT OR IGNORE INTO knowledge_catalog_manufacturers(
         id,canonical_name,verification_status,source,provenance_json,created_at,updated_at
@@ -541,6 +549,7 @@ test("scheduled sweeps prioritize migration-owned replay over an existing ordina
 test("replay converges GS3000 catalog identity and both corrected search categories", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
+    sqlite.exec(SNAPSHOT_DEFINITION_SCHEMA);
     // Current search also reads the photo schema; leave the historical data migration isolated.
     sqlite.exec(
       readFileSync(
