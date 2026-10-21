@@ -1,3 +1,4 @@
+import { firstMeasured } from "./read-accounting.js";
 import type { InventoryRecheckCandidateRow, QueryableDatabase } from "./types.js";
 
 interface InventoryCandidateWindow {
@@ -5,30 +6,53 @@ interface InventoryCandidateWindow {
   retryBefore: string;
 }
 
+/** Partial (`is_active = 1`) index on `(shop_key, last_inventory_check_attempt_at, last_seen_at)`. */
+const ATTEMPT_INDEX = "idx_products_inventory_recheck_attempt";
+const RECHECKABLE_URL = "source_url LIKE 'https://www.audiounion.jp/ct/detail/used/%'";
+
+/**
+ * The shop's next listing to recheck: never-attempted listings first, then the oldest attempt;
+ * ties fall to the oldest `last_seen_at`, then the lowest id.
+ *
+ * SQLite already sorts NULL attempts first, so that order is exactly the attempt index's own
+ * `(attempt, last_seen_at, rowid)` order. It is read as two seeks rather than one walk because a
+ * single walk would step over every recently seen never-attempted listing before reaching an
+ * attempted one. The never-attempted seek is bounded by `last_seen_at`; the attempted one stops at
+ * `retryBefore`, so listings checked within the retry interval are never visited. `COALESCE`
+ * evaluates the second seek only when the first finds nothing.
+ */
 export async function selectInventoryRecheckCandidate(
   db: QueryableDatabase,
   shopKey: string,
   { staleBefore, retryBefore }: InventoryCandidateWindow,
 ): Promise<InventoryRecheckCandidateRow | null> {
-  return db
-    .prepare(`
+  return firstMeasured<InventoryRecheckCandidateRow>(
+    db
+      .prepare(`
     SELECT id, source_id, source_url, last_seen_at, last_inventory_checked_at,
            last_inventory_check_attempt_at, inventory_check_failures
     FROM products
-    WHERE shop_key = ?
-      AND is_active = 1
-      AND last_seen_at <= ?
-      AND (last_inventory_check_attempt_at IS NULL OR last_inventory_check_attempt_at <= ?)
-      AND source_url LIKE 'https://www.audiounion.jp/ct/detail/used/%'
-    ORDER BY
-      CASE WHEN last_inventory_check_attempt_at IS NULL THEN 0 ELSE 1 END,
-      last_inventory_check_attempt_at ASC,
-      last_seen_at ASC,
-      id ASC
-    LIMIT 1
+    WHERE id = COALESCE(
+      (SELECT id FROM products INDEXED BY ${ATTEMPT_INDEX}
+        WHERE shop_key = ?
+          AND is_active = 1
+          AND last_inventory_check_attempt_at IS NULL
+          AND last_seen_at <= ?
+          AND ${RECHECKABLE_URL}
+        ORDER BY last_seen_at ASC, id ASC
+        LIMIT 1),
+      (SELECT id FROM products INDEXED BY ${ATTEMPT_INDEX}
+        WHERE shop_key = ?
+          AND is_active = 1
+          AND last_inventory_check_attempt_at <= ?
+          AND last_seen_at <= ?
+          AND ${RECHECKABLE_URL}
+        ORDER BY last_inventory_check_attempt_at ASC, last_seen_at ASC, id ASC
+        LIMIT 1)
+    )
   `)
-    .bind(shopKey, staleBefore, retryBefore)
-    .first<InventoryRecheckCandidateRow>();
+      .bind(shopKey, staleBefore, shopKey, retryBefore, staleBefore),
+  );
 }
 
 export async function markInventoryCheckAttempt(

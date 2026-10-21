@@ -192,6 +192,20 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. Deactivating a crawl's missing listings costs the same with 100 or 10,000 other active listings in the shop. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
   },
   {
+    id: "data-quality-snapshot",
+    sources: ["src/db/data-quality-repository.ts"],
+    suites: [
+      "test/data-quality-snapshot-budget.test.ts",
+      "test/data-quality-snapshot-coverage.test.ts",
+    ],
+    samples: Object.fromEntries([
+      ...[1000, 5000].map((size) => [`dq-snapshot-unchanged-${size}`, d1(40, 6, 3)]),
+      ...[1000, 5000].map((size) => [`dq-snapshot-changed-${size}`, d1(size * 2 + 40, 6, 4)]),
+    ]),
+    reason:
+      "Re-evaluating a shop whose trigger-maintained quality revision and aggregate definition still match its newest snapshot reuses those counts through one indexed probe, whatever the shop's active, inactive or other-shop inventory. A moved input re-aggregates at about one index entry and one Identity probe per active listing, with no per-listing category IN-list probes.",
+  },
+  {
     id: "catalog-photos",
     sources: [
       "src/db/catalog-photo-repository.ts",
@@ -263,6 +277,25 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     ),
     reason:
       "A run-scoped claim and wake-state read seek live job statuses and target job types, so finished jobs in the run and older runs add no reads to each claim.",
+  },
+  {
+    id: "inventory-recheck",
+    sources: ["src/db/inventory-recheck-repository.ts"],
+    suites: [
+      "test/inventory-recheck-candidate-budget.test.ts",
+      "test/inventory-recheck-repository.test.ts",
+      "test/inventory-recheck.test.ts",
+    ],
+    samples: Object.fromEntries(
+      [1000, 5000].flatMap((size) =>
+        ["never-attempted", "oldest-attempt"].map((scenario) => [
+          `inventory-recheck-${scenario}-${size}`,
+          d1(20, 0, 1),
+        ]),
+      ),
+    ),
+    reason:
+      "Each crawl's PREPARE and FETCH pick one recheck candidate by seeking the active-listing attempt index: never-attempted stale listings by last_seen_at, then the oldest attempt within the retry window. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
   },
   {
     id: "retention-and-schema",

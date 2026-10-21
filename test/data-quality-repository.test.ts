@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import {
+  DATA_QUALITY_SNAPSHOT_DEFINITION,
   MODEL_OPTIONAL_CATEGORIES,
   dataQualityRow,
   latestDataQualityByShop,
@@ -40,6 +41,8 @@ function captureDb({
         async all() {
           calls.push({ kind: "all", sql, binds: statement.binds });
           if (/RETURNING revision/.test(sql)) return { results: [{ revision: 1 }] };
+          // No saved snapshot proves the armed revision, so these cases exercise the aggregate.
+          if (/latest\.source_revision = \?/.test(sql)) return { results: [] };
           return { results: allRows[allIndex++] || [] };
         },
         async run() {
@@ -140,8 +143,9 @@ test("quality result is linked to crawl run and persists snapshot and run status
   assert.equal(result.run.status, "healthy");
   assert.equal(insert.binds[0], "audio-union");
   assert.equal(insert.binds[1], 42);
-  assert.equal(insert.binds.length, 39);
+  assert.equal(insert.binds.length, 40);
   assert.equal(insert.binds[38], 1);
+  assert.equal(insert.binds[39], DATA_QUALITY_SNAPSHOT_DEFINITION);
   assert.match(insert.sql, /ON CONFLICT\(crawl_run_id\)/);
   assert.match(insert.sql, /snapshot_status/);
   assert.match(insert.sql, /run_status/);

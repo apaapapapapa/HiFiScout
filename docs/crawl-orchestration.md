@@ -32,6 +32,10 @@ The Durable Object is the single-flight authority. D1 does not maintain a second
 The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
 
 Inventory recheck reads one stale candidate per successful crawl through the same paced request.
+Never-attempted stale listings come first, then the oldest attempt outside the retry interval; both
+are seeks of the active-listing attempt index. Recently seen never-attempted listings and listings
+checked within the retry interval add no reads; a listing the crawl has seen again since an older
+check is stepped over once per selection until it becomes stale again.
 AudioUnion's listing status field is authoritative: a retained price or a related item's purchase
 button does not prove availability. An explicit sold observation sets `stock_status` to `sold_out`
 immediately; deactivation still requires the configured consecutive failure threshold. Missing

@@ -6,7 +6,7 @@ import {
   replayAdminCsvListings,
   runDataQualityRemediationSweep,
 } from "../src/db/data-quality-remediation-service.js";
-import { saveDataQualityRun } from "../src/db/data-quality-repository.js";
+import { readDataQualitySnapshot, saveDataQualityRun } from "../src/db/data-quality-repository.js";
 import { enqueueDataQualityRemediation } from "../src/db/data-quality-remediation-queue-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -124,8 +124,11 @@ test("metadata-only sweep skips the shop-wide quality scan when the latest snaps
       now: "2026-09-12T08:55:00.000Z",
     });
 
+    // The shop-wide aggregate an authoritative snapshot lets the sweep avoid. An unchanged
+    // saveDataQualityRun now reuses its covered snapshot, so measure the aggregate itself.
     const fullScan = accountReads(db);
-    await saveDataQualityRun(fullScan.db, {
+    await readDataQualitySnapshot(fullScan.db, "budget");
+    await saveDataQualityRun(db, {
       shopKey: "budget",
       evaluatedAt: "2026-09-12T08:59:00.000Z",
     });
