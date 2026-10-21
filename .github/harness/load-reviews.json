@@ -1527,6 +1527,96 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/801",
         "https://github.com/apaapapapapa/HiFiScout/pull/802"
       ]
+    },
+    {
+      "id": "dq-snapshot-changed-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "823df529d1580668907ceeef2363264b0587f38a32438d14362ad3ee5da6f2a8",
+      "reason": "Reviewed initial real-workerd baseline: 2,024 reads, 5 writes and 4 statements to re-evaluate a shop of 1,000 active listings after one inventory and one Identity change: one probe of the newest snapshot, then one full aggregate at about one index entry and one Identity probe per listing. The base read 3,874 because the model-optional category IN-list was probed per evaluation inside the aggregate's CASE expressions.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "dq-snapshot-changed-5000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "9965f92ff67924738a583846c0dcd473152612dd33f6f6c959a5e1295bcca906",
+      "reason": "Reviewed initial real-workerd baseline: 10,024 reads, 5 writes and 4 statements to re-evaluate a shop of 5,000 active listings after one inventory and one Identity change: one probe of the newest snapshot, then one full aggregate at about one index entry and one Identity probe per listing. The base read 19,254 because the model-optional category IN-list was probed per evaluation inside the aggregate's CASE expressions.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "dq-snapshot-unchanged-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "9f7085a59c473bc1211e5fa5d9a55d87802f86caa4ac7cda4cb1fa60bd93e9a5",
+      "reason": "Reviewed initial real-workerd baseline: 23 reads, 5 writes and 3 statements to re-evaluate a shop of 1,000 active listings (plus inactive and other-shop listings) whose trigger-maintained quality revision and aggregate definition still match its newest snapshot. The same evaluation at the base re-aggregated every active listing (3,874 reads); production attributed about 11,180 reads per crawl evaluation to that aggregate.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "dq-snapshot-unchanged-5000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "eeb8dda7e8696715e3a6e2710a1d9f7978268ae8f479be613173435c91fb2a8c",
+      "reason": "Reviewed initial real-workerd baseline: 23 reads, 5 writes and 3 statements to re-evaluate a shop of 5,000 active listings (plus inactive and other-shop listings) whose trigger-maintained quality revision and aggregate definition still match its newest snapshot. The same evaluation at the base re-aggregated every active listing (19,254 reads); production attributed about 11,180 reads per crawl evaluation to that aggregate.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "0eb813bb8b46a27d1d8047e9079ec94b38e18662786aaad1b52d590081e1c410",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, no writes and one statement to select the next never-attempted recheck candidate among 1,000 active listings of the shop, half seen within the hour and half checked within the retry interval. At the base the CASE-first ORDER BY read and sorted every active listing (1,017 reads); production attributed about 1,765 reads per selection to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-5000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "87d94bc1069d15769c0ece0e90fed56a27d3b80440e45b22d11f9ee34841d954",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, no writes and one statement to select the next never-attempted recheck candidate among 5,000 active listings of the shop, half seen within the hour and half checked within the retry interval. At the base the CASE-first ORDER BY read and sorted every active listing (5,017 reads); production attributed about 1,765 reads per selection to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-1000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "917c6e9fbf9072521f3dd9c04e2665eb445d7ada50d2459c3daae812efc5f3fd",
+      "reason": "Reviewed initial real-workerd baseline: 3 reads, no writes and one statement to select the next oldest-attempt recheck candidate among 1,000 active listings of the shop, half seen within the hour and half checked within the retry interval. At the base the CASE-first ORDER BY read and sorted every active listing (1,014 reads); production attributed about 1,765 reads per selection to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-5000",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "5e0a08bf3941b94968cce7ca7c01550424d48a6e7beeb5d9b63efbbd892e4ab6",
+      "reason": "Reviewed initial real-workerd baseline: 3 reads, no writes and one statement to select the next oldest-attempt recheck candidate among 5,000 active listings of the shop, half seen within the hour and half checked within the retry interval. At the base the CASE-first ORDER BY read and sorted every active listing (5,014 reads); production attributed about 1,765 reads per selection to it.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "243fcc4c9f8c773c1c1cf3e5e2af7e01d8a437f4",
+      "beforeDigest": "db80295337aa17ee833173ddab7c22754ccd0e39cd4c0aac42e4a72899e3c913",
+      "afterDigest": "adbba0205492c789d44b9b6bf14d835f285c503eb5967349a9d832da0ac99b92",
+      "reason": "Bring two unowned load-sensitive sources under new contracts. data-quality-snapshot owns the per-shop quality aggregate, which production measured as the third-largest D1 reader (about 11,180 reads per crawl evaluation): an unchanged re-evaluation now reuses the proven snapshot through one indexed probe and a changed one re-aggregates without per-listing IN-list probes. inventory-recheck owns the recheck candidate selector, which read and sorted every active AudioUnion listing per crawl and now seeks the existing attempt index. Existing contracts, samples and ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/804"
+      ]
     }
   ]
 }
