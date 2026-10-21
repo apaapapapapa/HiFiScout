@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "issue": 807,
+  "pr": 808,
+  "baselineSha": "fc652d6b8dd9d17f62a96775b6df55af405a474e",
+  "candidateSha": "57c0adb55f5a3bed809725453ef0cee752735e33",
+  "environment": "local-workerd / pinned Node 22.23.2; not production billing",
+  "verification": {
+    "command": "vp run verify",
+    "tasksPassed": 11,
+    "testFilesPassed": 447,
+    "testsPassed": 2532
+  },
+  "load": {
+    "baseTestsPassed": 295,
+    "candidateTestsPassed": 329,
+    "totalSamples": 75,
+    "deterministicSamples": 67,
+    "deterministicProfilesAndMetricsIdentical": true,
+    "pairedCpu": {
+      "schemaVersion": 1,
+      "method": "same-runner-alternating-median-3",
+      "rounds": 3,
+      "status": "pass",
+      "baselineSha": "fc652d6b8dd9d17f62a96775b6df55af405a474e",
+      "sourceSha": "57c0adb55f5a3bed809725453ef0cee752735e33",
+      "exits": [
+        {
+          "side": "baseline",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 1,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 2,
+          "exit": 0
+        },
+        {
+          "side": "baseline",
+          "round": 3,
+          "exit": 0
+        },
+        {
+          "side": "candidate",
+          "round": 3,
+          "exit": 0
+        }
+      ],
+      "problem": null
+    },
+    "loadPolicyOnlyReview": {
+      "before": "570aca825938259fbec9e44abe7f2c4c677aa83ac18eb74cab475f6c4b119223",
+      "after": "dd781de43a4a78860a999397c70b2f5f7ef7596dbe934eeb1e3352bab547dfa9"
+    }
+  },
+  "production": {
+    "compoundFailureOrigin": "selectListingsForCatalogRemediation: 6 aliases x 3 statuses exceed five compound SELECT terms",
+    "reviewCompletion": "pending: three consecutive natural daily scheduled production runs; never substitute extra dispatches",
+    "observationBaseline": "2026-10-20T11:00:00Z/2026-10-21T11:00:00Z; Adaptive Analytics estimate, not billing",
+    "servingVersionAtFailure": "73f8be7f-f2bb-4121-9207-17563f741072"
+  }
+}
