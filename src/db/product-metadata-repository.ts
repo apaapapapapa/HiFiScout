@@ -1,5 +1,10 @@
 import type { ProductMetadataLookupRow, QueryableDatabase } from "./types.js";
 import { isRecord } from "../types.js";
+import {
+  canonicalCategoryAudit,
+  categoryRuleVersion,
+  metadataObject,
+} from "../catalog/category-change.js";
 
 const LOOKUP_CHUNK_SIZE = 50;
 const MAX_METADATA_BYTES = 8 * 1024;
@@ -22,7 +27,10 @@ function stableObject(value: unknown): Record<string, unknown> {
 }
 
 export function normalizeMetadataJson(metadata: unknown): string {
-  const json = JSON.stringify(stableObject(metadata));
+  const normalized = stableObject(metadata);
+  if (isRecord(normalized.categoryClassification))
+    normalized.categoryClassification = canonicalCategoryAudit(normalized.categoryClassification);
+  const json = JSON.stringify(normalized);
   if (new TextEncoder().encode(json).byteLength > MAX_METADATA_BYTES) {
     throw new Error(`product metadata exceeds ${MAX_METADATA_BYTES} bytes`);
   }
@@ -43,7 +51,8 @@ function preserveCatalogDecisionTime(metadata: unknown, previousJson: string): u
   const { catalogMatchedAt: nextAt, ...nextDecision } = metadata.categoryClassification;
   if (typeof previousAt !== "string" || typeof nextAt !== "string") return metadata;
   if (
-    JSON.stringify(stableObject(previousDecision)) !== JSON.stringify(stableObject(nextDecision))
+    JSON.stringify(canonicalCategoryAudit(previousDecision)) !==
+    JSON.stringify(canonicalCategoryAudit(nextDecision))
   ) {
     return metadata;
   }
@@ -58,19 +67,19 @@ async function existingMetadata(
   shopKey: string,
   sourceIds: readonly string[],
   chunkSize = LOOKUP_CHUNK_SIZE,
-): Promise<ProductMetadataLookupRow[]> {
+): Promise<Array<ProductMetadataLookupRow & { last_seen_at?: string }>> {
   const uniqueIds = [...new Set(sourceIds)];
-  const rows: ProductMetadataLookupRow[] = [];
+  const rows: Array<ProductMetadataLookupRow & { last_seen_at?: string }> = [];
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(
-        `SELECT id, source_id, metadata_json FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
+        `SELECT id, source_id, metadata_json, last_seen_at FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
       )
       .bind(shopKey, ...chunk)
-      .all<ProductMetadataLookupRow>();
+      .all<ProductMetadataLookupRow & { last_seen_at?: string }>();
     rows.push(...(result.results || []));
   }
   return rows;
@@ -93,14 +102,32 @@ export async function syncProductMetadata(
   for (const product of products) {
     const existing = bySourceId.get(product.sourceId);
     if (!existing) continue;
+    if (existing.last_seen_at && Date.parse(observedAt) < Date.parse(existing.last_seen_at))
+      continue;
+    const previous = metadataObject(existing.metadata_json);
+    let incoming = product.metadata;
+    const version = categoryRuleVersion(incoming);
+    if (version > 0 && version < categoryRuleVersion(previous)) {
+      incoming = {
+        ...metadataObject(incoming),
+        categoryClassification: previous.categoryClassification,
+      };
+    }
     const metadataJson = normalizeMetadataJson(
-      preserveCatalogDecisionTime(product.metadata, existing.metadata_json || "{}"),
+      preserveCatalogDecisionTime(incoming, existing.metadata_json || "{}"),
     );
-    if ((existing.metadata_json || "{}") === metadataJson) continue;
+    if (normalizeMetadataJson(previous) === metadataJson) continue;
     writes.push(
       db
-        .prepare("UPDATE products SET metadata_json = ?, last_changed_at = ? WHERE id = ?")
-        .bind(metadataJson, observedAt, existing.id),
+        .prepare(`UPDATE products SET metadata_json = ?, last_changed_at = ? WHERE id = ?
+          AND metadata_json IS ? AND last_seen_at IS ?`)
+        .bind(
+          metadataJson,
+          observedAt,
+          existing.id,
+          existing.metadata_json,
+          existing.last_seen_at ?? null,
+        ),
     );
   }
 

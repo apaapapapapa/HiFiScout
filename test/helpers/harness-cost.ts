@@ -5,15 +5,19 @@ export function measureD1Cost(db: QueryableDatabase) {
   let statements = 0;
   let reads: number | null = 0,
     writes: number | null = 0;
+  let sqlDuration: number | null = 0;
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
   const add = (total: number | null, value: unknown) =>
     total !== null && typeof value === "number" && Number.isFinite(value) && value >= 0
       ? total + value
       : null;
   const record = (value: unknown) => {
-    const meta = (value as { meta?: { rows_read?: unknown; rows_written?: unknown } } | null)?.meta;
+    const meta = (
+      value as { meta?: { rows_read?: unknown; rows_written?: unknown; duration?: unknown } } | null
+    )?.meta;
     reads = add(reads, meta?.rows_read);
     writes = add(writes, meta?.rows_written);
+    sqlDuration = add(sqlDuration, meta?.duration);
   };
   const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
     const proxy = new Proxy(statement, {
@@ -58,6 +62,8 @@ export function measureD1Cost(db: QueryableDatabase) {
   };
   return {
     db: measured,
+    /** D1's SQL duration, distinct from binding roundtrip/wall time and Worker CPU. */
+    sqlDurationMs: () => (statements ? sqlDuration : null),
     metrics: () => ({
       rowsRead: statements ? reads : null,
       rowsWritten: statements ? writes : null,

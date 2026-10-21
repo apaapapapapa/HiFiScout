@@ -66,7 +66,24 @@ function normalizedEvidence(
         value: String(item.value || "").slice(0, 240),
       }));
     })
-    .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null);
+    .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null)
+    .sort((left, right) => {
+      const a = JSON.stringify([
+        left.source,
+        left.strength,
+        left.categoryId,
+        left.value,
+        left.ruleId,
+      ]);
+      const b = JSON.stringify([
+        right.source,
+        right.strength,
+        right.categoryId,
+        right.value,
+        right.ruleId,
+      ]);
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
 }
 
 function unresolved(

@@ -10,6 +10,35 @@ import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
 import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
+import {
+  classifyCategoryEvidence,
+  summarizeCategoryEvidence,
+} from "../src/catalog/category-classifier.js";
+import type { CategoryEvidenceInput } from "../src/catalog/types.js";
+
+test("classification and audit evidence are independent of source and category-set order", () => {
+  const evidence: CategoryEvidenceInput[] = [
+    {
+      source: "seller_category",
+      strength: "verified",
+      categoryIds: ["AMP.PRE", "AMP.POWER"],
+      value: "set",
+      ruleId: "seller-v3",
+    },
+    { source: "knowledge_catalog", strength: "verified", categoryId: "AMP.PRE", value: "model" },
+  ];
+  const reversed = [...evidence].reverse().map((item) => ({
+    ...item,
+    ...(item.categoryIds ? { categoryIds: [...item.categoryIds].reverse() } : {}),
+  }));
+  assert.deepEqual(classifyCategoryEvidence(reversed), classifyCategoryEvidence(evidence));
+  assert.deepEqual(summarizeCategoryEvidence(reversed), summarizeCategoryEvidence(evidence));
+  const sameLeaf = evidence.map((item) => ({ ...item, categoryIds: ["AMP.PRE"] }));
+  assert.deepEqual(
+    classifyCategoryEvidence(sameLeaf),
+    classifyCategoryEvidence([...sameLeaf].reverse()),
+  );
+});
 
 const plugin = getShopPlugin("fujiya-avic");
 if (!plugin) throw new Error("fujiya-avic plugin missing");
