@@ -2233,6 +2233,156 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/804"
       ]
+    },
+    {
+      "id": "catalog-verification-claim-100",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "68fbfaea0bcc645132a783070edf8ef088cdedb7a2b4612b79eaec9397efc38d",
+      "afterDigest": "92ac0244c7e12f6ad9b44830b9671587b59493e8369bbac99cbd41ba27c743d8",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases and the one-job-per-domain spread cases.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-1000",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "b8fbda2c056f9751d363c607e9b321e2386538d6cf78ac58c0f835a96faa8287",
+      "afterDigest": "fafe759301072b45b5871b3658619b4afd09ad54a6beccb2a39b74facea06c5a",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-10000",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "20eeb88502ad85773b8ed7b28402023ffcbc4199f37c3ebd9cfa8e84fac78ab7",
+      "afterDigest": "60464f1e0338886ec042b413a1d65f4ba82864e929bfa713565ce8e88934018b",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-50",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "b520d7e4a3caa15bc31e8e3cae3789d12c33279667abad2a4288b4290f43ba5f",
+      "reason": "Reviewed initial real-workerd baseline: 272 reads, 5 writes and five statements for a claim, an empty claim and its wait with 50 live jobs spread evenly over 15 domains. The replaced per-job selectors read 540 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-200",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "82abe7ee6916b7e440d1eafd038b14533c59bb21d8e3f489391fd216397337c3",
+      "reason": "Reviewed initial real-workerd baseline: 272 reads, 5 writes and five statements for a claim, an empty claim and its wait with 200 live jobs spread evenly over 15 domains. The replaced per-job selectors read 2,040 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-800",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "60bd4576b09befee79658ca40a99591bf0823b84bd8b6c035d5bcb63721737c4",
+      "reason": "Reviewed initial real-workerd baseline: 272 reads, 5 writes and five statements for a claim, an empty claim and its wait with 800 live jobs spread evenly over 15 domains. The replaced per-job selectors read 8,040 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-50",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "64db95a8376db6ce61fba70cd0b69556e0b508fc320b40d9f628c6e42b0c5785",
+      "reason": "Reviewed initial real-workerd baseline: 105 reads, 5 writes and five statements for a claim, an empty claim and its wait with 50 live jobs nine in ten on one paced domain. The replaced per-job selectors read 495 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-200",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1fd0a67b1135a8f66ae90f49431812b1d072d6d568631f3c56ba8faa74d2c67e",
+      "reason": "Reviewed initial real-workerd baseline: 105 reads, 5 writes and five statements for a claim, an empty claim and its wait with 200 live jobs nine in ten on one paced domain. The replaced per-job selectors read 1,860 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-800",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "ab1ee52f0197315e2b62fec2c4d4b9d60945275105a56de2f0146027caef779a",
+      "reason": "Reviewed initial real-workerd baseline: 105 reads, 5 writes and five statements for a claim, an empty claim and its wait with 800 live jobs nine in ten on one paced domain. The replaced per-job selectors read 7,320 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-50",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "f4e0bd29c8f66d853ae7076e1b30aa4747c0e8469ca018a800205014d212dd5f",
+      "reason": "Reviewed initial real-workerd baseline: 236 reads, 5 writes and five statements for a claim, an empty claim and its wait with 50 live jobs over 15 domains, nine in ten waiting out a transient-failure backoff. The replaced per-job selectors read 409 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-200",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "95fa475be284c8cbd3c395c10ed6456bfde04b0cd972aa444318a6554710a08a",
+      "reason": "Reviewed initial real-workerd baseline: 236 reads, 5 writes and five statements for a claim, an empty claim and its wait with 200 live jobs over 15 domains, nine in ten waiting out a transient-failure backoff. The replaced per-job selectors read 1,504 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-800",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "839a9b15392bb9fc594c7dc11cf80e1d4ca8beae8aff7709d5e360994176d672",
+      "reason": "Reviewed initial real-workerd baseline: 236 reads, 5 writes and five statements for a claim, an empty claim and its wait with 800 live jobs over 15 domains, nine in ten waiting out a transient-failure backoff. The replaced per-job selectors read 5,884 rows for the same sequence and grew with every live job; the per-domain claim and wake state read the same rows at 50, 200 and 800 live jobs and choose exactly what the former selectors chose (randomized oracle test).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-spread-20",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1a2aafd7feacba2a8ebe45b4eaa799dbd424de4a7b146dd4b455a2ecae78195b",
+      "reason": "Reviewed initial real-workerd baseline: 338 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 20 domains, the registry's scale of manufacturer domains. This is the least favourable shape for the per-domain selectors: each waiting domain costs about 15 reads across the two claims and the wait, more than the former per-job selectors paid for a single job (they read 240 rows for the same sequence). Daily runs of up to 200 candidates on these domains average about ten jobs per domain, where the per-domain selectors read far less (catalog-verification-live-claim-*).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-spread-60",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "e65d58062de887fdf6620ccd8ceb9ec6f393d37f0c966b2bb41be3d3bbbe8992",
+      "reason": "Reviewed initial real-workerd baseline: 938 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 60 domains, three times the registered manufacturer domains. It gates the per-domain constant (about 15 reads per waiting domain across the two claims and the wait, asserted at 18 or fewer) for the adverse spread the registry does not reach today; the former per-job selectors read 640 rows for the same sequence.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
+      "beforeDigest": "adbba0205492c789d44b9b6bf14d835f285c503eb5967349a9d832da0ac99b92",
+      "afterDigest": "570aca825938259fbec9e44abe7f2c4c677aa83ac18eb74cab475f6c4b119223",
+      "reason": "Extend catalog-verification-queue to the run wake-up consumer and the randomized claim/wake equivalence suite, and add live-run samples, including one live job on each of 20 and 60 domains to gate the per-domain cost. Production attributed about 61% of sampled D1 reads to the run claim (~211 rows each) and wake state (~470 rows each), both of which walked every live job of the run; the per-domain selectors bound them by the run's waiting domains. The existing claim ceiling (100 reads) is unchanged and still holds at 94; other contracts are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/806"
+      ]
     }
   ]
 }

@@ -265,18 +265,33 @@ export const LOAD_CONTRACTS: LoadContract[] = [
   },
   {
     id: "catalog-verification-queue",
-    sources: ["src/db/knowledge-catalog-verification-queue-repository.ts"],
+    sources: [
+      "src/db/knowledge-catalog-verification-queue-repository.ts",
+      "src/knowledge-catalog/consumer.ts",
+    ],
     suites: [
       "test/knowledge-catalog-verification-claim-budget.test.ts",
+      "test/knowledge-catalog-verification-claim-equivalence.test.ts",
       "test/knowledge-catalog-verification-queue-behavior.test.ts",
       "test/knowledge-catalog-run-wakeup.test.ts",
       "test/control-plane-query-plans.test.ts",
     ],
-    samples: Object.fromEntries(
-      [100, 1000, 10000].map((size) => [`catalog-verification-claim-${size}`, d1(100, 10, 4)]),
-    ),
+    samples: Object.fromEntries([
+      ...[100, 1000, 10000].map((size) => [`catalog-verification-claim-${size}`, d1(100, 10, 4)]),
+      ...(
+        [
+          ["interleaved", d1(340, 10, 5)],
+          ["dominant", d1(130, 10, 5)],
+          ["backoff", d1(300, 10, 5)],
+        ] as const
+      ).flatMap(([shape, limits]) =>
+        [50, 200, 800].map((size) => [`catalog-verification-live-claim-${shape}-${size}`, limits]),
+      ),
+      ["catalog-verification-live-claim-spread-20", d1(420, 10, 5)],
+      ["catalog-verification-live-claim-spread-60", d1(1170, 10, 5)],
+    ]),
     reason:
-      "A run-scoped claim and wake-state read seek live job statuses and target job types, so finished jobs in the run and older runs add no reads to each claim.",
+      "A run-scoped claim and wake-state read seek live job statuses and target job types, so finished jobs in the run and older runs add no reads to each claim. Claims and the wait after an empty claim enumerate the run's waiting domains through a partial index and read each free domain's earliest due job, so their reads follow the run's domains: further live jobs on an enumerated domain, paced or waiting out a retry, add none, while each waiting domain costs a few index reads per claim and wait even when it holds a single job, which suits daily runs drawn from the registered manufacturer domains. Both choose exactly what the former per-job selectors chose. Only the once-per-invocation outstanding count reads one index entry per live job.",
   },
   {
     id: "inventory-recheck",
