@@ -17,12 +17,12 @@ for (const size of [100, 1_000, 10_000]) {
       await syncProductMetadata(db, "override-cost", [input], AT);
       const info = await db.prepare("PRAGMA table_info(products)").all<{ name: string }>();
       const columns = info.results
-        .map((row) => row.name)
-        .filter((name) => !["id", "source_id"].includes(name));
+        .map((row: { name: string }) => row.name)
+        .filter((name: string) => !["id", "source_id"].includes(name));
       await db
         .prepare(`WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<?)
         INSERT INTO products(source_id,${columns.join(",")})
-        SELECT CAST(n.i AS TEXT),${columns.map((c) => `p.${c}`).join(",")}
+        SELECT CAST(n.i AS TEXT),${columns.map((c: string) => `p.${c}`).join(",")}
         FROM products p CROSS JOIN n WHERE p.shop_key='override-cost' AND p.source_id='0'`)
         .bind(size - 1)
         .run();
@@ -82,6 +82,7 @@ for (const size of [100, 1_000, 10_000]) {
             size,
             scenario,
             ...metrics,
+            sqlDurationMs: measured.sqlDurationMs(),
             elapsedMs,
             changedCount: result.changedCount,
           }),
