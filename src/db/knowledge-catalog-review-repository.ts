@@ -189,8 +189,7 @@ export function knowledgeCatalogCandidateWrites(
         OR existing.priority_score IS NOT desired.priority_score
         OR existing.review_status IS NOT CASE WHEN desired.catalog_product_id IS NOT NULL THEN 'matched' WHEN existing.review_status = 'ignored' THEN 'ignored' ELSE 'pending' END
         OR existing.catalog_product_id IS NOT desired.catalog_product_id
-        OR existing.first_seen_at IS NOT COALESCE(existing.first_seen_at, desired.first_seen_at)
-        OR existing.last_seen_at IS NOT desired.last_seen_at)
+        OR existing.first_seen_at IS NOT COALESCE(existing.first_seen_at, desired.first_seen_at))
       ON CONFLICT(manufacturer_id, normalized_model) DO UPDATE SET
         observed_manufacturer = excluded.observed_manufacturer,
         observed_model = excluded.observed_model,
@@ -216,6 +215,21 @@ export function knowledgeCatalogCandidateWrites(
         last_reviewed_at = excluded.last_reviewed_at,
         updated_at = excluded.updated_at
     `)
+        .bind(JSON.stringify(desiredRows.slice(offset, offset + 100)), ...guard.binds),
+    );
+    // Preserve exact export freshness without rewriting category/status indexes or sqlite_sequence.
+    // Attribute changes above already saved these timestamps; this only touches observation-only rows.
+    writes.push(
+      db
+        .prepare(`UPDATE knowledge_catalog_candidates AS existing
+      SET last_seen_at = json_extract(payload.value, '$[18]'),
+          last_reviewed_at = json_extract(payload.value, '$[19]'),
+          updated_at = json_extract(payload.value, '$[21]')
+      FROM json_each(?) payload
+      WHERE existing.manufacturer_id = json_extract(payload.value, '$[0]')
+        AND existing.normalized_model = json_extract(payload.value, '$[1]')
+        AND existing.last_seen_at IS NOT json_extract(payload.value, '$[18]')
+        AND (${guard.sql})`)
         .bind(JSON.stringify(desiredRows.slice(offset, offset + 100)), ...guard.binds),
     );
   }
