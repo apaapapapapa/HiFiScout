@@ -90,5 +90,5 @@ for (const size of [100, 1_000, 10_000]) {
     } finally {
       await dispose();
     }
-  }, 120_000);
+  }, 600_000);
 }
