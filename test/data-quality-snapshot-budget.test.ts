@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { recordCostSample } from "../scripts/harness/cost.js";
-import { readDataQualitySnapshot, saveDataQualityRun } from "../src/db/data-quality-repository.js";
+import {
+  MODEL_OPTIONAL_CATEGORIES,
+  readDataQualitySnapshot,
+  saveDataQualityRun,
+} from "../src/db/data-quality-repository.js";
 import type { QualityCounts, QueryableDatabase } from "../src/db/types.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
 import { measureD1Cost } from "./helpers/harness-cost.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 const FIXTURE = ["test/data-quality-snapshot-budget.test.ts"];
 const LATER = "2026-09-05T02:00:00.000Z";
@@ -55,9 +60,10 @@ async function seedShop(
     .run();
   await db
     .prepare(`INSERT INTO product_identity_resolutions(listing_product_id,status,match_method,
-        confidence,evaluated_at)
+        confidence,candidate_catalog_product_id,evaluated_at)
       SELECT id, CASE WHEN id % 3 = 0 THEN 'matched' ELSE 'unresolved' END,
-        CASE WHEN id % 11 = 0 THEN 'vetoed' ELSE 'none' END, 'none', ?
+        CASE WHEN id % 11 = 0 THEN 'vetoed' ELSE 'none' END, 'none',
+        CASE WHEN id % 7 = 0 THEN 1 END, ?
       FROM products WHERE id BETWEEN ? AND ? AND id % 3 <> 1`)
     .bind(AT, from, to)
     .run();
@@ -65,6 +71,13 @@ async function seedShop(
 
 async function fixture(size: number) {
   const handle = await database();
+  // The candidate unresolved identities point at, so every snapshot count is non-zero.
+  await handle.db
+    .prepare(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,
+        normalized_model,canonical_name,verification_status,created_at,updated_at)
+      VALUES (1,'luxman','L-509X','L509X','LUXMAN L-509X','verified',?,?)`)
+    .bind(AT, AT)
+    .run();
   await seedShop(handle.db, "large", 1, size, 1);
   await seedShop(handle.db, "large", size + 1, size + size / 5, 0);
   await seedShop(handle.db, "unrelated", 100_001, 102_000, 1);
@@ -88,6 +101,8 @@ async function measuredSave(db: QueryableDatabase, id: string, note: string) {
     Object.keys(fresh).map((key) => [key, saved.counts[key as keyof QualityCounts]]),
   );
   assert.deepEqual(snapshot, fresh);
+  // A count the reuse path dropped would read 0, so the fixture leaves none at 0.
+  for (const [key, value] of Object.entries(fresh)) assert.ok(value > 0, `${key} is ${value}`);
   assert.equal(saved.counts.parseFailureCount, RUN.parseFailureCount);
   assert.equal(saved.counts.currentItemCount, RUN.currentItemCount);
   return { saved, cost };
@@ -139,3 +154,45 @@ for (const size of [1_000, 5_000]) {
     }
   }, 120_000);
 }
+
+test("the model-optional equalities count exactly what the original IN-list counted", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    // Every optional category, its case/space variants and prefixed or plain neighbours.
+    const categories = [
+      ...MODEL_OPTIONAL_CATEGORIES.flatMap((id) => [id, id.toUpperCase(), `${id} `]),
+      ...["CAB.RCA", "cab.rca", "PWR.X", "ACC.Y", "AMP.INTEGRATED", "rec.media", "Other", ""],
+    ];
+    const insert = sqlite.prepare(`INSERT INTO products(shop_key,source_id,title,source_url,
+        first_seen_at,last_seen_at,last_changed_at,stock_status,is_active,classification_status,
+        primary_category_id,model_resolution_status)
+      VALUES ('equivalence',?,?,'https://example.test/',?,?,?,'in_stock',1,'classified',?,?)`);
+    categories.forEach((category, index) =>
+      ["resolved", "unresolved"].forEach((model) =>
+        insert.run(`s${index}-${model}`, `T${index}`, AT, AT, AT, category, model),
+      ),
+    );
+    const inList = MODEL_OPTIONAL_CATEGORIES.map((id) => `'${id}'`).join(",");
+    const optional = `(primary_category_id LIKE 'CAB.%' OR primary_category_id LIKE 'PWR.%'
+      OR primary_category_id LIKE 'ACC.%' OR primary_category_id IN (${inList}))`;
+    const reference = sqlite
+      .prepare(`SELECT
+          SUM(CASE WHEN NOT ${optional} THEN 1 ELSE 0 END) AS expected,
+          SUM(CASE WHEN NOT ${optional} AND model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS extracted,
+          SUM(CASE WHEN NOT ${optional} AND model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS missing
+        FROM products WHERE shop_key = 'equivalence'`)
+      .get() as { expected: number; extracted: number; missing: number };
+    const snapshot = await readDataQualitySnapshot(db, "equivalence");
+    assert.deepEqual(
+      {
+        expected: snapshot.modelExpectedCount,
+        extracted: snapshot.modelExtractedCount,
+        missing: snapshot.modelMissingCount,
+      },
+      { ...reference },
+    );
+    assert.ok(reference.expected > 0 && reference.expected < categories.length * 2);
+  } finally {
+    sqlite.close();
+  }
+});

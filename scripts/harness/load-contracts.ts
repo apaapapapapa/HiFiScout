@@ -203,7 +203,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       ...[1000, 5000].map((size) => [`dq-snapshot-changed-${size}`, d1(size * 2 + 40, 6, 4)]),
     ]),
     reason:
-      "Re-evaluating a shop whose trigger-maintained quality revision still matches its newest snapshot reuses those counts through one indexed probe, whatever the shop's active, inactive or other-shop inventory. A moved input re-aggregates at about one index entry and one Identity probe per active listing, with no per-listing category IN-list probes.",
+      "Re-evaluating a shop whose trigger-maintained quality revision and aggregate definition still match its newest snapshot reuses those counts through one indexed probe, whatever the shop's active, inactive or other-shop inventory. A moved input re-aggregates at about one index entry and one Identity probe per active listing, with no per-listing category IN-list probes.",
   },
   {
     id: "catalog-photos",
@@ -295,7 +295,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       ),
     ),
     reason:
-      "Each crawl's PREPARE and FETCH pick one recheck candidate by seeking the active-listing attempt index: never-attempted stale listings by last_seen_at, then the oldest attempt within the retry window. Recently seen and recently checked listings of the shop add no reads, the selection order is unchanged and the read writes nothing.",
+      "Each crawl's PREPARE and FETCH pick one recheck candidate by seeking the active-listing attempt index: never-attempted stale listings by last_seen_at, then the oldest attempt within the retry window. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
   },
   {
     id: "retention-and-schema",

@@ -5,7 +5,7 @@ import {
   getShopMaxPages,
   getShopRequestDelayMs,
 } from "../config.js";
-import { saveDataQualityRun } from "../db/data-quality-repository.js";
+import { saveDataQualityRun, type DataQualityRunCounts } from "../db/data-quality-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
@@ -50,7 +50,6 @@ import type { NormalizedCatalogProduct } from "../catalog/types.js";
 import type {
   EvidenceArchiveResult,
   EvidenceReason,
-  QualityCounts,
   QualityEvaluation,
   QueryableDatabase,
   ShopSyncStateRow,
@@ -273,7 +272,7 @@ async function safeSaveDataQuality(
   adapter: ShopPlugin,
   runId: number | null,
   evaluatedAt: string,
-  run: Partial<QualityCounts>,
+  run: DataQualityRunCounts,
 ): Promise<(QualityEvaluation & { evaluatedAt: string; crawlRunId: number | null }) | null> {
   try {
     const quality = await saveDataQualityRun(env.DB, {

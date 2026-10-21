@@ -52,7 +52,7 @@ interface SaveDataQualityRunOptions {
   shopKey: string;
   crawlRunId?: number | null;
   evaluatedAt?: string;
-  run?: Partial<QualityCounts>;
+  run?: DataQualityRunCounts;
   thresholdOverrides?: QualityThresholdOverrides;
 }
 
@@ -99,69 +99,35 @@ type DataQualitySnapshotCounts = Pick<
   | "modelMissingCount"
 >;
 
+/** A crawl's own run-level counts; snapshot counts only ever come from the aggregate. */
+export type DataQualityRunCounts = Omit<Partial<QualityCounts>, keyof DataQualitySnapshotCounts>;
+
+/** The aggregate's output column for every snapshot count, as saved on `data_quality_runs`. */
+const SNAPSHOT_COUNT_COLUMNS = {
+  totalItems: "total_items",
+  manufacturerMissingCount: "manufacturer_missing_count",
+  manufacturerUnresolvedCount: "manufacturer_unresolved_count",
+  categoryUnclassifiedCount: "category_unclassified_count",
+  otherCategoryCount: "other_category_count",
+  identityMatchedCount: "identity_matched_count",
+  identityUnresolvedCount: "identity_unresolved_count",
+  identityVetoCount: "identity_veto_count",
+  identityCandidateCount: "identity_candidate_count",
+  inventoryKnownCount: "inventory_known_count",
+  inventoryUnknownCount: "inventory_unknown_count",
+  modelExpectedCount: "model_expected_count",
+  modelExtractedCount: "model_extracted_count",
+  modelMissingCount: "model_missing_count",
+} as const satisfies Record<keyof DataQualitySnapshotCounts, keyof DataQualitySnapshotAggregateRow>;
+
 function snapshotCounts(row: DataQualitySnapshotAggregateRow | null): DataQualitySnapshotCounts {
-  return {
-    totalItems: number(row?.total_items),
-    manufacturerMissingCount: number(row?.manufacturer_missing_count),
-    manufacturerUnresolvedCount: number(row?.manufacturer_unresolved_count),
-    categoryUnclassifiedCount: number(row?.category_unclassified_count),
-    otherCategoryCount: number(row?.other_category_count),
-    identityMatchedCount: number(row?.identity_matched_count),
-    identityUnresolvedCount: number(row?.identity_unresolved_count),
-    identityVetoCount: number(row?.identity_veto_count),
-    identityCandidateCount: number(row?.identity_candidate_count),
-    inventoryKnownCount: number(row?.inventory_known_count),
-    inventoryUnknownCount: number(row?.inventory_unknown_count),
-    modelExpectedCount: number(row?.model_expected_count),
-    modelExtractedCount: number(row?.model_extracted_count),
-    modelMissingCount: number(row?.model_missing_count),
-  };
+  const counts = {} as DataQualitySnapshotCounts;
+  for (const [key, column] of Object.entries(SNAPSHOT_COUNT_COLUMNS))
+    counts[key as keyof DataQualitySnapshotCounts] = number(row?.[column]);
+  return counts;
 }
 
-/**
- * The newest saved snapshot's counts, only while the revision it captured is still current.
- *
- * A row carrying `source_revision = R` holds counts read (or reused) after a capture armed R. The
- * first trigger-tracked quality-input write after any capture advances the revision, so while a
- * new capture still arms R no input has moved since R was first armed: every count read under R
- * equals this capture's aggregate. Only the newest row is probed, through the same index seek as
- * remediation coverage, so neither unrelated history nor a missing proof costs a scan.
- */
-async function readCoveredDataQualitySnapshot(
-  db: QueryableDatabase,
-  shopKey: string,
-  sourceRevision: number,
-): Promise<DataQualitySnapshotCounts | null> {
-  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
-    db
-      .prepare(`
-      SELECT latest.* FROM (
-        SELECT q.source_revision, q.total_items,
-          q.manufacturer_missing_count, q.manufacturer_unresolved_count,
-          q.category_unclassified_count, q.other_category_count,
-          q.identity_matched_count, q.identity_unresolved_count,
-          q.identity_veto_count, q.identity_candidate_count,
-          q.inventory_known_count, q.inventory_unknown_count,
-          q.model_expected_count, q.model_extracted_count, q.model_missing_count
-        FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest
-        WHERE q.shop_key = ?
-        ORDER BY q.evaluated_at DESC, q.id DESC
-        LIMIT 1
-      ) latest
-      WHERE latest.source_revision = ?
-    `)
-      .bind(shopKey, sourceRevision),
-  );
-  return row ? snapshotCounts(row) : null;
-}
-
-export async function readDataQualitySnapshot(
-  db: QueryableDatabase,
-  shopKey: string,
-): Promise<DataQualitySnapshotCounts> {
-  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
-    db
-      .prepare(`
+const SNAPSHOT_AGGREGATE_SQL = `
       SELECT
         COUNT(*) AS total_items,
         SUM(CASE
@@ -186,8 +152,71 @@ export async function readDataQualitySnapshot(
       FROM products p
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.shop_key = ? AND p.is_active = 1
+    `;
+
+/** 32-bit FNV-1a, enough to tell one deployed aggregate definition from another. */
+function fnv1a(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The aggregate definition a saved snapshot was computed with. The trigger-maintained revision
+ * proves that no quality input moved; it says nothing about the formula. Any edit to the aggregate
+ * or its column mapping therefore changes this value, so the first evaluation of each shop after a
+ * deploy recomputes instead of reusing the previous definition's counts. Rows written by older
+ * Workers carry none and are never reused, including while two versions overlap during a rollout.
+ */
+export const DATA_QUALITY_SNAPSHOT_DEFINITION = `fnv1a:${fnv1a(
+  `${SNAPSHOT_AGGREGATE_SQL}\n${JSON.stringify(SNAPSHOT_COUNT_COLUMNS)}`,
+)}`;
+
+/**
+ * The newest saved snapshot's counts, only while both the revision and the definition it captured
+ * are still current.
+ *
+ * A row carrying `source_revision = R` holds counts read (or reused) after a capture armed R. The
+ * first trigger-tracked quality-input write after any capture advances the revision, so while a
+ * new capture still arms R no input has moved since R was first armed: every count read under R
+ * with this definition equals this capture's aggregate. Only the newest row is probed, through the
+ * same index seek as remediation coverage, so neither unrelated history nor a missing proof costs
+ * a scan.
+ */
+async function readCoveredDataQualitySnapshot(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceRevision: number,
+): Promise<DataQualitySnapshotCounts | null> {
+  const columns = Object.values(SNAPSHOT_COUNT_COLUMNS)
+    .map((column) => `q.${column}`)
+    .join(", ");
+  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
+    db
+      .prepare(`
+      SELECT latest.* FROM (
+        SELECT q.source_revision, q.source_definition, ${columns}
+        FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest
+        WHERE q.shop_key = ?
+        ORDER BY q.evaluated_at DESC, q.id DESC
+        LIMIT 1
+      ) latest
+      WHERE latest.source_revision = ? AND latest.source_definition = ?
     `)
-      .bind(shopKey),
+      .bind(shopKey, sourceRevision, DATA_QUALITY_SNAPSHOT_DEFINITION),
+  );
+  return row ? snapshotCounts(row) : null;
+}
+
+export async function readDataQualitySnapshot(
+  db: QueryableDatabase,
+  shopKey: string,
+): Promise<DataQualitySnapshotCounts> {
+  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
+    db.prepare(SNAPSHOT_AGGREGATE_SQL).bind(shopKey),
   );
   return snapshotCounts(row);
 }
@@ -265,10 +294,11 @@ export async function saveDataQualityRun(
         previous_item_count, current_item_count, item_count_absolute_difference, item_count_change_rate,
         manufacturer_status, category_status, identity_status, inventory_status, model_status,
         parser_status, item_count_status, evidence_status, snapshot_status, run_status, quality_status,
-        source_revision
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source_revision, source_definition
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(crawl_run_id) WHERE crawl_run_id IS NOT NULL DO UPDATE SET
         source_revision = excluded.source_revision,
+        source_definition = excluded.source_definition,
         evaluated_at = excluded.evaluated_at,
         total_items = excluded.total_items,
         manufacturer_missing_count = excluded.manufacturer_missing_count,
@@ -336,6 +366,7 @@ export async function saveDataQualityRun(
       c.itemCountChangeRate,
       ...statuses,
       sourceRevision,
+      DATA_QUALITY_SNAPSHOT_DEFINITION,
     )
     .run();
   return { ...evaluation, evaluatedAt, crawlRunId };

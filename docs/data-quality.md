@@ -166,16 +166,16 @@ The existing Evidence Archive allow-list, redaction, deduplication, retention cl
 
 Statuses are `healthy`, `warning`, `critical`, and `unknown`. High-error thresholds and item-count drops use inclusive boundaries; Evidence Coverage follows the proposed strict “below” boundaries.
 
-| Metric | Warning | Critical |
-| --- | ---: | ---: |
-| Manufacturer Unknown | >= 2% | >= 5% |
-| Category Unclassified | >= 3% | >= 10% |
-| Identity Unresolved | >= 20% | >= 40% |
-| Inventory Unknown | >= 5% | >= 15% |
-| Model Missing | >= 10% | >= 25% |
-| Parser Failure | >= 2% | >= 10% |
-| Item Count Drop | <= -20% | <= -50% |
-| Evidence Coverage | < 95% | < 80% |
+| Metric                | Warning | Critical |
+| --------------------- | ------: | -------: |
+| Manufacturer Unknown  |   >= 2% |    >= 5% |
+| Category Unclassified |   >= 3% |   >= 10% |
+| Identity Unresolved   |  >= 20% |   >= 40% |
+| Inventory Unknown     |   >= 5% |   >= 15% |
+| Model Missing         |  >= 10% |   >= 25% |
+| Parser Failure        |   >= 2% |   >= 10% |
+| Item Count Drop       | <= -20% |  <= -50% |
+| Evidence Coverage     |   < 95% |    < 80% |
 
 The table describes defaults in `src/data-quality/quality-thresholds.ts`; that module and registered plugin overrides are authoritative. Tune thresholds with observed production distributions, and keep shop overrides exceptional.
 
@@ -186,14 +186,14 @@ The old bearer-token handlers and `ADMIN_TOKEN` configuration have been removed.
 supports catalog/listing editing, correction reports, and CSV exports through `CatalogAdminService`;
 its contract is defined in `src/admin/contracts.ts`.
 
-| Responsibility | Current entry point |
-| --- | --- |
-| Post-deploy data quality and identity checks | `.github/workflows/production-operational-health.yml`, `scripts/production-operational-health.sh`, `scripts/product-search-identity-health.sh` |
-| Bounded manual resolver replay | `.github/workflows/resolver-replay-drain.yml`, `scripts/resolver-replay-drain.ts` |
-| Explicit full representation audit | `.github/workflows/product-data-audit.yml` or the admin export surface |
-| Listing/catalog corrections | Access-protected admin Worker; [Registered Product Admin](./listing-admin.md) |
-| Latest/history evaluation and serialization | `src/db/data-quality-repository.ts` |
-| Quality overview, candidates, and scoped samples | `src/admin/quality.ts`, `src/db/admin-quality-repository.ts` |
+| Responsibility                                   | Current entry point                                                                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Post-deploy data quality and identity checks     | `.github/workflows/production-operational-health.yml`, `scripts/production-operational-health.sh`, `scripts/product-search-identity-health.sh` |
+| Bounded manual resolver replay                   | `.github/workflows/resolver-replay-drain.yml`, `scripts/resolver-replay-drain.ts`                                                              |
+| Explicit full representation audit               | `.github/workflows/product-data-audit.yml` or the admin export surface                                                                         |
+| Listing/catalog corrections                      | Access-protected admin Worker; [Registered Product Admin](./listing-admin.md)                                                                  |
+| Latest/history evaluation and serialization      | `src/db/data-quality-repository.ts`                                                                                                            |
+| Quality overview, candidates, and scoped samples | `src/admin/quality.ts`, `src/db/admin-quality-repository.ts`                                                                                   |
 
 The repository serializers keep snapshot metrics and latest crawl-run metrics distinct. Bounded
 history queries and the admin quality overview describe D1 state; they are not live
@@ -382,7 +382,7 @@ The backlog is selected by a durable watermark, not a time window: a verified en
 
 A completed crawl persists its data-quality evaluation. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match. Identity coverage is likewise conservative: a missing resolution row is counted as unresolved until the backfill or normal resolver supplies an explicit resolution.
 
-Each scheduled remediation sweep finalizes quality for the shops whose jobs it processed before resolving those durable jobs. It can reuse a snapshot only when its `source_revision` matches the shop's durable `data_quality_snapshot_state.revision` and no newer remediation event exists. Missing or legacy coverage requires recomputation. The same `saveDataQualityRun` used by crawls captures the revision before reading the aggregate and persists it with the metrics; a failed read/INSERT or a concurrent listing write cannot certify an old snapshot. When the shop's newest snapshot already carries the captured revision, no quality input has moved since that snapshot's capture, so `saveDataQualityRun` reuses its snapshot counts through one indexed probe instead of re-reading every active listing; run-level counts still come from the caller, and the new row records the revision captured for it. SQL triggers cover active listing insertion, deletion, shop moves, inventory/manufacturer/category/model changes and Identity changes, including writes from an older Worker. They coalesce changes to one revision write per shop between snapshot captures, and ignore same-value writes, timestamps, resolver-version metadata, facets and search projections. A retry from an older writer cannot inherit a new writer's coverage on the same crawl row.
+Each scheduled remediation sweep finalizes quality for the shops whose jobs it processed before resolving those durable jobs. It can reuse a snapshot only when its `source_revision` matches the shop's durable `data_quality_snapshot_state.revision` and no newer remediation event exists. Missing or legacy coverage requires recomputation. The same `saveDataQualityRun` used by crawls captures the revision before reading the aggregate and persists it with the metrics; a failed read/INSERT or a concurrent listing write cannot certify an old snapshot. When the shop's newest snapshot already carries the captured revision and the current aggregate definition (`source_definition`, a fingerprint of the aggregate SQL and its column mapping), no quality input has moved since that snapshot's capture, so `saveDataQualityRun` reuses its snapshot counts through one indexed probe instead of re-reading every active listing; run-level counts still come from the caller, and the new row records the revision and definition captured for it. Changing the aggregate changes the definition, so every shop recomputes once after that deploy; rows from older Workers carry none and are never reused. Per-shop revisions must only increase: deleting or resetting a `data_quality_snapshot_state` row could match an older `source_revision` and certify stale counts for crawls and remediation alike. SQL triggers cover active listing insertion, deletion, shop moves, inventory/manufacturer/category/model changes and Identity changes, including writes from an older Worker. They coalesce changes to one revision write per shop between snapshot captures, and ignore same-value writes, timestamps, resolver-version metadata, facets and search projections. A retry from an older writer cannot inherit a new writer's coverage on the same crawl row.
 
 When recomputation is needed, the remediation snapshot leaves `crawl_run_id` null. Crawl-only run metrics (parser failure, evidence coverage, item-count drop) correctly report `unknown`; snapshot metrics reflect the aggregate that was actually read. An intervening change leaves its revision unmatched for the next touched-shop sweep. No synthetic crawl or scheduled full scan is added. An empty sweep writes no snapshot, and history retains the existing 180-day policy.
 

@@ -6,12 +6,16 @@ import {
   runDataQualityRemediationSweep,
 } from "../src/db/data-quality-remediation-service.js";
 import { enqueueDataQualityRemediation } from "../src/db/data-quality-remediation-queue-repository.js";
-import { saveDataQualityRun } from "../src/db/data-quality-repository.js";
+import {
+  DATA_QUALITY_SNAPSHOT_DEFINITION,
+  saveDataQualityRun,
+} from "../src/db/data-quality-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { AT, database, listing } from "./helpers/d1-write-budget.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
 
 const MIGRATION = "0127_data_quality_snapshot_coverage.sql";
 const AFTER = "2026-09-14T10:00:00.000Z";
@@ -178,6 +182,42 @@ test("a write after the capture is never certified by a reused snapshot", async 
   }
 }, 30_000);
 
+test("a snapshot from another aggregate definition is recomputed, never reused", async () => {
+  const { db, dispose } = await database();
+  try {
+    await upsertProducts(db, "budget", [listing("definition")], AT);
+    await saveDataQualityRun(db, { shopKey: "budget", evaluatedAt: AT });
+    const statements = async () => {
+      const boundary = measureD1Cost(db);
+      const saved = await saveDataQualityRun(boundary.db, {
+        shopKey: "budget",
+        evaluatedAt: AFTER,
+      });
+      return { saved, statements: boundary.metrics().sqlStatements };
+    };
+    // The revision still matches, so only the current definition lets the counts be reused.
+    assert.equal((await statements()).statements, 3);
+    for (const stored of ["fnv1a:00000000", null]) {
+      // An older formula's row (or an older Worker's, which records none) keeps the revision.
+      await db
+        .prepare("UPDATE data_quality_runs SET source_definition = ? WHERE shop_key = 'budget'")
+        .bind(stored)
+        .run();
+      const recomputed = await statements();
+      assert.equal(recomputed.statements, 4, `definition ${stored} must re-aggregate`);
+      assert.equal(recomputed.saved.counts.totalItems, 1);
+      const latest = await db
+        .prepare(`SELECT source_definition FROM data_quality_runs WHERE shop_key = 'budget'
+          ORDER BY evaluated_at DESC, id DESC LIMIT 1`)
+        .first<{ source_definition: string }>();
+      assert.equal(latest?.source_definition, DATA_QUALITY_SNAPSHOT_DEFINITION);
+      assert.equal((await statements()).statements, 3, "the recomputed row is reusable again");
+    }
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
 test("legacy snapshots and old-writer updates never inherit unproven coverage", async () => {
   const { db, dispose } = await database({ before: MIGRATION });
   try {
@@ -191,9 +231,14 @@ test("legacy snapshots and old-writer updates never inherit unproven coverage", 
         'unknown', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown')`)
       .bind(AT)
       .run();
+    // Deploy 0127 and every later migration over the legacy rows.
     const { migrationSources } = await import("./helpers/migrations.js");
-    const migration = migrationSources.find((entry) => entry.name === MIGRATION)!;
-    await db.prepare(migration.sql).run();
+    for (const migration of migrationSources.slice(
+      migrationSources.findIndex((entry) => entry.name === MIGRATION),
+    )) {
+      const sql = migration.sql.replace(/^\s*--[^\n]*$/gm, "").trim();
+      if (sql) await db.prepare(sql).run();
+    }
     assert.equal(await remediationNeedsDataQualitySnapshot(db, "budget"), true);
     await saveDataQualityRun(db, { shopKey: "budget", evaluatedAt: AFTER });
     assert.equal(await remediationNeedsDataQualitySnapshot(db, "budget"), false);

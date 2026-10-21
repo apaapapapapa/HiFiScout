@@ -236,3 +236,35 @@ test("candidate selection reads the due listings, not the shop's recently seen o
     await dispose();
   }
 }, 120_000);
+
+test("listings seen again after an old check are the attempted seek's only per-row cost", async () => {
+  const { db, dispose } = await database();
+  const window = { staleBefore: BEFORE, retryBefore: BEFORE };
+  const fresh = "2026-10-19T23:00:00.000Z";
+  const stale = "2026-10-10T00:00:00.000Z";
+  try {
+    // Ids 1-5 are due by attempt; 100.. were checked even earlier but the crawl has seen them since.
+    await insertListings(db, [1, 5], SHOP, { seen: stale, attempt: "2026-10-17T00:00:00.000Z" });
+    for (const seenAgain of [50, 200]) {
+      await db.prepare("DELETE FROM products WHERE id >= 100").run();
+      await insertListings(db, [100, 99 + seenAgain], SHOP, {
+        seen: fresh,
+        attempt: "2026-10-12T00:00:00.000Z",
+      });
+      const boundary = measureD1Cost(db);
+      const candidate = await selectInventoryRecheckCandidate(boundary.db, SHOP, window);
+      const cost = boundary.metrics();
+      console.log(
+        JSON.stringify({ diagnostic: `inventory-recheck-seen-again-${seenAgain}`, ...cost }),
+      );
+      assert.equal(candidate?.id, 1);
+      // Each is stepped over once inside the retry window; none is ever selected while fresh.
+      assert.ok(
+        cost.rowsRead !== null && cost.rowsRead >= seenAgain && cost.rowsRead <= seenAgain + 5,
+        JSON.stringify(cost),
+      );
+    }
+  } finally {
+    await dispose();
+  }
+}, 120_000);

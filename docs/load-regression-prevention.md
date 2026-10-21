@@ -94,6 +94,9 @@ cases so removing a test cannot silently remove a requirement.
   so the scoped statement walks neither every match nor every listing.
 - Crawl deactivation: 50 missing listings among 100, 1,000 and 10,000 active listings of the same
   shop, with no statistics and without statistics for the shop cursor index.
+- Data-quality snapshot: re-evaluating a shop of 1,000 and 5,000 active listings, unchanged (one
+  indexed probe of the proven snapshot) and after a moved input (one full per-shop aggregate).
+- Inventory recheck: the next candidate among 1,000 and 5,000 active listings of the shop.
 - Listing replay: unchanged product/metadata/projection publication with zero physical writes.
 - Scheduling: every configured Cron firing over a whole UTC day, per-shop dispatch counts and
   the sum of configured initial-page ceilings, including disabled shops conservatively.
