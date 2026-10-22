@@ -95,7 +95,7 @@ test("explicit sold status is immediate while disappearance and deactivation rem
       sqlite
         .prepare("SELECT stock_status,is_active,last_changed_at FROM products WHERE id=1")
         .get();
-    await recordInventoryUnavailable(db, 1, NEXT, 1, false, "missing");
+    await recordInventoryUnavailable(db, 1, AT, 1, false, "missing");
     assert.deepEqual({ ...row() }, { stock_status: "in_stock", is_active: 1, last_changed_at: AT });
     await recordInventoryUnavailable(db, 1, NEXT, 1, false, "sold");
     assert.deepEqual(

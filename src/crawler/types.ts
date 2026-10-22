@@ -682,6 +682,7 @@ export type InventoryRecheckReason =
   | "relay_error"
   | "unexpected_content_type"
   | "inventory_recheck_error"
+  | "stale_observation"
   | `relay_http_${number}`
   | `upstream_http_${number}`
   | `unexpected_http_${number}`;

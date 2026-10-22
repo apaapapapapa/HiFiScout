@@ -4,6 +4,7 @@
  * inventory-recheck's repeated detail-page confirmation, independently of this stage's flag.
  */
 
+import { decideInventoryState } from "../inventory/state.js";
 import type { ProductRow, QueryableDatabase } from "./types.js";
 
 /** Partial (`is_active = 1`) index on `(shop_key, last_seen_at)`. */
@@ -24,26 +25,48 @@ export interface StaleListingExpiryResult {
 }
 
 /** No detail recheck newer than `before` vouches for the listing. */
-const UNVOUCHED = `(last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?
-  OR inventory_check_failures > 0)`;
+const UNVOUCHED = `(last_confirmed_available_at IS NULL OR last_confirmed_available_at < ?)`;
 
 async function staleSourceIds(
   db: QueryableDatabase,
   shopKey: string,
   before: string,
   limit: number,
-): Promise<string[]> {
+): Promise<
+  Array<
+    Pick<
+      ProductRow,
+      | "source_id"
+      | "stock_status"
+      | "last_seen_at"
+      | "last_inventory_checked_at"
+      | "last_confirmed_available_at"
+      | "inventory_check_failures"
+    >
+  >
+> {
   const result = await db
     .prepare(`
-      SELECT source_id FROM products INDEXED BY ${LAST_SEEN_INDEX}
+      SELECT source_id, stock_status, last_seen_at, last_inventory_checked_at,
+             last_confirmed_available_at, inventory_check_failures FROM products INDEXED BY ${LAST_SEEN_INDEX}
       WHERE shop_key = ? AND is_active = 1 AND last_seen_at < ?
         AND stock_status = 'in_stock'
         AND ${UNVOUCHED}
       ORDER BY last_seen_at ASC
       LIMIT ?`)
     .bind(shopKey, before, before, limit)
-    .all<Pick<ProductRow, "source_id">>();
-  return (result.results || []).map((row) => row.source_id);
+    .all<
+      Pick<
+        ProductRow,
+        | "source_id"
+        | "stock_status"
+        | "last_seen_at"
+        | "last_inventory_checked_at"
+        | "last_confirmed_available_at"
+        | "inventory_check_failures"
+      >
+    >();
+  return result.results || [];
 }
 
 /** Changes only stale in-stock listings; the current crawl's observations are protected. */
@@ -54,9 +77,23 @@ export async function expireStaleListings(
   observedSourceIds: ReadonlySet<string>,
   changedAt: string,
 ): Promise<StaleListingExpiryResult> {
-  const unknownSourceIds = (await staleSourceIds(db, shopKey, unknownBefore, limit)).filter(
-    (sourceId) => !observedSourceIds.has(sourceId),
-  );
+  const unknownSourceIds = (await staleSourceIds(db, shopKey, unknownBefore, limit))
+    .filter(
+      (row) =>
+        !observedSourceIds.has(row.source_id) &&
+        decideInventoryState({
+          stockStatus: row.stock_status,
+          lastSeenAt: row.last_seen_at,
+          lastCheckedAt: row.last_inventory_checked_at,
+          lastConfirmedAvailableAt: row.last_confirmed_available_at ?? null,
+          failureCount: row.inventory_check_failures,
+          latest: "not_checked",
+          observedAt: changedAt,
+          unknownBefore,
+          failureThreshold: 2,
+        }).action === "mark_unknown",
+    )
+    .map((row) => row.source_id);
   const statements: D1PreparedStatement[] = [];
   for (let index = 0; index < unknownSourceIds.length; index += UPDATE_CHUNK_SIZE) {
     const chunk = unknownSourceIds.slice(index, index + UPDATE_CHUNK_SIZE);
@@ -67,9 +104,10 @@ export async function expireStaleListings(
         .prepare(
           `UPDATE products SET stock_status = 'unknown', last_changed_at = ?
            WHERE shop_key = ? AND +is_active = 1 AND stock_status = 'in_stock'
+             AND last_seen_at < ? AND ${UNVOUCHED}
              AND source_id IN (${chunk.map(() => "?").join(",")})`,
         )
-        .bind(changedAt, shopKey, ...chunk),
+        .bind(changedAt, shopKey, unknownBefore, unknownBefore, ...chunk),
     );
   }
   if (statements.length) await db.batch(statements);
