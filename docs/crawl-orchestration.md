@@ -71,8 +71,13 @@ setting remains accepted but never authorizes deactivation. The next normal sigh
 listing from seller evidence; changed listings join the existing derived work set.
 
 Stage A currently requires the configured recent-success count, excludes this crawl's observations,
-and retains the recent-detail-check guard. The subsequent evidence/quality hardening separates
-confirmed availability from ambiguous checks and strengthens collection-quality gating. The unknown
+and protects only recent `last_confirmed_available_at` evidence. `last_inventory_checked_at` remains
+the result timestamp and never establishes availability. Unknown checks break the consecutive
+absence sequence and downgrade in-stock rows to unknown; they preserve an already observed sold
+state and the historical positive timestamp. Deferred HTTP/WAF failures change neither fact.
+Only explicit detail availability resets the stock to in-stock and advances confirmed availability;
+normal listing rediscovery keeps its own last-seen meaning. Migration 0142 adds a nullable timestamp
+without a backfill or new index. Subsequent hardening strengthens collection-quality gating. The unknown
 horizon cannot be shorter than twice the touch interval (minimum two days); Hifido's rotation-gap
 regression remains mandatory.
 

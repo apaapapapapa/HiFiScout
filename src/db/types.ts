@@ -118,6 +118,8 @@ export interface ProductRow {
   classification_status: ClassificationStatus;
   search_aliases: string;
   last_inventory_checked_at: string | null;
+  /** Explicit detail availability only; absent on historical read projections. */
+  last_confirmed_available_at?: string | null;
   inventory_check_failures: number;
   last_inventory_check_attempt_at: string | null;
   /** Nullable in the schema even though the 0008 backfill populated every existing row. */
@@ -274,6 +276,8 @@ export type InventoryRecheckCandidateRow = Pick<
   | "last_inventory_checked_at"
   | "last_inventory_check_attempt_at"
   | "inventory_check_failures"
+  | "last_confirmed_available_at"
+  | "stock_status"
 >;
 
 // ---------------------------------------------------------------------------

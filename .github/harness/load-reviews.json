@@ -3618,6 +3618,46 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
       ]
+    },
+    {
+      "id": "crawl-expire-stale-100",
+      "baseSha": "29381db9533ef724e95e78b9a5c6f27bea83af5d",
+      "beforeDigest": "feac11af89caa4b98bc0a8eb4ce572762f98affe6a6c09a13724e7c288ebe9e7",
+      "afterDigest": "433ccb4bba614bb8fab1346b9122fe78e4ff7b64ee7900e74adfca920c7e5eda",
+      "reason": "Separate positive inventory evidence from check attempts using a nullable, unbackfilled column. The fixture explicitly confirms only genuine positive observations. Real migrated D1 remains 507 reads, 200 writes and 2 statements at 100/1000/10000 unrelated listings; existing ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-confirmed-evidence/evaluations/2026-10-22-inventory-evidence.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "baseSha": "29381db9533ef724e95e78b9a5c6f27bea83af5d",
+      "beforeDigest": "51f00a4470ea433b5897c2546c7e7f0df9daca3bd918312a9a5f0648ba067af0",
+      "afterDigest": "445e9f9b866da8b4b4105ad4d057c08c39cb6f94e6153c7e1ae323af6819ce20",
+      "reason": "Separate positive inventory evidence from check attempts using a nullable, unbackfilled column. The fixture explicitly confirms only genuine positive observations. Real migrated D1 remains 507 reads, 200 writes and 2 statements at 100/1000/10000 unrelated listings; existing ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-confirmed-evidence/evaluations/2026-10-22-inventory-evidence.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "baseSha": "29381db9533ef724e95e78b9a5c6f27bea83af5d",
+      "beforeDigest": "88138d343660c6cb7c36629704d64d1c959215806aa5d65c8d3675e61f117b47",
+      "afterDigest": "06fac63cbff6f5a74ce30f724d794ee44c8fd6da10a575fdff91f6dc0b30aa13",
+      "reason": "Separate positive inventory evidence from check attempts using a nullable, unbackfilled column. The fixture explicitly confirms only genuine positive observations. Real migrated D1 remains 507 reads, 200 writes and 2 statements at 100/1000/10000 unrelated listings; existing ceilings are unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-confirmed-evidence/evaluations/2026-10-22-inventory-evidence.json"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "29381db9533ef724e95e78b9a5c6f27bea83af5d",
+      "beforeDigest": "bddcc7df6d2c459de658a3b8724d5c1ec717c3da83adfa24058c8e5643bb2d7e",
+      "afterDigest": "a795c5d3f98f15f8bf2cb6591e512f7373acee8a67c9c3d3f0321e2f18acea6c",
+      "reason": "Register the new pure inventory decision boundary and its real-D1 evidence regression suite under the existing inventory-recheck load contract. No budgets, required samples, performance ceilings or existing tests are removed or relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-confirmed-evidence/evaluations/2026-10-22-inventory-evidence.json"
+      ]
     }
   ]
 }

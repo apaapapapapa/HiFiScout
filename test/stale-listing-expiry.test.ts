@@ -33,6 +33,7 @@ interface ListingOptions {
   stock?: "in_stock" | "sold_out" | "unknown";
   active?: number;
   checked?: string | null;
+  confirmed?: string | null;
   failures?: number;
 }
 
@@ -47,6 +48,7 @@ function insertListings(
     stock = "in_stock",
     active = 1,
     checked = null,
+    confirmed = null,
     failures = 0,
   }: ListingOptions,
 ) {
@@ -54,9 +56,23 @@ function insertListings(
     .prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < ?)
       INSERT INTO products(shop_key,source_id,title,source_url,first_seen_at,last_seen_at,
         last_changed_at,last_activity_at,stock_status,is_active,last_inventory_checked_at,
-        inventory_check_failures)
-      SELECT ?,?||i,'Amp','https://example.test/'||?||i,?,?,?,?,?,?,?,? FROM n`)
-    .bind(count, shop, prefix, prefix, ANCIENT, seen, seen, seen, stock, active, checked, failures)
+        inventory_check_failures,last_confirmed_available_at)
+      SELECT ?,?||i,'Amp','https://example.test/'||?||i,?,?,?,?,?,?,?,?,? FROM n`)
+    .bind(
+      count,
+      shop,
+      prefix,
+      prefix,
+      ANCIENT,
+      seen,
+      seen,
+      seen,
+      stock,
+      active,
+      checked,
+      failures,
+      confirmed,
+    )
     .run();
 }
 
@@ -77,9 +93,13 @@ test("expiry never deactivates without sale evidence, even after 30 days", async
     await insertListings(db, "aging-", 2, { seen: AGING });
     await insertListings(db, "aging-sold-", 1, { seen: AGING, stock: "sold_out" });
     await insertListings(db, "fresh-", 2, { seen: FRESH });
-    // A recheck newer than the horizon vouches for availability; a failing one does not.
-    await insertListings(db, "vouched-", 1, { seen: ANCIENT, checked: FRESH });
-    await insertListings(db, "vouched-aging-", 1, { seen: AGING, checked: FRESH });
+    // Only explicit positive evidence newer than the horizon protects availability.
+    await insertListings(db, "vouched-", 1, { seen: ANCIENT, checked: FRESH, confirmed: FRESH });
+    await insertListings(db, "vouched-aging-", 1, {
+      seen: AGING,
+      checked: FRESH,
+      confirmed: FRESH,
+    });
     await insertListings(db, "failing-", 1, { seen: ANCIENT, checked: FRESH, failures: 1 });
     await insertListings(db, "old-check-", 1, { seen: ANCIENT, checked: ANCIENT });
     await insertListings(db, "observed-", 1, { seen: ANCIENT });

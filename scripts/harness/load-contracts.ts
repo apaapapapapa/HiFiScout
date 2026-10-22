@@ -365,6 +365,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
   {
     id: "inventory-recheck",
     sources: [
+      "src/inventory/*",
       "src/db/inventory-recheck-repository.ts",
       "src/db/types.ts",
       "src/crawler/inventory-recheck.ts",
@@ -373,6 +374,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     suites: [
       "test/inventory-recheck-candidate-budget.test.ts",
       "test/inventory-recheck-repository.test.ts",
+      "test/inventory-evidence.test.ts",
       "test/inventory-recheck.test.ts",
       "test/shop-inventory-classifiers.test.ts",
     ],

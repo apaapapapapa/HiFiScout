@@ -47,7 +47,7 @@ export async function selectInventoryRecheckCandidate(
     db
       .prepare(`
     SELECT id, source_id, source_url, title, model, last_seen_at, last_inventory_checked_at,
-           last_inventory_check_attempt_at, inventory_check_failures
+           last_inventory_check_attempt_at, inventory_check_failures, stock_status, last_confirmed_available_at
     FROM products
     WHERE id = COALESCE(
       (SELECT id FROM products INDEXED BY ${CONFIRM_INDEX}
@@ -102,9 +102,9 @@ export async function markInventoryCheckAttempt(
     .prepare(`
     UPDATE products
     SET last_inventory_check_attempt_at = ?
-    WHERE id = ? AND is_active = 1
+    WHERE id = ? AND is_active = 1 AND last_inventory_check_attempt_at IS NOT ?
   `)
-    .bind(attemptedAt, productId)
+    .bind(attemptedAt, productId, attemptedAt)
     .run();
 }
 
@@ -120,10 +120,11 @@ export async function markInventoryAvailable(
         last_inventory_checked_at = ?,
         inventory_check_failures = 0,
         last_changed_at = CASE WHEN stock_status <> 'in_stock' THEN ? ELSE last_changed_at END,
-        stock_status = 'in_stock'
-    WHERE id = ? AND is_active = 1
+        stock_status = 'in_stock',
+        last_confirmed_available_at = ?
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
   `)
-    .bind(checkedAt, checkedAt, checkedAt, productId)
+    .bind(checkedAt, checkedAt, checkedAt, checkedAt, productId, checkedAt)
     .run();
 }
 
@@ -137,10 +138,12 @@ export async function markInventoryAmbiguous(
     UPDATE products
     SET last_inventory_check_attempt_at = ?,
         last_inventory_checked_at = ?,
-        inventory_check_failures = 0
-    WHERE id = ? AND is_active = 1
+        inventory_check_failures = 0,
+        last_changed_at = CASE WHEN stock_status = 'in_stock' THEN ? ELSE last_changed_at END,
+        stock_status = CASE WHEN stock_status = 'in_stock' THEN 'unknown' ELSE stock_status END
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
   `)
-    .bind(checkedAt, checkedAt, productId)
+    .bind(checkedAt, checkedAt, checkedAt, productId, checkedAt)
     .run();
 }
 
@@ -163,8 +166,19 @@ export async function recordInventoryUnavailable(
         stock_status = CASE WHEN ? = 1 THEN 'sold_out' ELSE stock_status END,
         is_active = CASE WHEN ? = 1 THEN 0 ELSE is_active END,
         last_changed_at = CASE WHEN ? = 1 OR (? = 1 AND stock_status <> 'sold_out') THEN ? ELSE last_changed_at END
-    WHERE id = ? AND is_active = 1
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
   `)
-    .bind(checkedAt, checkedAt, failureCount, sold, inactive, inactive, sold, checkedAt, productId)
+    .bind(
+      checkedAt,
+      checkedAt,
+      failureCount,
+      sold,
+      inactive,
+      inactive,
+      sold,
+      checkedAt,
+      productId,
+      checkedAt,
+    )
     .run();
 }

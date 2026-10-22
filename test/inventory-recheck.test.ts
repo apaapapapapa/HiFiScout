@@ -47,6 +47,7 @@ function candidate(
     last_inventory_checked_at: null,
     last_inventory_check_attempt_at: null,
     inventory_check_failures: 0,
+    stock_status: "in_stock",
     ...overrides,
   };
 }

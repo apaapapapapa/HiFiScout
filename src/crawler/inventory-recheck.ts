@@ -10,6 +10,7 @@
  * guard and availability classifier from the plugin's inventory-recheck capability.
  */
 
+import { decideInventoryState } from "../inventory/state.js";
 import {
   getCrawlerSettings,
   getShopInventoryRecheckSettings,
@@ -100,13 +101,22 @@ function isoBefore(now: Date, hours: number): string {
   return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
 }
 
-function priorUnavailableFailures(candidate: InventoryRecheckCandidateRow): number {
-  const checkedAt = Date.parse(candidate?.last_inventory_checked_at || "");
-  const lastSeenAt = Date.parse(candidate?.last_seen_at || "");
-  if (!Number.isFinite(checkedAt)) return 0;
-  if (Number.isFinite(lastSeenAt) && lastSeenAt > checkedAt) return 0;
-  const stored = Number.parseInt(String(candidate?.inventory_check_failures ?? "0"), 10);
-  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+function inventoryDecision(
+  candidate: InventoryRecheckCandidateRow,
+  latest: "sold_out" | "missing" | "in_stock" | "unknown",
+  observedAt: string,
+  failureThreshold: number,
+) {
+  return decideInventoryState({
+    stockStatus: candidate.stock_status,
+    lastSeenAt: candidate.last_seen_at,
+    lastCheckedAt: candidate.last_inventory_checked_at,
+    lastConfirmedAvailableAt: candidate.last_confirmed_available_at ?? null,
+    failureCount: candidate.inventory_check_failures,
+    latest,
+    observedAt,
+    failureThreshold,
+  });
 }
 
 function relayFailureReason(error: unknown): InventoryRecheckResult["reason"] {
@@ -178,8 +188,21 @@ async function recordUnavailable(
   evidence: "missing" | "sold",
   httpStatus: number,
 ): Promise<InventoryRecheckResult> {
-  const failureCount = priorUnavailableFailures(candidate) + 1;
-  const deactivate = failureCount >= settings.failureThreshold;
+  const decision = inventoryDecision(
+    candidate,
+    evidence === "sold" ? "sold_out" : "missing",
+    attemptedAt,
+    settings.failureThreshold,
+  );
+  if (decision.action === "defer")
+    return {
+      status: "deferred",
+      reason: "stale_observation",
+      productId: candidate.id,
+      sourceId: candidate.source_id,
+    };
+  const failureCount = decision.failureCount;
+  const deactivate = decision.action === "deactivate_confirmed";
   await repository.recordInventoryUnavailable(
     env.DB,
     candidate.id,
@@ -326,7 +349,20 @@ export async function recheckShopInventory(
       title: candidate.title,
       model: candidate.model,
     });
-    if (classification === "in_stock") {
+    const decision = inventoryDecision(
+      candidate,
+      classification,
+      attemptedAt,
+      settings.failureThreshold,
+    );
+    if (decision.action === "defer")
+      return {
+        status: "deferred",
+        reason: "stale_observation",
+        productId: candidate.id,
+        sourceId: candidate.source_id,
+      };
+    if (decision.reason === "confirmed_available") {
       await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);
       return {
         status: "checked",
