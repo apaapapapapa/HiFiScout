@@ -14,6 +14,7 @@ import { isCrawlQuietHours } from "../src/crawler/crawl-window.js";
 import { hifidoRecheckPage } from "../src/crawler/shops/hifido.js";
 import { crawlShop } from "../src/crawler/run.js";
 import { processFinalize } from "../src/crawler/resumable-finalize.js";
+import { recordCrawlFetchDetailPage } from "../src/db/crawl-fetch-detail-repository.js";
 import {
   ensureCrawlFetchSession,
   getCrawlFetchSession,
@@ -153,11 +154,12 @@ test("expiry waits until the shop's recent crawls have kept succeeding", async (
   assert.deepEqual(state(sqlite, "aging"), { is_active: 1, stock_status: "in_stock" });
 });
 
-test("staged collection uses its real page plan rather than the maximum page budget", async () => {
-  for (const incomplete of [false, true]) {
+test("staged collection counts listing work, excluding appended category detail receipts", async () => {
+  for (const unfinishedState of [null, "pending", "ignored"] as const) {
+    const incomplete = unfinishedState !== null;
     const { sqlite, db } = await seededShop(2);
     const at = new Date().toISOString();
-    const runId = `planned-pages-${incomplete}`;
+    const runId = `planned-pages-${unfinishedState}`;
     await ensureCrawlFetchSession(db, {
       runId,
       shopKey: SHOP,
@@ -177,6 +179,21 @@ test("staged collection uses its real page plan rather than the maximum page bud
         "UPDATE crawl_fetch_pages SET state = 'parsed', products_json = ?, item_count = 1 WHERE run_id = ? AND ordinal = 0",
       )
       .run(JSON.stringify([listing("seen")]), runId);
+    if (unfinishedState) {
+      sqlite
+        .prepare("UPDATE crawl_fetch_pages SET state = ? WHERE run_id = ? AND ordinal = 1")
+        .run(unfinishedState, runId);
+    }
+    // Both legacy HTML and current extracted-evidence rows are appended as ignored. They do not
+    // count as missing listing pages, even when classification extraction was blocked by WAF.
+    for (let detail = 0; detail < 20; detail += 1) {
+      await recordCrawlFetchDetailPage(db, {
+        runId,
+        targetUrl: `${LISTING_PAGE}detail/${detail}`,
+        fetchedAt: at,
+        ...(detail % 2 ? { evidence: [] } : { errorMessage: "unexpected_http_202" }),
+      });
+    }
     sqlite
       .prepare(
         "UPDATE crawl_fetch_sessions SET pages_fetched = 1, pages_parsed = 1, next_phase = 'finalize', next_page_key = NULL WHERE run_id = ?",

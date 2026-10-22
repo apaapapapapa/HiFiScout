@@ -3,8 +3,8 @@ import { firstMeasured } from "./read-accounting.js";
 import type { CategoryEvidenceInput } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 
-const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
-const EVIDENCE_PAGE_KEY_PREFIX = "__hifiscout_category_evidence_v1__:";
+export const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
+export const EVIDENCE_PAGE_KEY_PREFIX = "__hifiscout_category_evidence_v1__:";
 
 export interface CrawlFetchDetailPageRow {
   run_id: string;

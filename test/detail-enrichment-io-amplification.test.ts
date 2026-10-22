@@ -230,48 +230,58 @@ test("finalization uses actual planned pages, including incomplete pages, withou
   );
 });
 
-test("actual page-plan endpoints stay bounded as unrelated frontier pages grow", async () => {
-  const { db, dispose } = await database();
-  try {
-    await db
-      .prepare(`INSERT INTO crawl_fetch_sessions
+for (const detailCount of [0, 20])
+  test(`actual listing plan stays bounded with ${detailCount} appended details as unrelated pages grow`, async () => {
+    const { db, dispose } = await database();
+    try {
+      await db
+        .prepare(`INSERT INTO crawl_fetch_sessions
       (run_id,shop_key,requested_at,max_pages,page_limit,created_at,updated_at)
       VALUES ('plan','shop','at',50,50,'at','at'),('other','shop','later',10000,10000,'at','at')`)
-      .run();
-    await db
-      .prepare(`INSERT INTO crawl_fetch_pages(run_id,page_key,page_json,ordinal,state)
-      VALUES ('plan','p1','{}',0,'parsed'),('plan','p2','{}',1,'pending')`)
-      .run();
-    const costs = [];
-    for (const size of [100, 1000, 10000]) {
+        .run();
       await db
-        .prepare(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?)
+        .prepare(`INSERT INTO crawl_fetch_pages(run_id,page_key,page_json,ordinal,state)
+      VALUES ('plan','p1','{}',0,'parsed'),('plan','p2','{}',1,'pending')`)
+        .run();
+      for (let detail = 0; detail < detailCount; detail += 1) {
+        await recordCrawlFetchDetailPage(db, {
+          runId: "plan",
+          targetUrl: `https://shop.test/detail/${detail}`,
+          fetchedAt: "2026-10-22T00:00:00.000Z",
+          ...(detail % 2 ? { evidence: [] } : { errorMessage: "unexpected_http_202" }),
+        });
+      }
+      const costs = [];
+      for (const size of [100, 1000, 10000]) {
+        await db
+          .prepare(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?)
         INSERT OR IGNORE INTO crawl_fetch_pages(run_id,page_key,page_json,ordinal,state)
         SELECT 'other','other-'||x,'{}',x-1,'parsed' FROM n`)
-        .bind(size)
-        .run();
-      const measured = accountReads(db);
-      assert.deepEqual(await crawlFetchPlanSummary(measured.db, "plan"), {
-        firstPageKey: "p1",
-        expectedPages: 2,
-      });
-      const cost = {
-        size,
-        rowsRead: measured.rowsRead(),
-        rowsWritten: measured.rowsWritten(),
-        statements: measured.countedStatements(),
-      };
-      assert.ok(cost.rowsRead <= 6, JSON.stringify(cost));
-      assert.equal(cost.rowsWritten, 0);
-      assert.equal(cost.statements, 1);
-      costs.push(cost);
+          .bind(size)
+          .run();
+        const measured = accountReads(db);
+        assert.deepEqual(await crawlFetchPlanSummary(measured.db, "plan"), {
+          firstPageKey: "p1",
+          expectedPages: 2,
+        });
+        const cost = {
+          size,
+          rowsRead: measured.rowsRead(),
+          rowsWritten: measured.rowsWritten(),
+          statements: measured.countedStatements(),
+        };
+        if (!detailCount) assert.ok(cost.rowsRead <= 6, JSON.stringify(cost));
+        assert.equal(cost.rowsRead, 2 + detailCount, JSON.stringify(cost));
+        assert.equal(cost.rowsWritten, 0);
+        assert.equal(cost.statements, 1);
+        costs.push(cost);
+      }
+      assert.equal(new Set(costs.map((cost) => cost.rowsRead)).size, 1);
+      console.log(JSON.stringify({ event: "inventory_page_plan_cost", detailCount, costs }));
+    } finally {
+      await dispose();
     }
-    assert.equal(new Set(costs.map((cost) => cost.rowsRead)).size, 1);
-    console.log(JSON.stringify({ event: "inventory_page_plan_cost", costs }));
-  } finally {
-    await dispose();
-  }
-});
+  });
 
 test("appending a detail row costs one index seek, not a walk of the run", async () => {
   // Measured rather than assumed: `MAX(ordinal)` over `UNIQUE (run_id, ordinal)` is SQLite's

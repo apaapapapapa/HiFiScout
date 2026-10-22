@@ -414,6 +414,12 @@ records why aging was deferred; the next healthy crawl can resume. Classificatio
 not gate this policy. `stale_guard` in the run message and `stale_inventory_deferred` logs record
 its reasons before age-based writes.
 
+The expected listing-page count comes from this run's persisted listing frontier, not the configured
+page cap. Appended category-detail/evidence receipts share the staging table but are excluded from
+that count; their WAF failures do not imply missing listing pages. An ignored or pending actual
+listing page still defers aging. The summary reads only the two listing endpoints and skips the
+bounded detail tail using the existing `(run_id, ordinal)` index, in one read-only statement.
+
 Stage A uses `idx_products_active_last_seen`, two bounded seeks and a per-shop cursor; even an
 old unknown backlog sharing one timestamp does not cause a full scan. Only UPDATE RETURNING
 identifies changed products for derived work. No product backfill or new product index is needed.
