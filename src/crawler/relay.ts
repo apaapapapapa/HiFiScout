@@ -151,7 +151,8 @@ async function relayPageFromResponse({
         maxBytes: CRAWL_MAX_HTML_RESPONSE_BYTES,
         signal: deadline,
       });
-  return { status, contentType, body };
+  const finalUrl = response.headers.get("x-hifiscout-upstream-url");
+  return { status, contentType, body, ...(finalUrl ? { finalUrl } : {}) };
 }
 
 async function requestRelayPage(

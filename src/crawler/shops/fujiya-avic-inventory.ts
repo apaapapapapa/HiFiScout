@@ -48,12 +48,16 @@ function visibleText(html: string): string {
   );
 }
 
+export function isFujiyaAvicChallenge(html: string): boolean {
+  return /awswaf|aws-waf-token|AwsWafIntegration|awswafchallenge|challenge\.js/i.test(html);
+}
+
 export function classifyFujiyaAvicInventoryPage(
   html: string,
   listing?: Pick<InventoryRecheckListing, "title" | "model">,
 ): InventoryClassification {
   // Without the stored identity the product lead cannot be told apart from a related product.
-  if (!listing) return "unknown";
+  if (!listing || isFujiyaAvicChallenge(html)) return "unknown";
   const source = stripRawTextElements(html, ["script", "style", "noscript"]);
   const lead = productDetailScope(source, { title: listing.title, model: listing.model });
   if (lead === null) return "unknown";
@@ -69,6 +73,7 @@ export function classifyFujiyaAvicInventoryPage(
 
 export const fujiyaAvicInventoryRecheck: InventoryRecheckPolicy = {
   isDetailUrl: isFujiyaAvicDetailUrl,
+  isChallengePage: isFujiyaAvicChallenge,
   candidateUrlPrefix: "https://www.fujiya-avic.co.jp/shop/g/",
   classifyPage: classifyFujiyaAvicInventoryPage,
 };

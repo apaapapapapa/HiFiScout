@@ -222,3 +222,45 @@ export function evaluateQuality(
     },
   };
 }
+
+/** Collection reliability for age-based inventory changes; classification quality is unrelated. */
+export function evaluateInventoryCollectionSafety(input: {
+  successful: boolean;
+  parsedPages: number;
+  parseFailures: number;
+  fetchFailures: number;
+  uncertainCoverage: boolean;
+  expectedPages: number;
+  fetchedPages: number;
+  itemCount: number;
+  previousItemCount: number;
+  minItemRatio: number;
+  minItemBaseline: number;
+  previousSuccessAt: string | null;
+  previousFailures: number;
+  observedAt: string;
+  intervalMinutes: number;
+}): { allowed: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!input.successful || !input.itemCount) reasons.push("collection_failed");
+  if (input.parseFailures || input.parsedPages !== input.fetchedPages || !input.parsedPages)
+    reasons.push("parse_incomplete");
+  if (input.fetchFailures) reasons.push("fetch_failed");
+  if (input.uncertainCoverage || input.fetchedPages < input.expectedPages)
+    reasons.push("coverage_unreliable");
+  if (
+    input.previousItemCount >= input.minItemBaseline &&
+    input.itemCount < input.previousItemCount * input.minItemRatio
+  )
+    reasons.push("item_count_drop");
+  const previous = Date.parse(input.previousSuccessAt ?? "");
+  const gap = Date.parse(input.observedAt) - previous;
+  if (
+    !Number.isFinite(gap) ||
+    gap < 0 ||
+    gap > Math.max(48 * 60, 3 * input.intervalMinutes) * 60_000
+  )
+    reasons.push("success_gap");
+  if (input.previousFailures > 0) reasons.push("recovering_after_failure");
+  return { allowed: reasons.length === 0, reasons };
+}

@@ -147,3 +147,17 @@ test("Fujiya availability is read from the listing's own product lead only", () 
     "unknown",
   );
 });
+
+test("WAF challenge scripts invalidate even plausible Fujiya product text", () => {
+  const challenged = fujiyaPage(
+    '<p>在庫がありません</p><script src="https://x.aws/waf/challenge.js"></script>',
+  );
+  assert.equal(classifyFujiyaAvicInventoryPage(challenged, FUJIYA_LISTING), "unknown");
+  assert.equal(
+    classifyHifidoInventoryPage(hifidoCard({ orderButton: false, price: "売約済み" }), {
+      sourceUrl: HIFIDO_URL,
+      sourceId: "26-11111-22222-00",
+    }),
+    "unknown",
+  );
+});

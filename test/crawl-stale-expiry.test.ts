@@ -1,3 +1,4 @@
+import { evaluateInventoryCollectionSafety } from "../src/data-quality/quality-evaluator.js";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
@@ -230,4 +231,60 @@ test("Hifido's horizons outlast the longest gap its clock-driven rotation leaves
     settings.unknownAfterHours * hourMs > worstGapMs + touchMs,
     `unknown after ${settings.unknownAfterHours}h, rotation gap ${worstGapMs / hourMs}h`,
   );
+});
+
+test("inventory collection safety uses acquisition evidence, not classification severity", () => {
+  const good = {
+    successful: true,
+    parsedPages: 4,
+    parseFailures: 0,
+    fetchFailures: 0,
+    uncertainCoverage: false,
+    expectedPages: 4,
+    fetchedPages: 4,
+    itemCount: 100,
+    previousItemCount: 105,
+    minItemRatio: 0.5,
+    minItemBaseline: 30,
+    previousSuccessAt: "2026-10-22T00:00:00.000Z",
+    previousFailures: 0,
+    observedAt: "2026-10-22T01:00:00.000Z",
+    intervalMinutes: 60,
+  };
+  assert.equal(
+    evaluateInventoryCollectionSafety({ ...good, qualityStatus: "critical" } as typeof good)
+      .allowed,
+    true,
+  );
+  for (const [override, reason] of [
+    [{ successful: false }, "collection_failed"],
+    [{ parseFailures: 1 }, "parse_incomplete"],
+    [{ fetchFailures: 1 }, "fetch_failed"],
+    [{ fetchedPages: 3 }, "coverage_unreliable"],
+    [{ uncertainCoverage: true }, "coverage_unreliable"],
+    [{ itemCount: 10 }, "item_count_drop"],
+    [{ previousSuccessAt: "2026-10-01T00:00:00.000Z" }, "success_gap"],
+    [{ previousFailures: 2 }, "recovering_after_failure"],
+  ] as const) {
+    const result = evaluateInventoryCollectionSafety({ ...good, ...override });
+    assert.equal(result.allowed, false);
+    assert.ok(result.reasons.includes(reason));
+  }
+});
+
+test("successful-run counts do not override an outage; a recovered collection resumes aging", async () => {
+  const { sqlite, db } = await seededShop(5);
+  sqlite
+    .prepare(
+      "UPDATE shop_sync_state SET last_success_at=?, consecutive_failures=2 WHERE shop_key=?",
+    )
+    .run(daysAgo(10), SHOP);
+  await crawl(db, [listing("seen")], EXPIRY_ENV);
+  assert.equal(state(sqlite, "ancient").stock_status, "in_stock");
+  const message = sqlite
+    .prepare("SELECT message FROM crawl_runs WHERE shop_key=? ORDER BY id DESC LIMIT 1")
+    .get(SHOP)!.message;
+  assert.match(String(message), /success_gap/);
+  await crawl(db, [listing("seen")], EXPIRY_ENV);
+  assert.equal(state(sqlite, "ancient").stock_status, "unknown");
 });

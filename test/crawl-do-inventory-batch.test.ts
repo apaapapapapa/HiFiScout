@@ -103,7 +103,7 @@ async function harness({ batchSize, listings }: { batchSize: string; listings: n
       )
       .get(`g${id}`) as Record<string, unknown>),
   });
-  return { stored, alarms, alarm, advance, row };
+  return { stored, alarms, alarm, advance, row, sqlite };
 }
 
 test("a direct shop rechecks its batch through one paced permit per listing", async () => {
@@ -188,4 +188,148 @@ test("a batch stops at the first recheck the seller did not answer", async () =>
     stock_status: "in_stock",
     inventory_check_failures: 0,
   });
+});
+
+for (const phase of ["before_fetch", "during_fetch"] as const) {
+  test(`PREPARE snapshot rejects a concurrent rediscovery ${phase}`, async () => {
+    const h = await harness({ batchSize: "2", listings: 2 });
+    let requests = 0;
+    const rediscover = () =>
+      h.sqlite
+        .prepare(
+          "UPDATE products SET last_seen_at=?,inventory_check_failures=0 WHERE source_id='g1'",
+        )
+        .run(new Date(NOON + 1000).toISOString());
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/robots.txt")) return new Response("", { status: 404 });
+      requests += 1;
+      if (phase === "during_fetch") rediscover();
+      return new Response("<h1>Shure SE-100</h1><p>在庫がありません</p>", {
+        headers: { "content-type": "text/html" },
+      });
+    });
+    await h.alarm();
+    if (phase === "before_fetch") rediscover();
+    h.advance(1000);
+    await h.alarm();
+    assert.equal(requests, phase === "before_fetch" ? 0 : 1);
+    assert.deepEqual(h.row(1), {
+      is_active: 1,
+      stock_status: "in_stock",
+      inventory_check_failures: 0,
+    });
+    assert.deepEqual(h.row(2), {
+      is_active: 1,
+      stock_status: "in_stock",
+      inventory_check_failures: 0,
+    });
+    assert.equal(h.stored.has(STORAGE_KEY), false);
+  });
+}
+
+test("expired permits and pre-upgrade unbound permits are replaced before seller access", async () => {
+  const h = await harness({ batchSize: "1", listings: 1 });
+  let requests = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/robots.txt")) return new Response("", { status: 404 });
+    requests++;
+    return new Response("", { status: 202 });
+  });
+  await h.alarm();
+  h.advance(16 * 60_000);
+  await h.alarm();
+  assert.equal(requests, 0);
+  await h.alarm(); // new permit and snapshot
+  const old = h.stored.get(STORAGE_KEY) as Record<string, unknown>;
+  delete old.inventoryCandidate;
+  h.stored.set(STORAGE_KEY, old);
+  h.advance(1000);
+  await h.alarm(); // new worker must not use this unbound capability
+  assert.equal(requests, 0);
+  h.advance(1000);
+  await h.alarm();
+  assert.equal(requests, 1);
+  assert.equal(h.row(1).is_active, 1);
+});
+
+for (const status of [202, 403, 429, 500, 503]) {
+  test(`repeated HTTP ${status} never counts as missing stock`, async () => {
+    const h = await harness({ batchSize: "5", listings: 2 });
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (input) =>
+        new Response("", { status: String(input).endsWith("/robots.txt") ? 404 : status }),
+    );
+    const execution = structuredClone(h.stored.get(STORAGE_KEY));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      h.stored.set(STORAGE_KEY, structuredClone(execution));
+      await h.alarm();
+      h.advance(1000);
+      await h.alarm();
+      h.advance(48 * 60 * 60_000);
+    }
+    assert.deepEqual(h.row(1), {
+      is_active: 1,
+      stock_status: "in_stock",
+      inventory_check_failures: 0,
+    });
+    assert.equal(h.stored.has(STORAGE_KEY), false);
+  });
+}
+
+test("two separately paced sold observations end a listing and remove its search offer", async () => {
+  const h = await harness({ batchSize: "1", listings: 1 });
+  const execution = structuredClone(h.stored.get(STORAGE_KEY));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).endsWith("/robots.txt")
+      ? new Response("", { status: 404 })
+      : new Response("<h1>Shure SE-100</h1><p>在庫がありません</p>", {
+          headers: { "content-type": "text/html" },
+        }),
+  );
+  await h.alarm();
+  h.advance(1000);
+  await h.alarm();
+  assert.equal(h.row(1).is_active, 1);
+  h.advance(48 * 60 * 60_000);
+  h.stored.set(STORAGE_KEY, execution);
+  await h.alarm();
+  h.advance(1000);
+  await h.alarm();
+  assert.deepEqual(h.row(1), {
+    is_active: 0,
+    stock_status: "sold_out",
+    inventory_check_failures: 2,
+  });
+  assert.equal(
+    h.sqlite
+      .prepare(
+        "SELECT count(*) AS n FROM product_search_entity_offers WHERE listing_product_id IN (SELECT id FROM products WHERE source_id='g1')",
+      )
+      .get()!.n,
+    0,
+  );
+});
+
+test("HTTP 200 WAF challenge defers without clearing earlier sold confirmation", async () => {
+  const h = await harness({ batchSize: "5", listings: 1 });
+  h.sqlite.exec(
+    "UPDATE products SET stock_status='sold_out',inventory_check_failures=1,last_inventory_check_attempt_at='2026-08-20T00:00:00Z',last_inventory_checked_at='2026-08-20T00:00:00Z'",
+  );
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).endsWith("/robots.txt")
+      ? new Response("", { status: 404 })
+      : new Response(
+          '<script src="https://challenge.aws/challenge.js"></script><h1>Shure SE-100</h1><p>在庫がありません</p>',
+          { headers: { "content-type": "text/html" } },
+        ),
+  );
+  await h.alarm();
+  h.advance(1000);
+  await h.alarm();
+  assert.deepEqual(h.row(1), {
+    is_active: 1,
+    stock_status: "sold_out",
+    inventory_check_failures: 1,
+  });
+  assert.equal(h.stored.has(STORAGE_KEY), false);
 });

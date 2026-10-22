@@ -3658,6 +3658,46 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-confirmed-evidence/evaluations/2026-10-22-inventory-evidence.json"
       ]
+    },
+    {
+      "id": "crawl-expire-stale-100",
+      "baseSha": "b06f4ca8331df3a9688f8afed30e967361a7326a",
+      "beforeDigest": "433ccb4bba614bb8fab1346b9122fe78e4ff7b64ee7900e74adfca920c7e5eda",
+      "afterDigest": "d8c61f6f366f73721102d4f279d65890218c240d505871e0ed912310f72cd5ae",
+      "reason": "Bound the old-unknown backlog as well as fresh unrelated inventory with two seeks through the existing active-last-seen index and one small per-shop cursor. UPDATE RETURNING identifies actual changed products. At identical initial cursor state and 100/1000/10000 fresh listings, real-D1 cost is 507 -> 610 reads, 200 -> 202 writes and 2 -> 4 statements (cursor creation; subsequent cursor updates cost one write). A separate 100/1000/10000 same-timestamp old-unknown backlog stays at 51 reads, 5 writes, 4 statements including one stock change. This measured bounded overhead avoids an otherwise linear old-row scan. Original absolute ceilings of 2000/1000/4 are unchanged; no index or product backfill is added.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "baseSha": "b06f4ca8331df3a9688f8afed30e967361a7326a",
+      "beforeDigest": "445e9f9b866da8b4b4105ad4d057c08c39cb6f94e6153c7e1ae323af6819ce20",
+      "afterDigest": "532584fb4050a6c8067188655737f980dfe3e90a3438bf7e819fe4043f480a66",
+      "reason": "Bound the old-unknown backlog as well as fresh unrelated inventory with two seeks through the existing active-last-seen index and one small per-shop cursor. UPDATE RETURNING identifies actual changed products. At identical initial cursor state and 100/1000/10000 fresh listings, real-D1 cost is 507 -> 610 reads, 200 -> 202 writes and 2 -> 4 statements (cursor creation; subsequent cursor updates cost one write). A separate 100/1000/10000 same-timestamp old-unknown backlog stays at 51 reads, 5 writes, 4 statements including one stock change. This measured bounded overhead avoids an otherwise linear old-row scan. Original absolute ceilings of 2000/1000/4 are unchanged; no index or product backfill is added.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "baseSha": "b06f4ca8331df3a9688f8afed30e967361a7326a",
+      "beforeDigest": "06fac63cbff6f5a74ce30f724d794ee44c8fd6da10a575fdff91f6dc0b30aa13",
+      "afterDigest": "457568b39eae26df1f34bcbfbab2d0bc1236553ef3168dc0c5060eafa27b5a42",
+      "reason": "Bound the old-unknown backlog as well as fresh unrelated inventory with two seeks through the existing active-last-seen index and one small per-shop cursor. UPDATE RETURNING identifies actual changed products. At identical initial cursor state and 100/1000/10000 fresh listings, real-D1 cost is 507 -> 610 reads, 200 -> 202 writes and 2 -> 4 statements (cursor creation; subsequent cursor updates cost one write). A separate 100/1000/10000 same-timestamp old-unknown backlog stays at 51 reads, 5 writes, 4 statements including one stock change. This measured bounded overhead avoids an otherwise linear old-row scan. Original absolute ceilings of 2000/1000/4 are unchanged; no index or product backfill is added.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "b06f4ca8331df3a9688f8afed30e967361a7326a",
+      "beforeDigest": "a795c5d3f98f15f8bf2cb6591e512f7373acee8a67c9c3d3f0321e2f18acea6c",
+      "afterDigest": "c098710715e6d29c04237a458854bbc4b20fefe9f721d9e4bbfee2081302c2d2",
+      "reason": "Register the collection-quality policy and the real-D1 scheduler snapshot/permit and collection-safety regressions under inventory recheck. Clarify PREPARE selection versus FETCH primary-key fencing. Existing samples, budget ceilings and regression gates are unchanged; this adds coverage without waivers.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
+      ]
     }
   ]
 }

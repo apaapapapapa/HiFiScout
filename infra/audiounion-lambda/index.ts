@@ -186,19 +186,26 @@ async function fetchValidatedUpstream(
   url: string,
   headers: RelayHeaders,
   robotsGate?: RedirectRobotsGate,
+  onFinalUrl?: (url: string) => void,
 ): Promise<RelayFetchResponse> {
+  const original = new URL(url);
   let target = new URL(url);
   const shopOrigin = target.origin;
   const visited = new Set<string>();
   for (let hop = 0; ; hop += 1) {
     assertAllowedUpstream(target, shopOrigin);
+    if (hop > 0 && !sameDetailIdentity(original, target))
+      throw new RedirectRejectedError("redirect changed product identity");
     const href = target.toString();
     if (visited.has(href)) throw new RedirectRejectedError(`redirect loop returning to ${href}`);
     visited.add(href);
     if (hop > 0 && robotsGate) await robotsGate(target);
 
     const response = await fetchFn(href, { headers, redirect: "manual" });
-    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    if (!REDIRECT_STATUSES.has(response.status)) {
+      onFinalUrl?.(href);
+      return response;
+    }
 
     await response.body?.cancel().catch(() => {});
     if (hop >= MAX_REDIRECTS)
@@ -206,7 +213,7 @@ async function fetchValidatedUpstream(
     const location = response.headers.get("location")?.trim();
     if (!location) throw new RedirectRejectedError("redirect response had no Location header");
     try {
-      target = upgradedKnownRedirect(new URL(location, href));
+      target = upgradedKnownRedirect(new URL(location, href), original);
     } catch {
       throw new RedirectRejectedError("redirect Location is not a resolvable URL");
     }
@@ -467,14 +474,32 @@ function isAllowedTarget(requestedUrl: URL, env: RelayEnv): boolean {
  * own host. That one destination is requested over HTTPS instead (the page is served there too);
  * every other plain-HTTP destination is still rejected by {@link assertAllowedUpstream}.
  */
-function upgradedKnownRedirect(target: URL): URL {
+function sameDetailIdentity(original: URL, target: URL): boolean {
+  if (isAllowedHifidoDetailUrl(original)) {
+    const id = original.pathname.slice(1);
+    return (
+      target.origin === original.origin &&
+      !target.hash &&
+      (target.search === "" || target.search === "?LNG=J") &&
+      (target.pathname === `/${id}` || target.pathname === `/sold/${id}`)
+    );
+  }
+  if (isAllowedAudioUnionDetailUrl(original)) return target.href === original.href;
+  return true;
+}
+
+function upgradedKnownRedirect(target: URL, original: URL): URL {
   if (
     target.protocol === "http:" &&
     target.hostname === HIFIDO_HOST &&
     target.port === "" &&
     !target.username &&
     !target.password &&
-    HIFIDO_SOLD_PATH.test(target.pathname)
+    HIFIDO_SOLD_PATH.test(target.pathname) &&
+    isAllowedHifidoDetailUrl(original) &&
+    target.pathname === `/sold${original.pathname}` &&
+    (target.search === "" || target.search === "?LNG=J") &&
+    !target.hash
   ) {
     const upgraded = new URL(target.toString());
     upgraded.protocol = "https:";
@@ -626,11 +651,15 @@ async function proxyTarget(
   profile: RelayRequestProfile,
   env: RelayEnv,
 ): Promise<RelayResponse> {
+  let finalUrl = targetUrl;
   const upstream = await fetchValidatedUpstream(
     fetchFn,
     targetUrl,
     profile.headers,
     redirectRobotsGate(fetchFn, profile.userAgent),
+    (url) => {
+      finalUrl = url;
+    },
   );
   let bytes: Buffer;
   try {
@@ -653,6 +682,7 @@ async function proxyTarget(
       "content-type": contentType,
       "cache-control": "no-store",
       "x-hifiscout-upstream-status": String(upstream.status),
+      "x-hifiscout-upstream-url": finalUrl,
       "x-hifiscout-aws-region": env.AWS_REGION || "unknown",
     },
     body: bytes.toString("base64"),

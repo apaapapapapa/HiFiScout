@@ -61,6 +61,7 @@ interface PreparedDirectRequestOptions {
   nowMs?: number;
   allowedRedirectOrigins?: readonly string[];
   robotsCache?: RobotsCache;
+  exactTargetOnly?: boolean;
 }
 
 /**
@@ -76,6 +77,7 @@ async function requestPreparedDirect(
     nowMs = Date.now(),
     allowedRedirectOrigins = [],
     robotsCache = new Map(),
+    exactTargetOnly = false,
   }: PreparedDirectRequestOptions,
 ): Promise<{ response: Response; deadline: AbortSignal }> {
   if (targetUrl !== permit.targetUrl || userAgent !== permit.userAgent) {
@@ -110,6 +112,7 @@ async function requestPreparedDirect(
       signal: deadline,
       beforeRequest: async (destination, signal) => {
         if (destination === permit.targetUrl) return;
+        if (exactTargetOnly) throw new Error("inventory redirect changed product identity");
         await robotsGate(destination, signal);
       },
     },
@@ -147,15 +150,19 @@ export async function fetchPreparedDirectPage(
   targetUrl: string,
   options: PreparedDirectRequestOptions,
 ): Promise<RelayPage> {
-  const { response, deadline } = await requestPreparedDirect(permit, targetUrl, options);
+  const { response, deadline } = await requestPreparedDirect(permit, targetUrl, {
+    ...options,
+    exactTargetOnly: true,
+  });
   const contentType = response.headers.get("content-type") || "";
   if (response.status !== 200 || !contentType.toLowerCase().includes("text/html")) {
     await response.body?.cancel().catch(() => {});
-    return { status: response.status, contentType, body: "" };
+    return { status: response.status, contentType, body: "", finalUrl: targetUrl };
   }
   return {
     status: response.status,
     contentType,
     body: await decodeHtmlResponse(response, { signal: deadline }),
+    finalUrl: targetUrl,
   };
 }

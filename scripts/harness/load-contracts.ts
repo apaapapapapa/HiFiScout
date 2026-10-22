@@ -369,6 +369,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/inventory-recheck-repository.ts",
       "src/db/types.ts",
       "src/crawler/inventory-recheck.ts",
+      "src/data-quality/quality-evaluator.ts",
       "src/crawler/shops/*-inventory.ts",
     ],
     suites: [
@@ -377,6 +378,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/inventory-evidence.test.ts",
       "test/inventory-recheck.test.ts",
       "test/shop-inventory-classifiers.test.ts",
+      "test/crawl-do-inventory-batch.test.ts",
+      "test/crawl-stale-expiry.test.ts",
     ],
     samples: Object.fromEntries(
       [1000, 5000].flatMap((size) =>
@@ -387,7 +390,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       ),
     ),
     reason:
-      "Each recheck's PREPARE and FETCH pick one candidate: first a due confirmation of an earlier unavailable result through a partial index holding only listings with a failure, then, through the active-listing attempt index, never-attempted stale listings by last_seen_at and the oldest attempt within the retry window. Unavailable listings rechecked within the retry interval add no reads. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
+      "Each recheck's PREPARE selects one candidate; FETCH uses its persisted snapshot and primary-key compare-and-set fences: first a due confirmation of an earlier unavailable result through a partial index holding only listings with a failure, then, through the active-listing attempt index, never-attempted stale listings by last_seen_at and the oldest attempt within the retry window. Unavailable listings rechecked within the retry interval add no reads. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
   },
   {
     id: "manufacturer-alias-evidence",

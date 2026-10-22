@@ -242,6 +242,10 @@ export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix">;
 
 /** What a shop must supply to opt into the post-crawl inventory recheck. */
 export interface InventoryRecheckPolicy {
+  /** Validate a trusted final response URL against the original product identity. */
+  isEvidenceUrl?(sourceUrl: string, finalUrl: string): boolean;
+  /** A verification challenge is deferred, never an inventory observation. */
+  isChallengePage?(html: string): boolean;
   /** Null means the expected listing fields could not be read; an empty array clears old detail facts. */
   extractOfferFacts?(
     html: string,
@@ -485,6 +489,7 @@ export interface RelayPageOptions {
 
 /** Raw relay response; only the relay transport exposes this. */
 export interface RelayPage {
+  finalUrl?: string;
   /** Upstream status from `x-hifiscout-upstream-status`, else the relay's own status. */
   status: number;
   contentType: string;
@@ -683,11 +688,16 @@ export type InventoryRecheckReason =
   | "unexpected_content_type"
   | "inventory_recheck_error"
   | "stale_observation"
+  | "candidate_changed"
+  | "missing_identity_unverified"
+  | "verification_challenge"
   | `relay_http_${number}`
   | `upstream_http_${number}`
   | `unexpected_http_${number}`;
 
 export interface InventoryRecheckResult {
+  stateChanged?: boolean;
+  decisionReason?: string;
   status: "skipped" | "deferred" | "checked" | "failed";
   reason?: InventoryRecheckReason;
   outcome?: InventoryRecheckOutcome;

@@ -157,10 +157,22 @@ test("expiry seeks the active last-seen index without sorting or scanning the sh
     await insertListings(inner, "ancient-", 1, { seen: ANCIENT });
     await insertListings(inner, "aging-", 1, { seen: AGING });
     await expireStaleListings(db, "shop", EXPIRY, new Set(), NOW);
-    assert.equal(selects(executed).length, 1);
-    assertNoGrowingTableScans(sqlite, executed, { label: "stale listing expiry" });
+    assert.equal(selects(executed).length, 2);
+    assertNoGrowingTableScans(sqlite, executed, {
+      label: "stale listing expiry",
+      allowances: [
+        {
+          tables: ["same_time", "later"],
+          when: /WITH same_time AS MATERIALIZED/,
+          reason:
+            "Both CTEs share a fixed 50-row budget and are fed by bounded seeks; no growing table is scanned.",
+        },
+      ],
+    });
     assertNoSortBeforeLimit(sqlite, executed, "stale listing expiry");
-    for (const statement of selects(executed)) {
+    for (const statement of selects(executed).filter((statement) =>
+      statement.sql.includes("FROM products"),
+    )) {
       const plan = queryPlan(sqlite, statement);
       assert.ok(
         readsThroughIndex(plan, "products", "idx_products_active_last_seen"),
@@ -191,13 +203,14 @@ test("expiry reads the stale listings, not the shop's recently seen inventory", 
       await insertListings(db, `ancient-${size}-`, STALE, { seen: ANCIENT });
       await insertListings(db, `aging-${size}-`, STALE, { seen: AGING });
 
+      await db.prepare("DELETE FROM shop_sync_state WHERE shop_key = ?").bind("shop").run();
       const boundary = measureD1Cost(db);
       const result = await expireStaleListings(boundary.db, "shop", EXPIRY, new Set(), NOW);
       const cost = boundary.metrics();
       console.log(JSON.stringify({ sample: `crawl-expire-stale-${size}`, ...cost }));
       assert.equal(result.deactivatedSourceIds.length, 0);
       assert.equal(result.unknownSourceIds.length, STALE);
-      assert.equal(cost.sqlStatements, 2, JSON.stringify(cost));
+      assert.equal(cost.sqlStatements, 4, JSON.stringify(cost)); // bounded cursor read/write plus product select/update
       reads.push(cost.rowsRead ?? -1);
       await recordCostSample(`crawl-expire-stale-${size}`, "local-workerd", cost, fixture, [
         `${STALE} long-unseen and ${STALE} aging in-stock listings among ${size} recently seen active listings of the same shop; real migrated D1.`,
@@ -231,6 +244,43 @@ test("expiry needs the shop's recent crawls to have kept succeeding", async () =
     assert.equal(await hasRecentSuccessfulCrawls(db, "shop", since, 2), true);
     assert.equal(await hasRecentSuccessfulCrawls(db, "shop", since, 3), false);
     assert.equal(await hasRecentSuccessfulCrawls(db, "other", since, 2), false);
+  } finally {
+    await dispose();
+  }
+}, 120_000);
+
+test("unknown backlog is bounded even near the end of a shared last-seen timestamp", async () => {
+  const { db, dispose } = await database();
+  try {
+    const reads: number[] = [];
+    for (const size of [100, 1000, 10000]) {
+      const shop = `backlog-${size}`;
+      await insertListings(db, `unknown-${size}-`, size, { shop, seen: ANCIENT, stock: "unknown" });
+      await insertListings(db, `late-${size}-`, 1, { shop, seen: ANCIENT });
+      const row = await db
+        .prepare("SELECT id FROM products WHERE shop_key=? AND source_id=?")
+        .bind(shop, `unknown-${size}-${size - 10}`)
+        .first<{ id: number }>();
+      await db
+        .prepare(`INSERT INTO shop_sync_state(shop_key,stale_inventory_cursor_seen_at,stale_inventory_cursor_id)
+        VALUES (?,?,?)`)
+        .bind(shop, ANCIENT, row!.id)
+        .run();
+      const boundary = measureD1Cost(db);
+      const result = await expireStaleListings(boundary.db, shop, EXPIRY, new Set(), NOW);
+      assert.deepEqual(result.unknownSourceIds, [`late-${size}-1`]);
+      const cost = boundary.metrics();
+      console.log(JSON.stringify({ backlog: size, ...cost }));
+      if (cost.rowsRead !== null) {
+        assert.ok(cost.rowsRead < 150, JSON.stringify(cost));
+        reads.push(cost.rowsRead);
+      }
+      assert.ok(cost.sqlStatements <= 4);
+      const replay = measureD1Cost(db);
+      const unchanged = await expireStaleListings(replay.db, shop, EXPIRY, new Set(), NOW);
+      assert.deepEqual(unchanged.unknownSourceIds, []);
+    }
+    if (reads.length) assert.ok(Math.max(...reads) - Math.min(...reads) <= 2, String(reads));
   } finally {
     await dispose();
   }

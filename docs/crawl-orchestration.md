@@ -403,3 +403,37 @@ retirement; shadow flags and Phase 0/1 Queue rollout instructions are no longer 
 A rollback must remain compatible with the migrated schema and the DO control plane. Do not roll
 back to a Queue consumer that expects removed columns. Follow the same add/deploy/retire sequence
 for future control-state changes and verify the deployed SHA before removing compatibility state.
+
+### Inventory safety after PR #812
+
+Age alone never deactivates a partial-coverage listing. Stage A marks stale stock unknown only
+when collection counters, page coverage, item-count continuity and recent successful collection
+support that observation. The staged finalizer passes its real persisted collection counters;
+its synthetic page is not evidence of successful collection. A recovery crawl after an outage
+records why aging was deferred; the next healthy crawl can resume. Classification severity does
+not gate this policy. `stale_guard` in the run message and `stale_inventory_deferred` logs record
+its reasons before age-based writes.
+
+Stage A uses `idx_products_active_last_seen`, two bounded seeks and a per-shop cursor; even an
+old unknown backlog sharing one timestamp does not cause a full scan. Only UPDATE RETURNING
+identifies changed products for derived work. No product backfill or new product index is needed.
+
+Inventory PREPARE persists the candidate identity and inventory snapshot with the permit.
+FETCH claims that exact row and applies the observation only if its identity, listing sighting,
+state, prior check and claimed attempt still match. Both transport permits are consumed before
+HTTP; expired direct permits (15 minutes after readiness), expired relay permits and old executions
+without a snapshot are prepared again. Unanswered/ambiguous batches stop; the existing interval
+and batch limits bound retries. Durable projection obligations recover changed search state if
+an invocation stops after the product write.
+
+Hifido redirects must retain the same product ID and land on its own detail or sold path. Only
+that product's HTTP sold URL is upgraded to HTTPS. Other redirects are rejected before access.
+Direct inventory HTTP does not follow a different URL. Missing-page evidence requires a trusted
+final URL; old relay deployments lacking that identity defer missing results safely. WAF responses
+and challenge HTML cannot confirm sales.
+
+Lambda deployment and real inventory validation have separate workflow steps. The latter keeps
+`inventory-detail-probe` JSON with source SHA, exact product IDs, HTTP status, final URL and actual
+classification, never HTML, credentials or permits. It probes one available and one sold Hifido
+page through PREPARE/FETCH, plus one bounded Fujiya request. The three fixed AudioUnion IDs are
+a read-only sample from the PR #812 incident investigation; they authorize no automatic restoration.

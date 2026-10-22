@@ -273,6 +273,7 @@ export type InventoryRecheckCandidateRow = Pick<
   | "title"
   | "model"
   | "last_seen_at"
+  | "last_changed_at"
   | "last_inventory_checked_at"
   | "last_inventory_check_attempt_at"
   | "inventory_check_failures"

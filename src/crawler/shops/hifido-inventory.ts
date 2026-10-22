@@ -37,6 +37,24 @@ export function isHifidoDetailUrl(value: string): boolean {
   }
 }
 
+export function isHifidoEvidenceUrl(sourceUrl: string, finalUrl: string): boolean {
+  if (!isHifidoDetailUrl(sourceUrl)) return false;
+  try {
+    const source = new URL(sourceUrl),
+      final = new URL(finalUrl);
+    return (
+      final.origin === source.origin &&
+      !final.username &&
+      !final.password &&
+      !final.hash &&
+      (final.search === "" || final.search === "?LNG=J") &&
+      (final.pathname === source.pathname || final.pathname === `/sold${source.pathname}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function hifidoSourceId(sourceUrl: string): string {
   try {
     return new URL(sourceUrl).pathname.match(DETAIL_PATH)?.[1] ?? "";
@@ -47,7 +65,8 @@ function hifidoSourceId(sourceUrl: string): string {
 
 export function classifyHifidoInventoryPage(
   html: string,
-  listing?: Pick<InventoryRecheckListing, "sourceUrl">,
+  listing?: Pick<InventoryRecheckListing, "sourceUrl"> &
+    Partial<Pick<InventoryRecheckListing, "sourceId">>,
 ): InventoryClassification {
   const source = stripRawTextElements(html, ["script", "style", "noscript"]);
   const cards = listingBlocks(source, "div", "list-item-for-detail");
@@ -56,7 +75,12 @@ export function classifyHifidoInventoryPage(
   const sourceId = card.match(/\bid\s*=\s*["']type-(\d{2}-\d{5}-\d{5}-\d{2})["']/i)?.[1] ?? "";
   if (!sourceId) return "unknown";
   // A redirect may only ever land on this listing's own card; any other card proves nothing.
-  if (listing && hifidoSourceId(listing.sourceUrl) !== sourceId) return "unknown";
+  if (
+    listing &&
+    (hifidoSourceId(listing.sourceUrl) !== sourceId ||
+      (listing.sourceId && listing.sourceId !== sourceId))
+  )
+    return "unknown";
 
   const price = listingFieldText(card, `price-${sourceId}`, "id");
   const header = listingFieldHtml(card, "list-item-top");
@@ -69,6 +93,7 @@ export function classifyHifidoInventoryPage(
 
 export const hifidoInventoryRecheck: InventoryRecheckPolicy = {
   isDetailUrl: isHifidoDetailUrl,
+  isEvidenceUrl: isHifidoEvidenceUrl,
   candidateUrlPrefix: "https://www.hifido.co.jp/",
   classifyPage: classifyHifidoInventoryPage,
 };
