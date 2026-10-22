@@ -16,6 +16,8 @@ import {
 import { AUDIOUNION_CATEGORY_MAPPING, audioUnionAdapter } from "./audiounion.js";
 import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
+import { fujiyaAvicInventoryRecheck } from "./fujiya-avic-inventory.js";
+import { hifidoInventoryRecheck } from "./hifido-inventory.js";
 import {
   IPPINKAN_CATEGORY_POLICY,
   extractIppinkanDetailCategoryEvidence,
@@ -101,6 +103,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultRequestDelayMs: 10_000,
       scheduleCron: SHARED_HOURLY_CRON,
       transportConfigurationRequired: true,
+      defaultInventoryRecheckBatchSize: 4,
+      // Only the new-arrivals page is crawled. Rechecks vouch for listings still for sale.
+      defaultStaleListingExpiry: {
+        unknownAfterHours: 14 * 24,
+        expireAfterHours: 21 * 24,
+        minSuccessfulRuns: 100,
+      },
     },
     {
       transport: { kind: "relay" },
@@ -132,10 +141,19 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultMaxPages: 50,
       // Cloudflare Cron uses UTC: 12:30 UTC = 21:30 JST.
       scheduleCron: "30 12 * * *",
+      defaultInventoryRecheckBatchSize: 30,
+      // Only the new-arrival and outlet feeds are crawled, once a day.
+      defaultStaleListingExpiry: {
+        unknownAfterHours: 14 * 24,
+        expireAfterHours: 21 * 24,
+        minSuccessfulRuns: 15,
+        batchSize: 200,
+      },
     },
     {
       catalog: { categoryPolicy: FUJIYA_CATEGORY_POLICY },
       detailCategoryEvidence: { version: 3, extract: extractFujiyaDetailCategoryEvidence },
+      inventoryRecheck: fujiyaAvicInventoryRecheck,
     },
   ),
   defineShopPlugin(
@@ -147,6 +165,15 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultIntervalMinutes: HOURLY_INTERVAL_MINUTES,
       defaultMaxPages: 3,
       scheduleCron: SHARED_HOURLY_CRON,
+      defaultInventoryRecheckBatchSize: 5,
+      // The recent pages plus one rotating older page per crawl. The rotation follows the clock, so
+      // a slot can fall in the nightly pause for several cycles: a listing still for sale may go
+      // unseen for 19.5 days, plus one touch interval. Both horizons stay beyond that.
+      defaultStaleListingExpiry: {
+        unknownAfterHours: 21 * 24,
+        expireAfterHours: 28 * 24,
+        minSuccessfulRuns: 150,
+      },
     },
     {
       transport: { kind: "relay" },
@@ -155,6 +182,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
         categoryPolicy: HIFIDO_CATEGORY_POLICY,
       },
       detailCategoryEvidence: { extract: extractHifidoDetailCategoryEvidence },
+      inventoryRecheck: hifidoInventoryRecheck,
       activityPolicy: HIFIDO_ACTIVITY_POLICY,
     },
   ),

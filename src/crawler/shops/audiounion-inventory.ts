@@ -131,6 +131,7 @@ export function extractAudioUnionOfferFacts(html: string, observedAt: string): O
 
 export const audioUnionInventoryRecheck: InventoryRecheckPolicy = {
   isDetailUrl: isAudioUnionUsedDetailUrl,
+  candidateUrlPrefix: "https://www.audiounion.jp/ct/detail/used/",
   classifyPage: classifyAudioUnionInventoryPage,
   extractOfferFacts: extractAudioUnionOfferFacts,
 };

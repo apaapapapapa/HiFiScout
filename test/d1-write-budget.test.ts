@@ -166,8 +166,9 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
       NEXT,
     );
     assert.equal(priceResult.activityCount, 1);
-    // Includes the atomic projection obligation and a guarded in-stock date row/index update.
-    assert.ok(changed.rowsWritten() <= 21, `price/history wrote ${changed.rowsWritten()} rows`);
+    // Includes the atomic projection obligation, a guarded in-stock date row/index update and the
+    // active last-seen index entry stale-listing expiry seeks instead of reading the shop (21 -> 22).
+    assert.ok(changed.rowsWritten() <= 22, `price/history wrote ${changed.rowsWritten()} rows`);
     const row = await db
       .prepare(
         "SELECT price_yen, previous_price_yen, last_changed_at, last_activity_at FROM products WHERE source_id='one'",

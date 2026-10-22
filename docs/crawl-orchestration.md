@@ -19,7 +19,7 @@ The per-shop `CrawlScheduler` Durable Object is the authoritative crawl control 
 5. Each Alarm performs at most one bounded transition or one prepared seller request:
    - initialize / fetch-and-parse / finalize (legacy staged HTML resumes through parse),
    - staged category-detail fetch,
-   - Relay inventory recheck.
+   - inventory recheck (Relay or direct).
 6. Any seller pacing delay is represented by an Alarm timestamp. The control plane does not `sleep()` or hold an invocation open while waiting.
 7. Direct and Relay HTTP both use PREPARE -> Alarm -> FETCH semantics. Relay permits can expire; an expired permit is discarded and prepared again rather than bypassing pacing.
 8. The Durable Object stores the collection cursor and counters with its next command. D1 page rows retain committed payloads and recovery receipts; the session receives a summary before finalization. The dispatch token fences delayed or replayed `/start-crawl` deliveries so an older generation cannot execute a newer reservation.
@@ -31,17 +31,51 @@ The Durable Object is the single-flight authority. D1 does not maintain a second
 `dispatched` covers both an accepted command and active execution; DO state describes the step.
 The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
 
-Inventory recheck reads one stale candidate per successful crawl through the same paced request.
-Never-attempted stale listings come first, then the oldest attempt outside the retry interval; both
-are seeks of the active-listing attempt index. Recently seen never-attempted listings and listings
-checked within the retry interval add no reads; a listing the crawl has seen again since an older
-check is stepped over once per selection until it becomes stale again.
-AudioUnion's listing status field is authoritative: a retained price or a related item's purchase
-button does not prove availability. An explicit sold observation sets `stock_status` to `sold_out`
-immediately; deactivation still requires the configured consecutive failure threshold. Missing
-pages retain the repeated-observation rule, and transient errors never imply a sale. The already
-fetched listing fields can update structured offer facts without another HTTP request. The existing
-checked-result finalization refreshes the affected listing's public search projection.
+Inventory recheck runs after a successful crawl for shops that declare the capability and enable
+`<PREFIX>_INVENTORY_RECHECK_ENABLED` (AudioUnion and Hifido through the Relay, Fujiya-Avic direct).
+Each recheck is its own PREPARE / Alarm / FETCH, up to the shop's batch size
+(`<PREFIX>_INVENTORY_RECHECK_BATCH_SIZE`, defaulting to its definition, else 1); the next candidate is
+prepared only after the previous result is recorded, and the batch ends at the first recheck the
+seller did not answer (an error, a block or an unexpected status). A direct permit is consumed
+before its seller request, as listing and detail permits are.
+
+Candidates are chosen in three seeks. A due confirmation of an earlier unavailable result comes
+first, through a partial index that holds only listings carrying a failure; without that priority a
+sold listing waited a whole rotation of the shop's inventory for the second observation that
+deactivates it. Never-attempted stale listings follow, then the oldest attempt outside the retry
+interval; both are seeks of the active-listing attempt index. Recently seen never-attempted listings
+and listings checked within the retry interval add no reads; a listing the crawl has seen again
+since an older check is stepped over once per selection until it becomes stale again. Only stored
+URLs under the shop's `candidateUrlPrefix` are selected.
+
+Each shop's classifier reads only the stored listing's own evidence: AudioUnion's listing status
+field, Hifido's card for the same product ID (its order button, or `売約済み` in its price field on
+the `/sold/` page the seller redirects to), and Fujiya-Avic's product lead under the heading naming
+the listing. A retained price, a related item's purchase button or page chrome never proves
+availability. An explicit sold observation sets `stock_status` to `sold_out` immediately;
+deactivation still requires the configured consecutive failure threshold. Missing pages retain the
+repeated-observation rule, and transient errors never imply a sale. The already fetched listing
+fields can update structured offer facts without another HTTP request. The existing checked-result
+finalization refreshes the affected listing's public search projection.
+
+## Stale-listing expiry
+
+A partial or unknown-coverage crawl never deactivates a listing for being absent. A shop whose
+definition declares `defaultStaleListingExpiry` (overridable through `<PREFIX>_STALE_LISTING_*`, with
+`_EXPIRY_ENABLED=false` as the kill switch) instead ages listings out after a successful crawl:
+
+- an `in_stock` listing unseen beyond the unknown horizon becomes `unknown`;
+- a listing unseen beyond the expiry horizon is deactivated.
+
+Both run only when the shop completed its configured number of successful crawls within the
+unknown horizon, so an outage never ages the inventory out, and never touch a listing the running
+crawl observed. A detail recheck newer than the horizon that did not find the listing unavailable
+vouches for it. Neither horizon may come within twice the product touch interval (and never under
+two days). Each step changes a bounded batch of the oldest-seen listings through the active
+last-seen index; the changed listings join the crawl's derived work set like any other deactivation.
+The next sighting rewrites a listing from seller evidence, so both steps are reversible. Each
+shop's horizons must outlast the longest time its crawl can leave a still-listed page unvisited;
+`test/crawl-stale-expiry.test.ts` checks this for Hifido's clock-driven rotation.
 
 ## Daily shop schedules
 

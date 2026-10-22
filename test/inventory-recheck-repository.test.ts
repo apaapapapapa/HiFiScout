@@ -38,17 +38,27 @@ test("candidate selection requires an old listing and a stale prior attempt", as
   const result = await selectInventoryRecheckCandidate(db, "audiounion", {
     staleBefore: "2026-08-10T10:00:00.000Z",
     retryBefore: "2026-08-11T10:00:00.000Z",
+    candidateUrlPrefix: "https://www.audiounion.jp/ct/detail/used/",
   });
 
   assert.equal(result, row);
-  // Never-attempted seek (shop, staleBefore), then oldest-attempt seek (shop, retryBefore, staleBefore).
+  // Confirmation seek (shop, retryBefore, staleBefore), never-attempted seek (shop, staleBefore),
+  // then oldest-attempt seek (shop, retryBefore, staleBefore), each bound to the URL prefix.
+  const pattern = "https://www.audiounion.jp/ct/detail/used/%";
   assert.deepEqual(db.calls[0].binds, [
-    "audiounion",
-    "2026-08-10T10:00:00.000Z",
     "audiounion",
     "2026-08-11T10:00:00.000Z",
     "2026-08-10T10:00:00.000Z",
+    pattern,
+    "audiounion",
+    "2026-08-10T10:00:00.000Z",
+    pattern,
+    "audiounion",
+    "2026-08-11T10:00:00.000Z",
+    "2026-08-10T10:00:00.000Z",
+    pattern,
   ]);
+  assert.match(db.calls[0].sql, /inventory_check_failures > 0/);
   assert.match(db.calls[0].sql, /is_active = 1/);
   assert.match(db.calls[0].sql, /last_seen_at <= \?/);
   assert.match(db.calls[0].sql, /last_inventory_check_attempt_at IS NULL/);

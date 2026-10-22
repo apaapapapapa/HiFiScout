@@ -117,9 +117,10 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     sources: [
       "src/crawler/crawl-scheduler*",
       "src/crawler/crawl-continuation.ts",
+      "src/crawler/direct-pacing.ts",
       "src/crawler/resumable-*",
     ],
-    suites: ["test/crawl-do-collection-progress.test.ts"],
+    suites: ["test/crawl-do-collection-progress.test.ts", "test/crawl-do-inventory-batch.test.ts"],
     samples: {
       "crawl-do-retry": { environment: "local-mock", limits: { doAlarms: 3, doStorageWrites: 2 } },
     },
@@ -162,6 +163,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/product-metadata-*",
       "src/db/product-identity-*",
       "src/db/public-meta-*",
+      "src/crawler/run.ts",
+      "src/crawler/crawl-stages.ts",
     ],
     suites: [
       "test/observed-sql-read-budget.test.ts",
@@ -172,6 +175,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/product-search-catalog-offer-budget.test.ts",
       "test/crawl-deactivation-budget.test.ts",
       "test/category-detail-cache-identity.test.ts",
+      "test/stale-listing-expiry.test.ts",
+      "test/crawl-stale-expiry.test.ts",
     ],
     samples: {
       "category-prune": d1(300, 0, 1),
@@ -187,9 +192,14 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "crawl-deactivate-missing-100": d1(1000, 700, 1),
       "crawl-deactivate-missing-1000": d1(1000, 700, 1),
       "crawl-deactivate-missing-10000": d1(1000, 700, 1),
+      // 50 long-unseen listings deactivated and 50 aging ones downgraded: two index seeks, the
+      // deactivation's triggers and one chunked update, never the shop's recently seen rest.
+      "crawl-expire-stale-100": d1(2000, 1000, 4),
+      "crawl-expire-stale-1000": d1(2000, 1000, 4),
+      "crawl-expire-stale-10000": d1(2000, 1000, 4),
     },
     reason:
-      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. Deactivating a crawl's missing listings costs the same with 100 or 10,000 other active listings in the shop. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
+      "Selective counts and 40-entity pruning among 10,000 unrelated rows; unchanged listing/metadata/projection replay writes zero including indexes, triggers and sequences. A scoped entity sync reads the same rows whether 100 or 10,000 other listings hold catalog matches. Deactivating a crawl's missing listings costs the same with 100 or 10,000 other active listings in the shop. Expiring a partial-coverage shop's long-unseen listings seeks the active last-seen index from its oldest entry and costs the same with 100 or 10,000 recently seen listings in the shop. A detail-classified listing is fetched and rewritten once, not again on every crawl, whatever its manufacturer resolution.",
   },
   {
     id: "category-change-replay",
@@ -354,22 +364,28 @@ export const LOAD_CONTRACTS: LoadContract[] = [
   },
   {
     id: "inventory-recheck",
-    sources: ["src/db/inventory-recheck-repository.ts"],
+    sources: [
+      "src/db/inventory-recheck-repository.ts",
+      "src/db/types.ts",
+      "src/crawler/inventory-recheck.ts",
+      "src/crawler/shops/*-inventory.ts",
+    ],
     suites: [
       "test/inventory-recheck-candidate-budget.test.ts",
       "test/inventory-recheck-repository.test.ts",
       "test/inventory-recheck.test.ts",
+      "test/shop-inventory-classifiers.test.ts",
     ],
     samples: Object.fromEntries(
       [1000, 5000].flatMap((size) =>
-        ["never-attempted", "oldest-attempt"].map((scenario) => [
+        ["confirmation", "never-attempted", "oldest-attempt"].map((scenario) => [
           `inventory-recheck-${scenario}-${size}`,
           d1(20, 0, 1),
         ]),
       ),
     ),
     reason:
-      "Each crawl's PREPARE and FETCH pick one recheck candidate by seeking the active-listing attempt index: never-attempted stale listings by last_seen_at, then the oldest attempt within the retry window. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
+      "Each recheck's PREPARE and FETCH pick one candidate: first a due confirmation of an earlier unavailable result through a partial index holding only listings with a failure, then, through the active-listing attempt index, never-attempted stale listings by last_seen_at and the oldest attempt within the retry window. Unavailable listings rechecked within the retry interval add no reads. Recently seen never-attempted listings and listings checked within the retry interval add no reads; a listing seen again after an older check costs one index entry until it is stale again. The selection order is unchanged and the read writes nothing.",
   },
   {
     id: "manufacturer-alias-evidence",

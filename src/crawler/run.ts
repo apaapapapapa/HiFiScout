@@ -4,11 +4,17 @@ import {
   getShopIntervalMinutes,
   getShopMaxPages,
   getShopRequestDelayMs,
+  getShopStaleListingSettings,
 } from "../config.js";
 import { saveDataQualityRun } from "../db/data-quality-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
+import {
+  expireStaleListings,
+  hasRecentSuccessfulCrawls,
+  type StaleListingExpiry,
+} from "../db/product-write-stale-expiry.js";
 import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
 import { shopRedirectOrigins } from "./redirects.js";
 import {
@@ -421,6 +427,36 @@ export function isSuspiciousItemDrop(
   return itemCount / previousItemCount < minRatio;
 }
 
+/**
+ * This crawl's stale-listing expiry, when the shop opted in and its recent crawls kept looking.
+ * A crawl that deactivates every missing listing has nothing left for expiry to do.
+ */
+async function staleListingExpiryFor(
+  env: RuntimeEnv,
+  adapter: ShopPlugin,
+  observedAt: string,
+): Promise<StaleListingExpiry | null> {
+  const settings = getShopStaleListingSettings(env, adapter.definition);
+  if (!settings.enabled) return null;
+  const nowMs = Date.parse(observedAt);
+  const before = (hours: number) => new Date(nowMs - hours * 60 * 60 * 1000).toISOString();
+  const unknownBefore = before(settings.unknownAfterHours);
+  if (
+    !(await hasRecentSuccessfulCrawls(
+      env.DB,
+      adapter.key,
+      unknownBefore,
+      settings.minSuccessfulRuns,
+    ))
+  )
+    return null;
+  return {
+    unknownBefore,
+    deactivateBefore: before(settings.expireAfterHours),
+    limit: settings.batchSize,
+  };
+}
+
 export async function crawlShop(
   env: RuntimeEnv,
   adapter: ShopPlugin,
@@ -729,6 +765,39 @@ export async function crawlShop(
           activityPolicy: getShopActivityPolicy(adapter),
         }),
     );
+    const staleExpiry = deactivateMissing
+      ? null
+      : await staleListingExpiryFor(env, adapter, observedAt);
+    const stale = staleExpiry
+      ? await stageRecorder.run(
+          "stale_listing_expiry",
+          {
+            inputCount: staleExpiry.limit,
+            changedCount: (result) =>
+              result.deactivatedSourceIds.length + result.unknownSourceIds.length,
+          },
+          () =>
+            expireStaleListings(
+              env.DB,
+              adapter.key,
+              staleExpiry,
+              new Set(products.map((product) => product.sourceId)),
+              observedAt,
+            ),
+        )
+      : { deactivatedSourceIds: [], unknownSourceIds: [] };
+    const staleDeactivatedCount = stale.deactivatedSourceIds.length;
+    const staleUnknownCount = stale.unknownSourceIds.length;
+    const workSetSourceIds =
+      staleDeactivatedCount || staleUnknownCount
+        ? [
+            ...new Set([
+              ...derivedSourceIds,
+              ...stale.deactivatedSourceIds,
+              ...stale.unknownSourceIds,
+            ]),
+          ]
+        : derivedSourceIds;
     // The seller is never needed again from here: the listings are written, and this records which
     // of them the derived stages still owe work for. An invocation killed after this point leaves
     // durable pending work instead of losing the whole crawl.
@@ -741,12 +810,12 @@ export async function crawlShop(
       recordCrawlRunWorkSet(env.DB, {
         crawlRunId,
         generation: observedAt,
-        sourceIds: derivedSourceIds,
+        sourceIds: workSetSourceIds,
         recordedAt: observedAt,
       }),
     );
     const derived = await syncDerivedProductState(env, adapter, observedAt, stageRecorder, runId, {
-      workSetSize: derivedSourceIds.length,
+      workSetSize: workSetSourceIds.length,
       budgetMs: DERIVED_WORK_BUDGET_MS,
       startedAtMs: invocationStartedAtMs,
     });
@@ -831,6 +900,11 @@ export async function crawlShop(
     ) {
       diagnosticParts.push(`identity=${JSON.stringify(derived.identity)}`);
     }
+    if (staleDeactivatedCount || staleUnknownCount) {
+      diagnosticParts.push(
+        `stale_expiry=${JSON.stringify({ deactivated: staleDeactivatedCount, unknown: staleUnknownCount })}`,
+      );
+    }
     if (quality) diagnosticParts.push(`quality=${JSON.stringify({ status: quality.status })}`);
     // Stage durations are kept on the run row as well as in the logs: a stalled successor is
     // diagnosed against what the last completed run actually cost, and logs age out first. Page
@@ -848,7 +922,7 @@ export async function crawlShop(
           finishedAt: observedAt,
           itemCount: items.size,
           pageCount,
-          message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
+          message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount + staleDeactivatedCount} deactivated${diagnosticSuffix}`,
         }),
     );
     return {
@@ -862,7 +936,7 @@ export async function crawlShop(
       featureFactCount,
       metadataChangedCount,
       touchedCount,
-      deactivatedCount,
+      deactivatedCount: deactivatedCount + staleDeactivatedCount,
       deactivateMissing: deactivateMissing === true,
       dataQuality: quality,
       searchProjection: derived.searchProjection,

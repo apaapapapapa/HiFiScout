@@ -41,6 +41,8 @@ function candidate(
     id: 7,
     source_id: "223257",
     source_url: DETAIL_URL,
+    title: "SAMPLE AMP",
+    model: "SAMPLE AMP",
     last_seen_at: "2026-08-09T08:00:00.000Z",
     last_inventory_checked_at: null,
     last_inventory_check_attempt_at: null,
@@ -133,6 +135,7 @@ test("recheck marks an explicit listing purchase control as available", async ()
     {
       staleBefore: "2026-08-10T10:00:00.000Z",
       retryBefore: "2026-08-10T10:00:00.000Z",
+      candidateUrlPrefix: "https://www.audiounion.jp/ct/detail/used/",
     },
   ]);
   assert.deepEqual(repository.calls[1], ["attempt", 7, NOW.toISOString()]);

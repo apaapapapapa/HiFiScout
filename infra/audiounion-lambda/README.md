@@ -6,7 +6,10 @@ The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS cre
 
 - the configured Audio Union new-arrival entry URL;
 - exact numeric Audio Union used-detail URLs under `/ct/detail/used/<id>/`;
-- the validated Hifido listing URL shape used by the collector, with only the expected query parameters.
+- the validated Hifido listing URL shape used by the collector, with only the expected query parameters;
+- exact Hifido product pages `/<id>.html` (optionally `?LNG=J`) for inventory recheck. Hifido
+  redirects a sold product to `http://…/sold/<id>.html` on its own host; only that destination is
+  upgraded to HTTPS, and every other plain-HTTP redirect is still rejected.
 
 The normal DO path uses signed PREPARE/FETCH permits. PREPARE validates the allowlisted target
 against `robots.txt` and returns an eligible time, expiry, and signed permit. The per-shop
@@ -157,7 +160,7 @@ recheck and declares only values that differ from the defaults in `src/config.ts
 
 ## Security and cost controls
 
-- The relay is not a general-purpose proxy: it permits the configured Audio Union entry URL, exact numeric Audio Union used-detail URLs, and the separately validated Hifido listing shape only.
+- The relay is not a general-purpose proxy: it permits the configured Audio Union entry URL, exact numeric Audio Union used-detail URLs, the separately validated Hifido listing shape, and exact Hifido product pages only.
 - PREPARE checks the live `robots.txt` policy; FETCH verifies the signed target/profile and permit timing before accessing the seller page.
 - Requests without the Bearer token are rejected before any seller request is made.
 - The normal scheduler path is single-flight per shop through `CrawlScheduler`; there is no crawl Queue. Lambda reserved concurrency is not configured by the template.

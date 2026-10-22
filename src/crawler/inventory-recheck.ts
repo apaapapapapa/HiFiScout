@@ -44,7 +44,7 @@ interface InventoryRepository {
   selectInventoryRecheckCandidate(
     db: QueryableDatabase,
     shopKey: string,
-    window: { staleBefore: string; retryBefore: string },
+    window: { staleBefore: string; retryBefore: string; candidateUrlPrefix: string },
   ): Promise<InventoryRecheckCandidateRow | null>;
   markInventoryCheckAttempt(
     db: QueryableDatabase,
@@ -130,6 +130,7 @@ async function inventoryCandidate(
   return repository.selectInventoryRecheckCandidate(env.DB, plugin.key, {
     staleBefore: isoBefore(now, settings.minListingAgeHours),
     retryBefore: isoBefore(now, settings.intervalHours),
+    candidateUrlPrefix: plugin.capabilities.inventoryRecheck?.candidateUrlPrefix ?? "",
   });
 }
 
@@ -219,6 +220,10 @@ export async function recheckShopInventory(
   if (!policy) return { status: "skipped", reason: "disabled" };
   const settings = getShopInventoryRecheckSettings(env, plugin.definition);
   if (!settings.enabled) return { status: "skipped", reason: "disabled" };
+  // The built-in fetcher is the Relay; a direct shop is only ever rechecked through a page fetched
+  // under the Durable Object's prepared permit.
+  if (!fetchPage && plugin.capabilities.transport?.kind !== "relay")
+    return { status: "skipped", reason: "disabled" };
 
   const attemptedAt = now.toISOString();
 
@@ -315,7 +320,12 @@ export async function recheckShopInventory(
 
     const facts = policy.extractOfferFacts?.(page.body, attemptedAt);
     if (facts != null) await saveDetailFacts(env.DB, candidate.id, facts);
-    const classification = policy.classifyPage(page.body);
+    const classification = policy.classifyPage(page.body, {
+      sourceId: candidate.source_id,
+      sourceUrl: candidate.source_url,
+      title: candidate.title,
+      model: candidate.model,
+    });
     if (classification === "in_stock") {
       await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);
       return {

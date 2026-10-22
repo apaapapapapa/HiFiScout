@@ -96,7 +96,10 @@ cases so removing a test cannot silently remove a requirement.
   shop, with no statistics and without statistics for the shop cursor index.
 - Data-quality snapshot: re-evaluating a shop of 1,000 and 5,000 active listings, unchanged (one
   indexed probe of the proven snapshot) and after a moved input (one full per-shop aggregate).
-- Inventory recheck: the next candidate among 1,000 and 5,000 active listings of the shop.
+- Stale-listing expiry: 50 long-unseen and 50 aging listings among 100, 1,000 and 10,000 recently
+  seen active listings of the same shop.
+- Inventory recheck: the next candidate (a due confirmation, a never-attempted listing or the
+  oldest attempt) among 1,000 and 5,000 active listings of the shop.
 - Knowledge Catalog verification queue: a claim plus wake state with 100, 1,000 and 10,000
   finished jobs in the run, and a claim, an empty claim and its wait with 50, 200 and 800 live
   jobs spread over 15 domains, held by one paced domain or waiting out a retry backoff, and with
