@@ -3401,6 +3401,193 @@
       "afterDigest": "bd4528568f6d9057c50167a8f3bd7bc8a0cce0ac8901e30f3c5818091ab5a6fc",
       "reason": "Register the manufacturer alias evidence boundary (src/db/manufacturer-repository.ts) with its existing alias suites, the new snapshot suite and three samples. Production attributed about 127,000 reads in 19 observed hours to fresh-isolate alias scans; a fresh isolate now reads the revision and one persisted snapshot row in one statement, and a rebuild keeps the former three round trips, so the remediation sweep's call floor is unchanged. Other contracts, ceilings and CPU policy are unchanged.",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "bd4528568f6d9057c50167a8f3bd7bc8a0cce0ac8901e30f3c5818091ab5a6fc",
+      "afterDigest": "bddcc7df6d2c459de658a3b8724d5c1ec717c3da83adfa24058c8e5643bb2d7e",
+      "reason": "PR #812 registers its new and moved load boundaries: stale-listing expiry (src/db/product-write-stale-expiry.ts via product-write-*, src/crawler/run.ts, src/crawler/crawl-stages.ts) and its stale-listing-expiry and crawl-stale-expiry suites under search-and-projection; direct-pacing.ts and the crawl-do-inventory-batch suite under crawl-recovery; inventory-recheck.ts, shop recheck policies, src/db/types.ts and the shop-inventory-classifiers suite under inventory-recheck; shops/registry.ts under schedule-and-continuation. It adds ceilings for the new crawl-expire-stale and inventory-recheck-confirmation samples. No existing sample, suite, source or ceiling is removed or relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-few-price-100",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "ad801b7a518a99ea792b6c5c4a1c121a0a10118c6c18aab55bfdcba91032b996",
+      "afterDigest": "9a56caf745ae98bebb5a66db097689e0e9533fde9c0d897a899e33faed8232af",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-many-price-100",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "ba1215ae145a37af124f4244084371bc660ba640f2ecffdc13d58d4f52255719",
+      "afterDigest": "97682658c05bbd9ef8154a97b2cc67e5d9383471102b86c249df0f8f0ca6e733",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-few-price-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "ed53ce908489851a56df1b73e24ad04d2fedb4b247a9dcca24a42974038d5444",
+      "afterDigest": "bab4eb7596c727430795c62802c455d824c0872521aebd2ddfa1c2b3c64879da",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-many-price-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "d4de4de29f215406db3beefd6602133ee2a59bd6ef74fc265f90447284cff5fc",
+      "afterDigest": "0a28226dee38307ca1445ed75418236faa3b222f030deb1913c2eeb8a78591c9",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-few-price-10000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "e5a1516298783520c64a94a310518de8123d68f9ee85baba664c722d4e16b649",
+      "afterDigest": "48d838d40143a5cf8a76c774f1d262ad417f254604f5094a818eedbde3f3ec60",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "category-override-many-price-10000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "2e4c0f93f66f00aafd51ec61b2fd850e9cf9f8581abc440522bb61f7b3d34ba7",
+      "afterDigest": "991749b4ce8659deec86363f100d9818e0ebe3bc0771b6abb405cff0fa46d99a",
+      "reason": "Same-profile rowsWritten rises by exactly one row per listing whose price changed (few-100 11->12, many-100 1089->1188, few-1000 110->120, many-1000 10890->11880, few-10000 1100->1200, many-10000 108900->118800); rowsRead and statements are unchanged. The added row is the idx_products_active_last_seen entry that migration 0141 maintains when a write moves last_seen_at. Stale-listing expiry seeks that index from its oldest entry instead of reading every active listing of a partial-coverage shop (crawl-expire-stale reads stay 1373-1374 from 100 to 10,000 active listings). Without expiry, production kept thousands of sold listings public (hifido 5,325 / fujiya-avic 3,652 active listings unseen over 3 days on 2026-10-22). The same migration drops the unused idx_products_inventory_recheck, so inserts and deactivations are unchanged (crawl-deactivate-missing identical). The ceiling (category-change-replay) is not relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "db2b5dade28879027757ea6f5708fae5ef42ded50bda35e3da2f1e19cadf6bad",
+      "afterDigest": "348a8f3b5bece1eb17984a1967df1ef6f82147b6873f56437a05fd536930c3fc",
+      "reason": "Profile changes only because test/d1-write-budget.test.ts, which records this sample, raises its separate price/history assertion from 21 to 22 rows for the idx_products_active_last_seen entry. The unchanged-replay measurement itself still writes zero rows, and its ceiling is unchanged.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "84d85c8e0ce8a91695cf1eab56ad7f70c2cdf14cfed18200351225eda289d921",
+      "afterDigest": "1600c6566ad5b8d3fb5e731dfe1da82f43dbf5341fb9dfb56cc4d7102a544bb4",
+      "reason": "The fixture now also holds confirmation rows (failures > 0, some due, the rest checked within the retry interval), and selection gains a first seek over idx_products_inventory_recheck_confirm. Reads rise by one index probe, and stay constant from 1,000 to 5,000 listings (never-attempted 2->3, oldest-attempt 3->4). Writes stay 0 and the statement count stays 1; the ceiling d1(20,0,1) is unchanged. The randomized oracle test verifies the new selection order, with due confirmations first.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "8b3a4b8d5a9ffed590d35a057a5e8ea2160759ad1ad6be29490c030fb08c3804",
+      "afterDigest": "648eec7a4b879493efba0cc4c1d7f579ea203de44e038c545b1a7db5cc5705b9",
+      "reason": "The fixture now also holds confirmation rows (failures > 0, some due, the rest checked within the retry interval), and selection gains a first seek over idx_products_inventory_recheck_confirm. Reads rise by one index probe, and stay constant from 1,000 to 5,000 listings (never-attempted 2->3, oldest-attempt 3->4). Writes stay 0 and the statement count stays 1; the ceiling d1(20,0,1) is unchanged. The randomized oracle test verifies the new selection order, with due confirmations first.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-5000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "ffc102ec63e53223e960699cdb7427b2638e6e8a2cfea7ef8e6b8dc068af5d93",
+      "afterDigest": "b02ac2d36c00019db2161cec9e58ab141a7ed6cfd5d36fb26df377693e7e8dc0",
+      "reason": "The fixture now also holds confirmation rows (failures > 0, some due, the rest checked within the retry interval), and selection gains a first seek over idx_products_inventory_recheck_confirm. Reads rise by one index probe, and stay constant from 1,000 to 5,000 listings (never-attempted 2->3, oldest-attempt 3->4). Writes stay 0 and the statement count stays 1; the ceiling d1(20,0,1) is unchanged. The randomized oracle test verifies the new selection order, with due confirmations first.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-5000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "4f3ba43bd9560885a06ec4f41ebd53ff79e2294468ed19f4d9abfec7096ee1c8",
+      "afterDigest": "3789db909a3e89a9cbb9b25b905086e18c7eaa42f0bbf2545fb84f8e03f5c78e",
+      "reason": "The fixture now also holds confirmation rows (failures > 0, some due, the rest checked within the retry interval), and selection gains a first seek over idx_products_inventory_recheck_confirm. Reads rise by one index probe, and stay constant from 1,000 to 5,000 listings (never-attempted 2->3, oldest-attempt 3->4). Writes stay 0 and the statement count stays 1; the ceiling d1(20,0,1) is unchanged. The randomized oracle test verifies the new selection order, with due confirmations first.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-confirmation-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1fd8566f50b0bb571357d04bb7bba449425b3f3435504deddb8eb8d2d9dc611a",
+      "reason": "New case: a due confirmation of an earlier unavailable recheck among 1,000 and 5,000 active listings, with growing failing rows checked within the retry interval. It measures 2 rows read, 0 written and 1 statement at both sizes. The initial ceiling is d1(20,0,1), the same as the existing recheck cases.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "inventory-recheck-confirmation-5000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "28eca7bf15d89fe6f67b76725769450faad5c0edc285097c195d9e45bcfe9b0e",
+      "reason": "New case: a due confirmation of an earlier unavailable recheck among 1,000 and 5,000 active listings, with growing failing rows checked within the retry interval. It measures 2 rows read, 0 written and 1 statement at both sizes. The initial ceiling is d1(20,0,1), the same as the existing recheck cases.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-100",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "1443f97c98fe9de94cea559133a05d6a9179a84abb2a7bd755d6270dc575b9fd",
+      "reason": "New case: 50 long-unseen listings deactivated and 50 aging in-stock listings downgraded to unknown, among 100, 1,000 and 10,000 recently seen active listings of the same shop plus another shop's stale listings. Measured on real migrated D1: 1373-1374 rows read, 800-801 rows written (deactivation triggers dominate, as in crawl-deactivate-missing) and 4 statements, constant with shop size. The initial ceiling is d1(2000,1000,4).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "54e6aa7edb557a56e3b5228744171912145f3ec8eb52005963f4ff5363dea50f",
+      "reason": "New case: 50 long-unseen listings deactivated and 50 aging in-stock listings downgraded to unknown, among 100, 1,000 and 10,000 recently seen active listings of the same shop plus another shop's stale listings. Measured on real migrated D1: 1373-1374 rows read, 800-801 rows written (deactivation triggers dominate, as in crawl-deactivate-missing) and 4 statements, constant with shop size. The initial ceiling is d1(2000,1000,4).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "baseSha": "0d6989c12ffdfb8f753cf50d3d15928516aab819",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "103d5bdba0303a022ea0ffaec4480c2e79f1149186ee70605b27725a886a4d48",
+      "reason": "New case: 50 long-unseen listings deactivated and 50 aging in-stock listings downgraded to unknown, among 100, 1,000 and 10,000 recently seen active listings of the same shop plus another shop's stale listings. Measured on real migrated D1: 1373-1374 rows read, 800-801 rows written (deactivation triggers dominate, as in crawl-deactivate-missing) and 4 statements, constant with shop size. The initial ceiling is d1(2000,1000,4).",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/812",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
+      ]
     }
   ]
 }

@@ -430,6 +430,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/crawler/schedule.ts",
       "src/crawler/crawl-window.ts",
       "src/crawler/shops/index.ts",
+      "src/crawler/shops/registry.ts",
       "wrangler*.jsonc",
     ],
     suites: [
