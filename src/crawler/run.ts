@@ -1,3 +1,4 @@
+import { evaluateInventoryCollectionSafety } from "../data-quality/quality-evaluator.js";
 import {
   getCrawlerSettings,
   getShopEnabled,
@@ -81,6 +82,13 @@ import {
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 
 interface CrawlShopOptions {
+  /** Real persisted collection counters; synthetic finalization pages cannot establish safety. */
+  collectionEvidence?: {
+    fetchedPages: number;
+    parsedPages: number;
+    expectedPages: number;
+    uncertainCoverage: boolean;
+  };
   force?: boolean;
   now?: Date;
   fetchFn?: typeof fetch;
@@ -466,6 +474,7 @@ export async function crawlShop(
     enrichmentDecidedAt,
     loadDetailEvidence,
     archiveSellerHtml = true,
+    collectionEvidence,
   }: CrawlShopOptions = {},
 ): Promise<CrawlResult> {
   const definition = adapter.definition;
@@ -501,6 +510,8 @@ export async function crawlShop(
   let pageCount = 0;
   let parseAttemptCount = 0;
   let parseFailureCount = 0;
+  let fetchFailureCount = 0;
+  let uncertainCoverage = false;
   let reachedEnd = false;
   let coverageIncomplete = false;
   /** Last non-null seller diagnostic; generic orchestration never interprets its shape. */
@@ -536,6 +547,7 @@ export async function crawlShop(
     const fetchParseStage = stageRecorder.begin("fetch_parse", { inputCount: pageLimit });
     await progress.record("fetch_parse", pageCount);
     const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
+    const expectedPages = pageQueue.length;
     const queuedUrls = new Set(pageQueue.map((page) => targetUrl(adapter, page)));
 
     while (pageQueue.length && pageCount < pageLimit) {
@@ -561,6 +573,7 @@ export async function crawlShop(
           }),
         );
       } catch (error) {
+        fetchFailureCount += 1;
         const fetchError = error instanceof Error ? error : new Error(String(error));
         if (
           /HTTP 404/.test(fetchError.message) &&
@@ -598,6 +611,7 @@ export async function crawlShop(
 
       const discovered = discoverPages(adapter, html, page);
       if (discovered == null) {
+        uncertainCoverage = true;
         coverageIncomplete = true;
       } else {
         for (const nextPage of discovered) {
@@ -613,7 +627,10 @@ export async function crawlShop(
       }
 
       if (!parsed.length) {
-        if (adapter.discovery.discoverTargets) coverageIncomplete = true;
+        if (adapter.discovery.discoverTargets) {
+          coverageIncomplete = true;
+          uncertainCoverage = true;
+        }
         if (items.size > 0) {
           if (shouldContinueAfterEmpty(adapter)) continue;
           reachedEnd = true;
@@ -764,9 +781,36 @@ export async function crawlShop(
           activityPolicy: getShopActivityPolicy(adapter),
         }),
     );
-    const staleExpiry = deactivateMissing
-      ? null
-      : await staleListingExpiryFor(env, adapter, observedAt);
+    const inventorySafety = evaluateInventoryCollectionSafety({
+      successful: true,
+      parsedPages: collectionEvidence?.parsedPages ?? parseAttemptCount - parseFailureCount,
+      parseFailures: parseFailureCount,
+      fetchFailures: fetchFailureCount,
+      uncertainCoverage: collectionEvidence?.uncertainCoverage ?? uncertainCoverage,
+      expectedPages: collectionEvidence?.expectedPages ?? expectedPages,
+      fetchedPages: collectionEvidence?.fetchedPages ?? pageCount,
+      itemCount: items.size,
+      previousItemCount: Number(state?.last_item_count ?? 0),
+      minItemRatio: settings.minItemRatio,
+      minItemBaseline: settings.minItemBaseline,
+      previousSuccessAt: state?.last_success_at ?? null,
+      previousFailures: Number(state?.consecutive_failures ?? 0),
+      observedAt,
+      intervalMinutes,
+    });
+    if (!inventorySafety.allowed && getShopStaleListingSettings(env, adapter.definition).enabled)
+      console.warn(
+        JSON.stringify({
+          event: "stale_inventory_deferred",
+          shopKey: adapter.key,
+          runId,
+          ...inventorySafety,
+        }),
+      );
+    const staleExpiry =
+      deactivateMissing || !inventorySafety.allowed
+        ? null
+        : await staleListingExpiryFor(env, adapter, observedAt);
     const stale = staleExpiry
       ? await stageRecorder.run(
           "stale_listing_expiry",
@@ -904,6 +948,8 @@ export async function crawlShop(
         `stale_expiry=${JSON.stringify({ deactivated: staleDeactivatedCount, unknown: staleUnknownCount })}`,
       );
     }
+    if (getShopStaleListingSettings(env, adapter.definition).enabled)
+      diagnosticParts.push(`stale_guard=${JSON.stringify(inventorySafety)}`);
     if (quality) diagnosticParts.push(`quality=${JSON.stringify({ status: quality.status })}`);
     // Stage durations are kept on the run row as well as in the logs: a stalled successor is
     // diagnosed against what the last completed run actually cost, and logs age out first. Page

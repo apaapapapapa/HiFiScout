@@ -1,3 +1,4 @@
+import { firstMeasured } from "./read-accounting.js";
 /**
  * Stage A: age an unseen in-stock listing to unknown, never to sold or inactive.
  * Elapsed time is not sale evidence for partial/unknown-coverage shops. Stage B is owned by
@@ -27,46 +28,52 @@ export interface StaleListingExpiryResult {
 /** No detail recheck newer than `before` vouches for the listing. */
 const UNVOUCHED = `(last_confirmed_available_at IS NULL OR last_confirmed_available_at < ?)`;
 
-async function staleSourceIds(
-  db: QueryableDatabase,
-  shopKey: string,
-  before: string,
-  limit: number,
-): Promise<
-  Array<
-    Pick<
-      ProductRow,
-      | "source_id"
-      | "stock_status"
-      | "last_seen_at"
-      | "last_inventory_checked_at"
-      | "last_confirmed_available_at"
-      | "inventory_check_failures"
-    >
-  >
-> {
-  const result = await db
-    .prepare(`
-      SELECT source_id, stock_status, last_seen_at, last_inventory_checked_at,
-             last_confirmed_available_at, inventory_check_failures FROM products INDEXED BY ${LAST_SEEN_INDEX}
-      WHERE shop_key = ? AND is_active = 1 AND last_seen_at < ?
-        AND stock_status = 'in_stock'
-        AND ${UNVOUCHED}
-      ORDER BY last_seen_at ASC
-      LIMIT ?`)
-    .bind(shopKey, before, before, limit)
-    .all<
-      Pick<
-        ProductRow,
-        | "source_id"
-        | "stock_status"
-        | "last_seen_at"
-        | "last_inventory_checked_at"
-        | "last_confirmed_available_at"
-        | "inventory_check_failures"
-      >
-    >();
-  return result.results || [];
+type StaleRow = Pick<
+  ProductRow,
+  | "id"
+  | "source_id"
+  | "stock_status"
+  | "last_seen_at"
+  | "last_inventory_checked_at"
+  | "last_confirmed_available_at"
+  | "inventory_check_failures"
+>;
+
+/** Limit the index walk before filtering inventory evidence, including already-unknown rows. */
+async function staleRows(db: QueryableDatabase, shopKey: string, before: string, limit: number) {
+  const cursor = await firstMeasured<{ seenAt: string; id: number }>(
+    db
+      .prepare(`SELECT stale_inventory_cursor_seen_at AS seenAt,
+    stale_inventory_cursor_id AS id FROM shop_sync_state WHERE shop_key = ?`)
+      .bind(shopKey),
+  );
+  // Equality on last_seen_at makes the implicit rowid suffix seekable. A tuple inequality
+  // alone rescans every row with the cursor timestamp in SQLite, so use two bounded seeks.
+  const rows = await db
+    .prepare(`WITH same_time AS MATERIALIZED (
+      SELECT id, source_id, stock_status, last_seen_at, last_inventory_checked_at,
+        last_confirmed_available_at, inventory_check_failures FROM products INDEXED BY ${LAST_SEEN_INDEX}
+      WHERE shop_key = ? AND is_active = 1 AND last_seen_at = ? AND id > ? AND last_seen_at < ?
+      ORDER BY id LIMIT ?
+    ), later AS MATERIALIZED (
+      SELECT id, source_id, stock_status, last_seen_at, last_inventory_checked_at,
+        last_confirmed_available_at, inventory_check_failures FROM products INDEXED BY ${LAST_SEEN_INDEX}
+      WHERE shop_key = ? AND is_active = 1 AND last_seen_at > ? AND last_seen_at < ?
+      ORDER BY last_seen_at, id LIMIT MAX(0, ? - (SELECT COUNT(*) FROM same_time))
+    ) SELECT * FROM same_time UNION ALL SELECT * FROM later`)
+    .bind(
+      shopKey,
+      cursor?.seenAt ?? "",
+      cursor?.id ?? 0,
+      before,
+      limit,
+      shopKey,
+      cursor?.seenAt ?? "",
+      before,
+      limit,
+    )
+    .all<StaleRow>();
+  return { rows: rows.results ?? [], cursor };
 }
 
 /** Changes only stale in-stock listings; the current crawl's observations are protected. */
@@ -77,7 +84,8 @@ export async function expireStaleListings(
   observedSourceIds: ReadonlySet<string>,
   changedAt: string,
 ): Promise<StaleListingExpiryResult> {
-  const unknownSourceIds = (await staleSourceIds(db, shopKey, unknownBefore, limit))
+  const batch = await staleRows(db, shopKey, unknownBefore, limit);
+  const unknownSourceIds = batch.rows
     .filter(
       (row) =>
         !observedSourceIds.has(row.source_id) &&
@@ -105,13 +113,28 @@ export async function expireStaleListings(
           `UPDATE products SET stock_status = 'unknown', last_changed_at = ?
            WHERE shop_key = ? AND +is_active = 1 AND stock_status = 'in_stock'
              AND last_seen_at < ? AND ${UNVOUCHED}
-             AND source_id IN (${chunk.map(() => "?").join(",")})`,
+             AND source_id IN (${chunk.map(() => "?").join(",")}) RETURNING source_id`,
         )
         .bind(changedAt, shopKey, unknownBefore, unknownBefore, ...chunk),
     );
   }
-  if (statements.length) await db.batch(statements);
-  return { unknownSourceIds, deactivatedSourceIds: [] };
+  const changed = statements.length ? await db.batch<{ source_id: string }>(statements) : [];
+  const last = batch.rows.length === limit ? batch.rows.at(-1) : undefined;
+  const nextSeen = last?.last_seen_at ?? "";
+  const nextId = last?.id ?? 0;
+  if (nextSeen !== (batch.cursor?.seenAt ?? "") || nextId !== (batch.cursor?.id ?? 0)) {
+    await db
+      .prepare(`INSERT INTO shop_sync_state(shop_key, stale_inventory_cursor_seen_at, stale_inventory_cursor_id)
+      VALUES (?, ?, ?) ON CONFLICT(shop_key) DO UPDATE SET
+      stale_inventory_cursor_seen_at = excluded.stale_inventory_cursor_seen_at,
+      stale_inventory_cursor_id = excluded.stale_inventory_cursor_id`)
+      .bind(shopKey, nextSeen, nextId)
+      .run();
+  }
+  return {
+    unknownSourceIds: changed.flatMap((result) => result.results ?? []).map((row) => row.source_id),
+    deactivatedSourceIds: [],
+  };
 }
 
 /**

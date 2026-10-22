@@ -1,0 +1,510 @@
+{
+  "observedOn": "2026-10-22",
+  "initialMain": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+  "beforeAt": "2026-10-22T11:07:00Z",
+  "incidentStaleDeactivation": {
+    "audiounion": {
+      "count": 250,
+      "runIds": [
+        8431,
+        8435,
+        8443,
+        8451,
+        8454
+      ]
+    },
+    "hifido": {
+      "count": 300,
+      "runIds": [
+        8430,
+        8432,
+        8434,
+        8439,
+        8447,
+        8453
+      ]
+    }
+  },
+  "beforeInventory": {
+    "audiounion": {
+      "inactive": {
+        "in_stock": 38,
+        "sold_out": 33,
+        "unknown": 198
+      },
+      "active": {
+        "in_stock": 489,
+        "sold_out": 115,
+        "unknown": 51
+      }
+    },
+    "fujiya-avic": {
+      "active": {
+        "in_stock": 3712,
+        "sold_out": 502,
+        "unknown": 13
+      }
+    },
+    "hifido": {
+      "inactive": {
+        "in_stock": 1766,
+        "sold_out": 240,
+        "unknown": 84
+      },
+      "active": {
+        "in_stock": 3441,
+        "sold_out": 1750,
+        "unknown": 637
+      }
+    }
+  },
+  "inventoryRecheckBaseline": {
+    "windowUTC": [
+      "2026-10-22T05:00:00Z",
+      "2026-10-22T11:25:00Z"
+    ],
+    "success": true,
+    "count": 47,
+    "returned": 47,
+    "groups": {
+      "audiounion": {
+        "total": 18,
+        "checked": 18,
+        "inStock": 0,
+        "ambiguous": 1,
+        "sold": 16,
+        "deactivated": 16,
+        "reasons": {}
+      },
+      "hifido": {
+        "total": 29,
+        "checked": 29,
+        "inStock": 0,
+        "ambiguous": 10,
+        "sold": 19,
+        "deactivated": 0,
+        "reasons": {}
+      }
+    }
+  },
+  "d1Before": {
+    "success": true,
+    "status": 200,
+    "result": {
+      "viewer": {
+        "accounts": [
+          {
+            "d1AnalyticsAdaptiveGroups": [
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:00:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 4.44
+                },
+                "sum": {
+                  "readQueries": 600,
+                  "rowsRead": 39100,
+                  "rowsWritten": 3491,
+                  "writeQueries": 518
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:05:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 1.12
+                },
+                "sum": {
+                  "readQueries": 52,
+                  "rowsRead": 430,
+                  "rowsWritten": 19,
+                  "writeQueries": 11
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:10:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 1.75
+                },
+                "sum": {
+                  "readQueries": 89,
+                  "rowsRead": 779,
+                  "rowsWritten": 172,
+                  "writeQueries": 66
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:15:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 5.72
+                },
+                "sum": {
+                  "readQueries": 59,
+                  "rowsRead": 502,
+                  "rowsWritten": 15,
+                  "writeQueries": 11
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:20:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 2.25
+                },
+                "sum": {
+                  "readQueries": 22,
+                  "rowsRead": 359,
+                  "rowsWritten": 27,
+                  "writeQueries": 17
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:25:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 0.64
+                },
+                "sum": {
+                  "readQueries": 4,
+                  "rowsRead": 22,
+                  "rowsWritten": 8,
+                  "writeQueries": 5
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:30:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 7.74
+                },
+                "sum": {
+                  "readQueries": 475,
+                  "rowsRead": 43285,
+                  "rowsWritten": 3596,
+                  "writeQueries": 465
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:35:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 0.86
+                },
+                "sum": {
+                  "readQueries": 31,
+                  "rowsRead": 170,
+                  "rowsWritten": 18,
+                  "writeQueries": 15
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:40:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 2.41
+                },
+                "sum": {
+                  "readQueries": 34,
+                  "rowsRead": 11917,
+                  "rowsWritten": 30,
+                  "writeQueries": 12
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:45:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 4.28
+                },
+                "sum": {
+                  "readQueries": 38,
+                  "rowsRead": 266,
+                  "rowsWritten": 18,
+                  "writeQueries": 11
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:50:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 1.56
+                },
+                "sum": {
+                  "readQueries": 40,
+                  "rowsRead": 357,
+                  "rowsWritten": 24,
+                  "writeQueries": 13
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T10:55:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 1.73
+                },
+                "sum": {
+                  "readQueries": 43,
+                  "rowsRead": 208,
+                  "rowsWritten": 21,
+                  "writeQueries": 11
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T11:00:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 6.28
+                },
+                "sum": {
+                  "readQueries": 429,
+                  "rowsRead": 30901,
+                  "rowsWritten": 2923,
+                  "writeQueries": 383
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T11:05:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 4.92
+                },
+                "sum": {
+                  "readQueries": 66,
+                  "rowsRead": 29411,
+                  "rowsWritten": 19,
+                  "writeQueries": 11
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T11:10:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 3.19
+                },
+                "sum": {
+                  "readQueries": 40,
+                  "rowsRead": 337,
+                  "rowsWritten": 26,
+                  "writeQueries": 13
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T11:15:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 1.46
+                },
+                "sum": {
+                  "readQueries": 21,
+                  "rowsRead": 135,
+                  "rowsWritten": 33,
+                  "writeQueries": 18
+                }
+              },
+              {
+                "dimensions": {
+                  "datetimeFiveMinutes": "2026-10-22T11:20:00Z"
+                },
+                "quantiles": {
+                  "queryBatchTimeMsP90": 0.69
+                },
+                "sum": {
+                  "readQueries": 44,
+                  "rowsRead": 223,
+                  "rowsWritten": 13,
+                  "writeQueries": 10
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "errors": [],
+    "messages": []
+  },
+  "postP0": {
+    "result": [
+      {
+        "results": [
+          {
+            "id": 8455,
+            "shop_key": "hifido",
+            "started_at": "2026-10-22T11:34:41.736Z",
+            "status": "success",
+            "stale": "stale_expiry={\"deactivated\":0,\"unknown\":50} | quality={\"status\":\"critical\"} | stages={\"fetch_parse\":3623,\"manu"
+          }
+        ],
+        "success": true,
+        "meta": {
+          "served_by": "v3-prod",
+          "served_by_region": "WNAM",
+          "served_by_colo": "SJC",
+          "served_by_primary": true,
+          "timings": {
+            "sql_duration_ms": 1.6342
+          },
+          "duration": 1.6342,
+          "changes": 0,
+          "last_row_id": 0,
+          "changed_db": false,
+          "size_after": 234586112,
+          "rows_read": 8,
+          "rows_written": 0,
+          "total_attempts": 1
+        }
+      },
+      {
+        "results": [],
+        "success": true,
+        "meta": {
+          "served_by": "v3-prod",
+          "served_by_region": "WNAM",
+          "served_by_colo": "SJC",
+          "served_by_primary": true,
+          "timings": {
+            "sql_duration_ms": 0.8577
+          },
+          "duration": 0.8577,
+          "changes": 0,
+          "last_row_id": 0,
+          "changed_db": false,
+          "size_after": 234586112,
+          "rows_read": 1,
+          "rows_written": 0,
+          "total_attempts": 1
+        }
+      }
+    ],
+    "errors": [],
+    "messages": [],
+    "success": true,
+    "status": 200
+  },
+  "postP1A": {
+    "result": [
+      {
+        "results": [
+          {
+            "name": "0142_inventory_availability_evidence.sql",
+            "applied_at": "2026-10-22 11:44:14"
+          }
+        ],
+        "success": true,
+        "meta": {
+          "served_by": "v3-prod",
+          "served_by_region": "WNAM",
+          "served_by_colo": "SJC",
+          "served_by_primary": true,
+          "timings": {
+            "sql_duration_ms": 0.8668
+          },
+          "duration": 0.8668,
+          "changes": 0,
+          "last_row_id": 0,
+          "changed_db": false,
+          "size_after": 234586112,
+          "rows_read": 1,
+          "rows_written": 0,
+          "total_attempts": 1
+        }
+      },
+      {
+        "results": [
+          {
+            "shop_key": "hifido",
+            "source_id": "26-49518-09100-00",
+            "stock_status": "sold_out",
+            "is_active": 1,
+            "last_inventory_checked_at": "2026-10-22T11:36:20.012Z",
+            "last_confirmed_available_at": null,
+            "inventory_check_failures": 1
+          },
+          {
+            "shop_key": "hifido",
+            "source_id": "26-35978-05932-00",
+            "stock_status": "sold_out",
+            "is_active": 1,
+            "last_inventory_checked_at": "2026-10-22T11:36:06.705Z",
+            "last_confirmed_available_at": null,
+            "inventory_check_failures": 1
+          },
+          {
+            "shop_key": "hifido",
+            "source_id": "26-49795-10741-00",
+            "stock_status": "sold_out",
+            "is_active": 1,
+            "last_inventory_checked_at": "2026-10-22T11:35:53.270Z",
+            "last_confirmed_available_at": null,
+            "inventory_check_failures": 1
+          },
+          {
+            "shop_key": "hifido",
+            "source_id": "26-50278-14987-00",
+            "stock_status": "sold_out",
+            "is_active": 1,
+            "last_inventory_checked_at": "2026-10-22T11:35:39.355Z",
+            "last_confirmed_available_at": null,
+            "inventory_check_failures": 1
+          },
+          {
+            "shop_key": "hifido",
+            "source_id": "26-50278-14986-00",
+            "stock_status": "sold_out",
+            "is_active": 1,
+            "last_inventory_checked_at": "2026-10-22T11:35:25.430Z",
+            "last_confirmed_available_at": null,
+            "inventory_check_failures": 1
+          }
+        ],
+        "success": true,
+        "meta": {
+          "served_by": "v3-prod",
+          "served_by_region": "WNAM",
+          "served_by_colo": "SJC",
+          "served_by_primary": true,
+          "timings": {
+            "sql_duration_ms": 1.7343
+          },
+          "duration": 1.7343,
+          "changes": 0,
+          "last_row_id": 0,
+          "changed_db": false,
+          "size_after": 234586112,
+          "rows_read": 16,
+          "rows_written": 0,
+          "total_attempts": 1
+        }
+      }
+    ],
+    "errors": [],
+    "messages": [],
+    "success": true,
+    "status": 200
+  },
+  "limitations": [
+    "Stale deactivation did not update last_changed_at and completed work items are cleared, so the run totals cannot identify each falsely retired product.",
+    "The live script checks three fixed inactive AudioUnion candidates without restoring them. Restoration requires new positive own-product evidence and a concurrency guard.",
+    "Log-derived success means an interpretable inventory result, not necessarily confirmed availability. No Fujiya batch completion event was present in the baseline window.",
+    "Production analytics totals include all application and diagnostic queries; they are not causal estimates of this patch.",
+    "No emergency binding PATCH was applied; automatic review rejected a proposed broad binding reconstruction. Normal reviewed deployment delivered the P0 safeguard."
+  ]
+}

@@ -44,6 +44,7 @@ function candidate(
     title: "SAMPLE AMP",
     model: "SAMPLE AMP",
     last_seen_at: "2026-08-09T08:00:00.000Z",
+    last_changed_at: "2026-08-09T08:00:00.000Z",
     last_inventory_checked_at: null,
     last_inventory_check_attempt_at: null,
     inventory_check_failures: 0,
@@ -104,6 +105,7 @@ function upstreamResponse(
     headers: {
       "content-type": contentType,
       "x-hifiscout-upstream-status": String(status),
+      "x-hifiscout-upstream-url": DETAIL_URL,
     },
   });
 }

@@ -1,3 +1,4 @@
+import type { InventoryRecheckCandidateRow } from "../db/types.js";
 import { DurableObject } from "cloudflare:workers";
 import { isCrawlQuietHours, nextCrawlAllowedAt } from "./crawl-window.js";
 
@@ -83,6 +84,7 @@ interface StoredExecution {
   inventoryRecheckPending?: boolean;
   /** Inventory rechecks this run's batch has already recorded. */
   inventoryRechecksCompleted?: number;
+  inventoryCandidate?: InventoryRecheckCandidateRow;
   /** Aggregate D1 usage for the paced detail phase; emitted once when the plan is exhausted. */
   detailDbUsage?: StoredDetailDbUsage;
   /** Durable marker preventing terminal-check reads from producing duplicate completion metrics. */
@@ -351,10 +353,12 @@ export class CrawlScheduler extends DurableObject<Env> {
     const relay = isRelayPlugin(plugin);
     const completedCount = execution.inventoryRechecksCompleted ?? 0;
 
-    let relayPermit = execution.relayPermit;
-    const directPermit = execution.permit;
+    const relayPermit = execution.inventoryCandidate ? execution.relayPermit : undefined;
+    const directPermit = execution.inventoryCandidate ? execution.permit : undefined;
     if (!relayPermit && !directPermit) {
-      const preparation = await prepareShopInventoryRecheck(this.env, plugin);
+      const preparation = await prepareShopInventoryRecheck(this.env, plugin, {
+        now: new Date(Date.now()),
+      });
       if (preparation.status !== "ready") {
         await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
         console.log(
@@ -401,6 +405,7 @@ export class CrawlScheduler extends DurableObject<Env> {
 
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        inventoryCandidate: preparation.candidate,
         ...(relay
           ? { relayPermit: prepared as RelayFetchPermit }
           : { permit: prepared as DirectFetchPermit }),
@@ -427,24 +432,27 @@ export class CrawlScheduler extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(alarmAt(notBeforeMs));
       return;
     }
-    if (relayPermit && Date.now() >= relayPermit.expiresAtMs) {
+    if (Date.now() >= (relayPermit?.expiresAtMs ?? notBeforeMs + 15 * 60_000)) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
         relayPermit: undefined,
+        permit: undefined,
+        inventoryCandidate: undefined,
       });
       await this.ctx.storage.setAlarm(alarmAt(Date.now()));
       return;
     }
-    if (directPermit) {
-      // Consume the direct capability before seller I/O, as listing and detail fetches do: a crash
-      // after this point prepares a fresh permit and waits its delay instead of reusing this one.
-      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
-        ...execution,
-        permit: undefined,
-      });
-    }
+    // Consume either capability before I/O; retries must prepare and pace a new request.
+    await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+      ...execution,
+      permit: undefined,
+      relayPermit: undefined,
+      inventoryCandidate: undefined,
+    });
 
     const result = await recheckShopInventory(this.env, plugin, {
+      expectedCandidate: execution.inventoryCandidate,
+      now: new Date(Date.now()),
       fetchPage: relayPermit
         ? (url, options) =>
             fetchPreparedRelayPage(relayConfiguration(this.env), relayPermit!, url, options)
@@ -455,18 +463,22 @@ export class CrawlScheduler extends DurableObject<Env> {
               allowedRedirectOrigins: shopRedirectOrigins(plugin),
             }),
     });
-    if (result.status === "checked" && result.sourceId) {
+    if (result.status === "checked" && result.stateChanged && result.sourceId) {
       await syncProductSearchEntities(this.env.DB, plugin.key, [result.sourceId]);
     }
     const nextCompletedCount = completedCount + 1;
     const batchSize = getShopInventoryRecheckSettings(this.env, plugin.definition).batchSize;
-    const continueBatch = result.status === "checked" && nextCompletedCount < batchSize;
+    const continueBatch =
+      result.status === "checked" &&
+      result.outcome !== "ambiguous" &&
+      nextCompletedCount < batchSize;
     if (continueBatch) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
         permit: undefined,
         relayPermit: undefined,
         inventoryRechecksCompleted: nextCompletedCount,
+        inventoryCandidate: undefined,
       });
       await this.ctx.storage.setAlarm(alarmAt(Date.now()));
     } else {
@@ -480,6 +492,8 @@ export class CrawlScheduler extends DurableObject<Env> {
         status: result.status,
         reason: "reason" in result ? result.reason : null,
         outcome: "outcome" in result ? result.outcome : null,
+        decisionReason: result.decisionReason ?? null,
+        stateChanged: result.stateChanged ?? false,
         productId: "productId" in result ? result.productId || null : null,
         completedCount: nextCompletedCount,
         batchSize,
@@ -717,7 +731,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(alarmAt(notBeforeMs));
       return true;
     }
-    if (relayPermit && Date.now() >= relayPermit.expiresAtMs) {
+    if (Date.now() >= (relayPermit?.expiresAtMs ?? notBeforeMs + 15 * 60_000)) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
         detailDbUsage: currentDetailDbUsage(),

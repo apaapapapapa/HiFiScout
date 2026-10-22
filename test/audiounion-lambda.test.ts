@@ -635,7 +635,7 @@ test("Lambda follows a same-host redirect but refuses one that leaves the allowe
     fetchFn: async (url) => {
       requested.push(url);
       if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
-      if (url === DETAIL_URL) {
+      if (url === ENTRY_URL) {
         return new Response(null, {
           status: 301,
           headers: { location: "https://www.audiounion.jp/ct/detail/used/223257/?moved=1" },
@@ -648,7 +648,7 @@ test("Lambda follows a same-host redirect but refuses one that leaves the allowe
     },
   });
 
-  const moved = await handler(event({ url: DETAIL_URL }));
+  const moved = await handler(event({ url: ENTRY_URL }));
   assert.equal(moved.statusCode, 200);
   assert.equal(Buffer.from(moved.body, "base64").toString("utf8"), "<html>moved</html>");
 
@@ -666,7 +666,7 @@ test("Lambda follows a same-host redirect but refuses one that leaves the allowe
     },
   });
 
-  const refused = await escaping(event({ url: DETAIL_URL }));
+  const refused = await escaping(event({ url: ENTRY_URL }));
   assert.equal(refused.statusCode, 502);
   assert.equal(JSON.parse(refused.body).error, "redirect_rejected");
   assert.equal(
@@ -776,7 +776,7 @@ test("Lambda applies robots rules to a redirect destination, not just the origin
       if (url.endsWith("/robots.txt")) {
         return new Response("User-agent: *\nDisallow: /ct/search\n", { status: 200 });
       }
-      if (url === DETAIL_URL) {
+      if (url === ENTRY_URL) {
         return new Response(null, {
           status: 302,
           headers: { location: "https://www.audiounion.jp/ct/search/secret" },
@@ -789,7 +789,7 @@ test("Lambda applies robots rules to a redirect destination, not just the origin
     },
   });
 
-  const result = await handler(event({ url: DETAIL_URL }));
+  const result = await handler(event({ url: ENTRY_URL }));
 
   assert.equal(result.statusCode, 502);
   assert.equal(JSON.parse(result.body).error, "robots_disallowed_redirect");
@@ -809,7 +809,7 @@ test("Lambda still follows a same-host redirect the policy allows", async () => 
       if (url.endsWith("/robots.txt")) {
         return new Response("User-agent: *\nDisallow: /ct/search\n", { status: 200 });
       }
-      if (url === DETAIL_URL) {
+      if (url === ENTRY_URL) {
         return new Response(null, { status: 301, headers: { location: moved } });
       }
       return new Response("<html>allowed</html>", {
@@ -819,8 +819,32 @@ test("Lambda still follows a same-host redirect the policy allows", async () => 
     },
   });
 
-  const result = await handler(event({ url: DETAIL_URL }));
+  const result = await handler(event({ url: ENTRY_URL }));
 
   assert.equal(result.statusCode, 200);
   assert.equal(Buffer.from(result.body, "base64").toString("utf8"), "<html>allowed</html>");
+});
+
+test("Hifido detail redirects cannot substitute another product or a non-detail page", async () => {
+  const url = "https://www.hifido.co.jp/26-50529-16848-00.html?LNG=J";
+  for (const destination of [
+    "https://www.hifido.co.jp/sold/26-11111-22222-00.html",
+    "http://www.hifido.co.jp/sold/26-11111-22222-00.html",
+    "https://www.hifido.co.jp/?LNG=J",
+    "https://www.hifido.co.jp/26-11111-22222-00.html",
+  ]) {
+    const calls: string[] = [];
+    const handler = createHandler({
+      env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+      sleepFn: async () => {},
+      fetchFn: async (target) => {
+        calls.push(target);
+        if (target.endsWith("/robots.txt")) return new Response("User-agent: *\n");
+        return new Response(null, { status: 302, headers: { location: destination } });
+      },
+    });
+    const result = await handler(event({ url }));
+    assert.equal(result.statusCode, 502);
+    assert.equal(calls.includes(destination), false);
+  }
 });

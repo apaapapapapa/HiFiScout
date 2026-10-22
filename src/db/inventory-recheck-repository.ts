@@ -46,7 +46,7 @@ export async function selectInventoryRecheckCandidate(
   return firstMeasured<InventoryRecheckCandidateRow>(
     db
       .prepare(`
-    SELECT id, source_id, source_url, title, model, last_seen_at, last_inventory_checked_at,
+    SELECT id, source_id, source_url, title, model, last_seen_at, last_changed_at, last_inventory_checked_at,
            last_inventory_check_attempt_at, inventory_check_failures, stock_status, last_confirmed_available_at
     FROM products
     WHERE id = COALESCE(
@@ -93,18 +93,43 @@ export async function selectInventoryRecheckCandidate(
   );
 }
 
+/** Snapshot fence: PREPARE identity and inventory state must still own this observation. */
+function inventoryFence(candidate?: InventoryRecheckCandidateRow, attemptedAt?: string) {
+  if (!candidate) return { sql: "", values: [] as (string | number | null)[] };
+  return {
+    sql: ` AND source_id = ? AND source_url = ? AND title = ? AND model = ? AND last_seen_at = ? AND last_changed_at = ?
+      AND stock_status = ? AND last_inventory_checked_at IS ? AND inventory_check_failures = ?
+      AND last_confirmed_available_at IS ? AND last_inventory_check_attempt_at IS ?`,
+    values: [
+      candidate.source_id,
+      candidate.source_url,
+      candidate.title,
+      candidate.model,
+      candidate.last_seen_at,
+      candidate.last_changed_at,
+      candidate.stock_status,
+      candidate.last_inventory_checked_at,
+      candidate.inventory_check_failures,
+      candidate.last_confirmed_available_at ?? null,
+      attemptedAt ?? candidate.last_inventory_check_attempt_at,
+    ],
+  };
+}
+
 export async function markInventoryCheckAttempt(
   db: QueryableDatabase,
   productId: number,
   attemptedAt: string,
+  candidate?: InventoryRecheckCandidateRow,
 ): Promise<D1Result> {
+  const fence = inventoryFence(candidate);
   return db
     .prepare(`
     UPDATE products
     SET last_inventory_check_attempt_at = ?
-    WHERE id = ? AND is_active = 1 AND last_inventory_check_attempt_at IS NOT ?
+    WHERE id = ? AND is_active = 1 AND (last_inventory_check_attempt_at IS NULL OR last_inventory_check_attempt_at < ?) ${fence.sql}
   `)
-    .bind(attemptedAt, productId, attemptedAt)
+    .bind(attemptedAt, productId, attemptedAt, ...fence.values)
     .run();
 }
 
@@ -112,7 +137,9 @@ export async function markInventoryAvailable(
   db: QueryableDatabase,
   productId: number,
   checkedAt: string,
+  candidate?: InventoryRecheckCandidateRow,
 ): Promise<D1Result> {
+  const fence = inventoryFence(candidate, checkedAt);
   return db
     .prepare(`
     UPDATE products
@@ -122,9 +149,9 @@ export async function markInventoryAvailable(
         last_changed_at = CASE WHEN stock_status <> 'in_stock' THEN ? ELSE last_changed_at END,
         stock_status = 'in_stock',
         last_confirmed_available_at = ?
-    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?) ${fence.sql}
   `)
-    .bind(checkedAt, checkedAt, checkedAt, checkedAt, productId, checkedAt)
+    .bind(checkedAt, checkedAt, checkedAt, checkedAt, productId, checkedAt, ...fence.values)
     .run();
 }
 
@@ -132,7 +159,9 @@ export async function markInventoryAmbiguous(
   db: QueryableDatabase,
   productId: number,
   checkedAt: string,
+  candidate?: InventoryRecheckCandidateRow,
 ): Promise<D1Result> {
+  const fence = inventoryFence(candidate, checkedAt);
   return db
     .prepare(`
     UPDATE products
@@ -141,9 +170,9 @@ export async function markInventoryAmbiguous(
         inventory_check_failures = 0,
         last_changed_at = CASE WHEN stock_status = 'in_stock' THEN ? ELSE last_changed_at END,
         stock_status = CASE WHEN stock_status = 'in_stock' THEN 'unknown' ELSE stock_status END
-    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?) ${fence.sql}
   `)
-    .bind(checkedAt, checkedAt, checkedAt, productId, checkedAt)
+    .bind(checkedAt, checkedAt, checkedAt, productId, checkedAt, ...fence.values)
     .run();
 }
 
@@ -154,7 +183,9 @@ export async function recordInventoryUnavailable(
   failureCount: number,
   deactivate: boolean,
   evidence: "missing" | "sold" = "missing",
+  candidate?: InventoryRecheckCandidateRow,
 ): Promise<D1Result> {
+  const fence = inventoryFence(candidate, checkedAt);
   const inactive = deactivate ? 1 : 0;
   const sold = deactivate || evidence === "sold" ? 1 : 0;
   return db
@@ -166,7 +197,7 @@ export async function recordInventoryUnavailable(
         stock_status = CASE WHEN ? = 1 THEN 'sold_out' ELSE stock_status END,
         is_active = CASE WHEN ? = 1 THEN 0 ELSE is_active END,
         last_changed_at = CASE WHEN ? = 1 OR (? = 1 AND stock_status <> 'sold_out') THEN ? ELSE last_changed_at END
-    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?)
+    WHERE id = ? AND is_active = 1 AND (last_inventory_checked_at IS NULL OR last_inventory_checked_at < ?) ${fence.sql}
   `)
     .bind(
       checkedAt,
@@ -179,6 +210,7 @@ export async function recordInventoryUnavailable(
       checkedAt,
       productId,
       checkedAt,
+      ...fence.values,
     )
     .run();
 }

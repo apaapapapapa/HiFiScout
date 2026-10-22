@@ -51,16 +51,19 @@ interface InventoryRepository {
     db: QueryableDatabase,
     productId: number,
     attemptedAt: string,
+    candidate?: InventoryRecheckCandidateRow,
   ): Promise<unknown>;
   markInventoryAvailable(
     db: QueryableDatabase,
     productId: number,
     checkedAt: string,
+    candidate?: InventoryRecheckCandidateRow,
   ): Promise<unknown>;
   markInventoryAmbiguous(
     db: QueryableDatabase,
     productId: number,
     checkedAt: string,
+    candidate?: InventoryRecheckCandidateRow,
   ): Promise<unknown>;
   recordInventoryUnavailable(
     db: QueryableDatabase,
@@ -69,10 +72,12 @@ interface InventoryRepository {
     failureCount: number,
     deactivate: boolean,
     evidence?: "missing" | "sold",
+    candidate?: InventoryRecheckCandidateRow,
   ): Promise<unknown>;
 }
 
 interface InventoryRecheckOptions {
+  expectedCandidate?: InventoryRecheckCandidateRow;
   saveDetailFacts?: typeof saveSellerDetailOfferFacts;
   now?: Date;
   fetchFn?: typeof fetch;
@@ -84,6 +89,7 @@ export type InventoryRecheckPreparation =
   | {
       status: "ready";
       targetUrl: string;
+      candidate: InventoryRecheckCandidateRow;
       userAgent: string;
       requestDelayMs: number;
     }
@@ -117,6 +123,18 @@ function inventoryDecision(
     observedAt,
     failureThreshold,
   });
+}
+
+function noChange(result: unknown): boolean {
+  return isRecord(result) && isRecord(result.meta) && result.meta.changes === 0;
+}
+function candidateChanged(candidate: InventoryRecheckCandidateRow): InventoryRecheckResult {
+  return {
+    status: "deferred",
+    reason: "candidate_changed",
+    productId: candidate.id,
+    sourceId: candidate.source_id,
+  };
 }
 
 function relayFailureReason(error: unknown): InventoryRecheckResult["reason"] {
@@ -174,6 +192,7 @@ export async function prepareShopInventoryRecheck(
   return {
     status: "ready",
     targetUrl: candidate.source_url,
+    candidate,
     userAgent: crawlerSettings.userAgent,
     requestDelayMs: getShopRequestDelayMs(env, plugin.definition, crawlerSettings.requestDelayMs),
   };
@@ -203,15 +222,19 @@ async function recordUnavailable(
     };
   const failureCount = decision.failureCount;
   const deactivate = decision.action === "deactivate_confirmed";
-  await repository.recordInventoryUnavailable(
+  const written = await repository.recordInventoryUnavailable(
     env.DB,
     candidate.id,
     attemptedAt,
     failureCount,
     deactivate,
     evidence,
+    candidate,
   );
+  if (noChange(written)) return candidateChanged(candidate);
   return {
+    stateChanged: deactivate || decision.stockStatus !== candidate.stock_status,
+    decisionReason: decision.reason,
     status: "checked",
     outcome: deactivate ? `${evidence}_deactivated` : `${evidence}_retry`,
     ...(httpStatus ? { httpStatus } : {}),
@@ -237,6 +260,7 @@ export async function recheckShopInventory(
     fetchPage,
     repository = defaultRepository,
     saveDetailFacts = saveSellerDetailOfferFacts,
+    expectedCandidate,
   }: InventoryRecheckOptions = {},
 ): Promise<InventoryRecheckResult> {
   const policy = plugin.capabilities.inventoryRecheck;
@@ -251,10 +275,16 @@ export async function recheckShopInventory(
   const attemptedAt = now.toISOString();
 
   try {
-    const candidate = await inventoryCandidate(env, plugin, now, repository);
+    const candidate = expectedCandidate ?? (await inventoryCandidate(env, plugin, now, repository));
     if (!candidate) return { status: "skipped", reason: "no_candidate" };
 
-    await repository.markInventoryCheckAttempt(env.DB, candidate.id, attemptedAt);
+    const claim = await repository.markInventoryCheckAttempt(
+      env.DB,
+      candidate.id,
+      attemptedAt,
+      candidate,
+    );
+    if (noChange(claim)) return candidateChanged(candidate);
 
     if (!policy.isDetailUrl(candidate.source_url)) {
       return {
@@ -299,6 +329,19 @@ export async function recheckShopInventory(
 
     const status = Number(page.status);
     if (status === 404 || status === 410) {
+      if (
+        !page.finalUrl ||
+        !(
+          policy.isEvidenceUrl?.(candidate.source_url, page.finalUrl) ??
+          candidate.source_url === page.finalUrl
+        )
+      )
+        return {
+          status: "deferred",
+          reason: "missing_identity_unverified",
+          productId: candidate.id,
+          sourceId: candidate.source_id,
+        };
       return recordUnavailable(
         repository,
         env,
@@ -341,8 +384,15 @@ export async function recheckShopInventory(
       };
     }
 
+    if (policy.isChallengePage?.(page.body))
+      return {
+        status: "deferred",
+        reason: "verification_challenge",
+        productId: candidate.id,
+        sourceId: candidate.source_id,
+      };
     const facts = policy.extractOfferFacts?.(page.body, attemptedAt);
-    if (facts != null) await saveDetailFacts(env.DB, candidate.id, facts);
+
     const classification = policy.classifyPage(page.body, {
       sourceId: candidate.source_id,
       sourceUrl: candidate.source_url,
@@ -363,23 +413,52 @@ export async function recheckShopInventory(
         sourceId: candidate.source_id,
       };
     if (decision.reason === "confirmed_available") {
-      await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);
+      const written = await repository.markInventoryAvailable(
+        env.DB,
+        candidate.id,
+        attemptedAt,
+        candidate,
+      );
+      if (noChange(written)) return candidateChanged(candidate);
+      if (facts != null) await saveDetailFacts(env.DB, candidate.id, facts);
       return {
         status: "checked",
         outcome: "in_stock",
+        stateChanged: decision.stockStatus !== candidate.stock_status,
+        decisionReason: decision.reason,
         productId: candidate.id,
         sourceId: candidate.source_id,
       };
     }
 
     if (classification === "sold_out") {
-      return recordUnavailable(repository, env, candidate, attemptedAt, settings, "sold", 200);
+      const result = await recordUnavailable(
+        repository,
+        env,
+        candidate,
+        attemptedAt,
+        settings,
+        "sold",
+        200,
+      );
+      if (result.status === "checked" && facts != null)
+        await saveDetailFacts(env.DB, candidate.id, facts);
+      return result;
     }
 
-    await repository.markInventoryAmbiguous(env.DB, candidate.id, attemptedAt);
+    const written = await repository.markInventoryAmbiguous(
+      env.DB,
+      candidate.id,
+      attemptedAt,
+      candidate,
+    );
+    if (noChange(written)) return candidateChanged(candidate);
+    if (facts != null) await saveDetailFacts(env.DB, candidate.id, facts);
     return {
       status: "checked",
       outcome: "ambiguous",
+      stateChanged: decision.stockStatus !== candidate.stock_status,
+      decisionReason: decision.reason,
       productId: candidate.id,
       sourceId: candidate.source_id,
     };

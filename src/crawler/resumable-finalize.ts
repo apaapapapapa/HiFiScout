@@ -163,6 +163,12 @@ export async function processFinalize(
     const result = await crawlShop(env, publishAdapter, {
       force: true,
       archiveSellerHtml: false,
+      collectionEvidence: {
+        fetchedPages: claimedSession.pages_fetched,
+        parsedPages: claimedSession.pages_parsed,
+        expectedPages: Math.min(claimedSession.max_pages, claimedSession.page_limit),
+        uncertainCoverage: Boolean(claimedSession.coverage_incomplete),
+      },
       ...(enrichmentDecidedAt ? { enrichmentDecidedAt } : {}),
       fetchFn: stagedFetch,
       ...(extract
@@ -192,7 +198,11 @@ export async function processFinalize(
       let finalResult: CrawlResult = { ...result, pageCount: claimedSession.pages_parsed };
       if (plugin.capabilities.inventoryRecheck) {
         const inventoryRecheck = await recheckShopInventory(env, plugin);
-        if (inventoryRecheck.status === "checked" && inventoryRecheck.sourceId) {
+        if (
+          inventoryRecheck.status === "checked" &&
+          inventoryRecheck.stateChanged &&
+          inventoryRecheck.sourceId
+        ) {
           await syncProductSearchEntities(env.DB, plugin.key, [inventoryRecheck.sourceId]);
         }
         finalResult = { ...finalResult, inventoryRecheck };
