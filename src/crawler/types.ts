@@ -142,6 +142,21 @@ export interface InventoryRecheckSettings {
   minListingAgeHours: number;
   intervalHours: number;
   failureThreshold: number;
+  /** Detail pages rechecked after one successful crawl, each behind its own paced permit. */
+  batchSize: number;
+}
+
+/** Expiry of listings a partial-coverage crawl has stopped seeing; disabled unless configured. */
+export interface StaleListingSettings {
+  enabled: boolean;
+  /** An `in_stock` listing unseen this long is downgraded to `unknown`. */
+  unknownAfterHours: number;
+  /** A listing unseen this long is deactivated. */
+  expireAfterHours: number;
+  /** Successful crawls the shop must have completed within the expiry window. */
+  minSuccessfulRuns: number;
+  /** Upper bound on listings each expiry step changes per crawl. */
+  batchSize: number;
 }
 
 export interface MaintenanceSettings {
@@ -183,7 +198,13 @@ export type ShopEnvSuffix =
   | "INVENTORY_RECHECK_ENABLED"
   | "INVENTORY_RECHECK_MIN_AGE_HOURS"
   | "INVENTORY_RECHECK_INTERVAL_HOURS"
-  | "INVENTORY_RECHECK_FAILURE_THRESHOLD";
+  | "INVENTORY_RECHECK_FAILURE_THRESHOLD"
+  | "INVENTORY_RECHECK_BATCH_SIZE"
+  | "STALE_LISTING_EXPIRY_ENABLED"
+  | "STALE_LISTING_EXPIRY_HOURS"
+  | "STALE_LISTING_UNKNOWN_HOURS"
+  | "STALE_LISTING_MIN_RUNS"
+  | "STALE_LISTING_BATCH_SIZE";
 
 /** Operational metadata attached to a plugin by `defineShopPlugin`. */
 export interface ShopDefinition {
@@ -197,6 +218,18 @@ export interface ShopDefinition {
   readonly defaultEnabled?: boolean;
   readonly scheduleCron?: string;
   readonly transportConfigurationRequired?: boolean;
+  /** Detail rechecks after one crawl once the shop's recheck is enabled; 1 when omitted. */
+  readonly defaultInventoryRecheckBatchSize?: number;
+  /** Stale-listing expiry the shop runs unless overridden; omitted means it never runs. */
+  readonly defaultStaleListingExpiry?: Readonly<StaleListingExpiryDefaults>;
+}
+
+/** A shop's stale-listing horizons; see {@link StaleListingSettings} for their meaning. */
+export interface StaleListingExpiryDefaults {
+  readonly expireAfterHours: number;
+  readonly unknownAfterHours?: number;
+  readonly minSuccessfulRuns?: number;
+  readonly batchSize?: number;
 }
 
 /** A definition as a shop writes it; `envPrefix` is always derived from the shop key. */
@@ -215,12 +248,26 @@ export interface InventoryRecheckPolicy {
   ): import("../catalog/types.js").OfferFact[] | null;
   /** Reject anything outside the shop's own detail-page URL contract. */
   isDetailUrl(value: string): boolean;
+  /**
+   * Stored `source_url` prefix that candidate selection reads, so listings whose URL can never pass
+   * {@link isDetailUrl} are not selected (and retried) at all.
+   */
+  readonly candidateUrlPrefix: string;
 
   /**
    * Maps detail-page evidence to the same canonical tri-state used by listing persistence.
-   * Contradictory or non-conclusive evidence must yield `"unknown"`.
+   * Contradictory or non-conclusive evidence must yield `"unknown"`. `listing` is the stored
+   * listing being rechecked, so a page that is not demonstrably about it can stay `"unknown"`.
    */
-  classifyPage(html: string): InventoryClassification;
+  classifyPage(html: string, listing?: InventoryRecheckListing): InventoryClassification;
+}
+
+/** The stored identity of the listing whose detail page is being classified. */
+export interface InventoryRecheckListing {
+  readonly sourceId: string;
+  readonly sourceUrl: string;
+  readonly title: string;
+  readonly model: string;
 }
 
 // ---------------------------------------------------------------------------

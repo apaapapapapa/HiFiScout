@@ -68,6 +68,11 @@ Use the coverage value deliberately:
 - `unknown`: the configured target set cannot prove whether it covers all seller inventory. Missing
   products are never deactivated.
 
+A `partial` or `unknown` shop that would otherwise keep sold listings public can add an
+`inventoryRecheck` capability and declare `defaultStaleListingExpiry`; see
+[stale-listing expiry](crawl-orchestration.md#stale-listing-expiry). Choose horizons longer than the
+longest time a still-listed product can go unseen by the shop's crawl.
+
 The platform owns the safety rules: it bounds target count using `maxPages` plus
 `policy.extraPageBudget`, validates every target against the shop's configured HTTPS origin, suppresses duplicate
 URLs, and tracks incomplete discovery. A shop must never fetch another listing page from inside
@@ -175,7 +180,8 @@ environment prefix and the platform reads:
 | `<PREFIX>_INTERVAL_MINUTES` | health and interval-based eligibility | `defaultIntervalMinutes` |
 | `<PREFIX>_REQUEST_DELAY_MS` | per-request pacing | `defaultRequestDelayMs`, else global |
 | `<PREFIX>_MAX_PAGES` | discovery ceiling | `defaultMaxPages`, else global |
-| `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings | off unless capability enabled |
+| `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings; `_BATCH_SIZE` rechecks per crawl | off unless capability enabled; batch `defaultInventoryRecheckBatchSize`, else 1 |
+| `<PREFIX>_STALE_LISTING_*` | stale-listing expiry horizons, run floor, batch and kill switch | `defaultStaleListingExpiry`, else off |
 
 Declare a value in `wrangler.jsonc` only when it differs from the default above; an enabled shop always
 declares its `<PREFIX>_ENABLED` kill switch. Workers Free accepts at most 64 variables per Worker

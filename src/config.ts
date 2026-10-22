@@ -5,6 +5,7 @@ import type {
   MaintenanceSettings,
   ShopDefinition,
   ShopEnvSuffix,
+  StaleListingSettings,
 } from "./crawler/types.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
 
@@ -53,6 +54,12 @@ const SHOP_ENV_SUFFIX_SET: Readonly<Record<ShopEnvSuffix, true>> = {
   INVENTORY_RECHECK_MIN_AGE_HOURS: true,
   INVENTORY_RECHECK_INTERVAL_HOURS: true,
   INVENTORY_RECHECK_FAILURE_THRESHOLD: true,
+  INVENTORY_RECHECK_BATCH_SIZE: true,
+  STALE_LISTING_EXPIRY_ENABLED: true,
+  STALE_LISTING_EXPIRY_HOURS: true,
+  STALE_LISTING_UNKNOWN_HOURS: true,
+  STALE_LISTING_MIN_RUNS: true,
+  STALE_LISTING_BATCH_SIZE: true,
 };
 
 /** Every setting suffix a registered shop can be configured with. */
@@ -147,6 +154,70 @@ export function getShopInventoryRecheckSettings(
     failureThreshold: Math.max(
       2,
       positiveInt(shopEnvValue(env, shop, "INVENTORY_RECHECK_FAILURE_THRESHOLD"), 2),
+    ),
+    batchSize: Math.min(
+      MAX_INVENTORY_RECHECK_BATCH_SIZE,
+      positiveInt(
+        shopEnvValue(env, shop, "INVENTORY_RECHECK_BATCH_SIZE"),
+        shop.defaultInventoryRecheckBatchSize ?? 1,
+      ),
+    ),
+  };
+}
+
+/** Rechecks after one crawl; each is a separate paced seller request on its own Alarm. */
+export const MAX_INVENTORY_RECHECK_BATCH_SIZE = 50;
+/**
+ * Listings each stale-expiry step may change after one crawl. Every one joins the crawl's derived
+ * work set, which defers to later invocations rather than overrunning one.
+ */
+export const MAX_STALE_LISTING_BATCH_SIZE = 200;
+const DEFAULT_STALE_LISTING_BATCH_SIZE = 50;
+
+/**
+ * Stale-listing expiry is opt-in per shop: a shop definition declares its horizons, and
+ * `<PREFIX>_STALE_LISTING_*` variables override them (`_ENABLED=false` is the kill switch). A
+ * listing the crawl still sees is touched at least once per touch interval, so neither horizon may
+ * come within twice that interval of the present (and never under two days): an unchanged listing
+ * that is merely waiting for its next touch must never look unseen.
+ */
+export function getShopStaleListingSettings(
+  env: CrawlerEnv | undefined,
+  shop: ShopDefinition,
+): StaleListingSettings {
+  const defaults = shop.defaultStaleListingExpiry;
+  const touchHours = Math.ceil(getCrawlerSettings(env).productTouchIntervalMinutes / 60);
+  const floorHours = Math.max(48, touchHours * 2);
+  const configured = positiveInt(
+    shopEnvValue(env, shop, "STALE_LISTING_EXPIRY_HOURS"),
+    defaults?.expireAfterHours ?? 0,
+  );
+  const expireAfterHours = Math.max(floorHours, configured);
+  const unknownAfterHours = Math.min(
+    expireAfterHours,
+    Math.max(
+      floorHours,
+      positiveInt(
+        shopEnvValue(env, shop, "STALE_LISTING_UNKNOWN_HOURS"),
+        defaults?.unknownAfterHours ?? Math.floor(expireAfterHours / 2),
+      ),
+    ),
+  );
+  return {
+    enabled:
+      configured > 0 && booleanFlag(shopEnvValue(env, shop, "STALE_LISTING_EXPIRY_ENABLED"), true),
+    unknownAfterHours,
+    expireAfterHours,
+    minSuccessfulRuns: positiveInt(
+      shopEnvValue(env, shop, "STALE_LISTING_MIN_RUNS"),
+      defaults?.minSuccessfulRuns ?? 3,
+    ),
+    batchSize: Math.min(
+      MAX_STALE_LISTING_BATCH_SIZE,
+      positiveInt(
+        shopEnvValue(env, shop, "STALE_LISTING_BATCH_SIZE"),
+        defaults?.batchSize ?? DEFAULT_STALE_LISTING_BATCH_SIZE,
+      ),
     ),
   };
 }

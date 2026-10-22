@@ -127,7 +127,9 @@ test("Lambda rejects non-listing Hifido URLs", async () => {
     sleepFn: async () => {},
   });
   const invalidUrls = [
-    "https://www.hifido.co.jp/26-50215-14039-00.html",
+    "https://www.hifido.co.jp/26-50215-14039-00.html?LNG=E",
+    "https://www.hifido.co.jp/sold/26-50215-14039-00.html",
+    "https://www.hifido.co.jp/26-50215-14039.html",
     "https://www.hifido.co.jp/?L=50&LNG=J&O=1&OD=0",
     "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0&KW=test",
   ];
@@ -422,6 +424,61 @@ test("Lambda permits Hifido listing fetches through the Tokyo relay", async () =
   assert.equal(Buffer.from(result.body, "base64").toString("utf8"), html);
   assert.equal(calls[0].url, "https://www.hifido.co.jp/robots.txt");
   assert.equal(calls[1].url, HIFIDO_URL);
+});
+
+test("Lambda follows Hifido's sold redirect for a product page over HTTPS only", async () => {
+  const detailUrl = "https://www.hifido.co.jp/26-50529-16848-00.html?LNG=J";
+  const requested: string[] = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      if (url === detailUrl) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "http://www.hifido.co.jp/sold/26-50529-16848-00.html" },
+        });
+      }
+      return new Response("<html>売約済み</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const sold = await handler(event({ url: detailUrl }));
+  assert.equal(sold.statusCode, 200);
+  assert.equal(Buffer.from(sold.body, "base64").toString("utf8"), "<html>売約済み</html>");
+  assert.ok(requested.includes("https://www.hifido.co.jp/sold/26-50529-16848-00.html"));
+  assert.equal(
+    requested.some((url) => url.startsWith("http:")),
+    false,
+    "no request is ever sent over plain HTTP",
+  );
+
+  // Any other plain-HTTP destination on the same host is still refused before it is requested.
+  const other: string[] = [];
+  const refusing = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      other.push(url);
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0" },
+      });
+    },
+  });
+  const refused = await refusing(event({ url: detailUrl }));
+  assert.equal(refused.statusCode, 502);
+  assert.equal(JSON.parse(refused.body).error, "redirect_rejected");
+  assert.equal(
+    other.some((url) => url.startsWith("http:")),
+    false,
+  );
 });
 
 test("Lambda refuses an explicitly disallowed AudioUnion path", async () => {

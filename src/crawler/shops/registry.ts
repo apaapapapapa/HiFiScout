@@ -118,10 +118,28 @@ function validatedDefinition(
   }
   assertNonNegativeInt(key, "defaultRequestDelayMs", input.defaultRequestDelayMs);
   assertPositiveInt(key, "defaultMaxPages", input.defaultMaxPages);
+  assertPositiveInt(
+    key,
+    "defaultInventoryRecheckBatchSize",
+    input.defaultInventoryRecheckBatchSize,
+  );
+  const expiry = input.defaultStaleListingExpiry;
+  if (expiry !== undefined) {
+    assertPositiveInt(key, "defaultStaleListingExpiry.expireAfterHours", expiry.expireAfterHours);
+    if (expiry.expireAfterHours === undefined)
+      invalid(key, "defaultStaleListingExpiry.expireAfterHours is required");
+    assertPositiveInt(key, "defaultStaleListingExpiry.unknownAfterHours", expiry.unknownAfterHours);
+    assertPositiveInt(key, "defaultStaleListingExpiry.minSuccessfulRuns", expiry.minSuccessfulRuns);
+    assertPositiveInt(key, "defaultStaleListingExpiry.batchSize", expiry.batchSize);
+  }
   if (input.scheduleCron !== undefined && !input.scheduleCron.trim()) {
     invalid(key, "scheduleCron must not be empty");
   }
-  return Object.freeze({ ...input, envPrefix });
+  return Object.freeze({
+    ...input,
+    ...(expiry ? { defaultStaleListingExpiry: Object.freeze({ ...expiry }) } : {}),
+    envPrefix,
+  });
 }
 
 function validateCapabilities<TPage extends CrawlPage>(

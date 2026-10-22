@@ -310,14 +310,14 @@ test("shop-owned deployed variables are discovered from shop modules, not a cent
 
 test("capability-scoped settings are readable only for shops that declare the capability", () => {
   const audioUnion = SHOP_PLUGINS.find((plugin) => plugin.key === "audiounion");
-  const fujiya = SHOP_PLUGINS.find((plugin) => plugin.key === "fujiya-avic");
+  const ippinkan = SHOP_PLUGINS.find((plugin) => plugin.key === "ippinkan");
   assert.ok(audioUnion);
-  assert.ok(fujiya);
+  assert.ok(ippinkan);
   assert.ok(
     platformReadableShopEnvVars(audioUnion).includes("AUDIOUNION_INVENTORY_RECHECK_ENABLED"),
   );
   assert.equal(
-    platformReadableShopEnvVars(fujiya).includes("FUJIYA_AVIC_INVENTORY_RECHECK_ENABLED"),
+    platformReadableShopEnvVars(ippinkan).includes("IPPINKAN_INVENTORY_RECHECK_ENABLED"),
     false,
   );
 });
@@ -390,7 +390,11 @@ test("shop-specific behavior is opt-in capability metadata", () => {
       const policy = plugin.capabilities.inventoryRecheck;
       assert.equal(typeof policy.isDetailUrl, "function");
       assert.equal(typeof policy.classifyPage, "function");
-      assert.equal(plugin.capabilities.transport?.kind, "relay");
+      // Candidate selection may only read listings on the shop's own origin.
+      assert.ok(
+        policy.candidateUrlPrefix.startsWith(`${plugin.baseUrl}/`),
+        `${plugin.key} recheck prefix ${policy.candidateUrlPrefix}`,
+      );
     }
     if (plugin.definition.transportConfigurationRequired) {
       assert.ok(

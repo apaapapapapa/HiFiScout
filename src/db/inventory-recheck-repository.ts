@@ -4,35 +4,61 @@ import type { InventoryRecheckCandidateRow, QueryableDatabase } from "./types.js
 interface InventoryCandidateWindow {
   staleBefore: string;
   retryBefore: string;
+  /** Only listings whose stored `source_url` starts with this prefix are candidates. */
+  candidateUrlPrefix: string;
 }
 
 /** Partial (`is_active = 1`) index on `(shop_key, last_inventory_check_attempt_at, last_seen_at)`. */
 const ATTEMPT_INDEX = "idx_products_inventory_recheck_attempt";
-const RECHECKABLE_URL = "source_url LIKE 'https://www.audiounion.jp/ct/detail/used/%'";
+/** Partial (`is_active = 1 AND inventory_check_failures > 0`) index, same columns as the attempt one. */
+const CONFIRM_INDEX = "idx_products_inventory_recheck_confirm";
+const RECHECKABLE_URL = "source_url LIKE ? ESCAPE '\\'";
+
+/** A LIKE pattern matching exactly the strings that start with `prefix`. */
+function prefixPattern(prefix: string): string {
+  return `${prefix.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
 
 /**
- * The shop's next listing to recheck: never-attempted listings first, then the oldest attempt;
- * ties fall to the oldest `last_seen_at`, then the lowest id.
+ * The shop's next listing to recheck: a listing whose last recheck found it unavailable first,
+ * then never-attempted listings, then the oldest attempt; ties fall to the oldest `last_seen_at`,
+ * then the lowest id.
  *
- * SQLite already sorts NULL attempts first, so that order is exactly the attempt index's own
- * `(attempt, last_seen_at, rowid)` order. It is read as two seeks rather than one walk because a
+ * A single unavailable observation never deactivates a listing, so its confirmation is what turns
+ * a sold listing into a removed one. Queued behind the whole never-attempted backlog and every older
+ * attempt, that confirmation would wait for the rotation to come round again, which is the window
+ * in which a sold listing stays public. The confirmation seek reads a partial index holding only
+ * listings that carry a failure, ordered by attempt, and stops at `retryBefore`.
+ *
+ * SQLite already sorts NULL attempts first, so the remaining order is exactly the attempt index's
+ * own `(attempt, last_seen_at, rowid)` order. It is read as two seeks rather than one walk because a
  * single walk would step over every recently seen never-attempted listing before reaching an
  * attempted one. The never-attempted seek is bounded by `last_seen_at`; the attempted one stops at
  * `retryBefore`, so listings checked within the retry interval are never visited. `COALESCE`
- * evaluates the second seek only when the first finds nothing.
+ * evaluates each later seek only when the earlier ones find nothing.
  */
 export async function selectInventoryRecheckCandidate(
   db: QueryableDatabase,
   shopKey: string,
-  { staleBefore, retryBefore }: InventoryCandidateWindow,
+  { staleBefore, retryBefore, candidateUrlPrefix }: InventoryCandidateWindow,
 ): Promise<InventoryRecheckCandidateRow | null> {
+  const pattern = prefixPattern(candidateUrlPrefix);
   return firstMeasured<InventoryRecheckCandidateRow>(
     db
       .prepare(`
-    SELECT id, source_id, source_url, last_seen_at, last_inventory_checked_at,
+    SELECT id, source_id, source_url, title, model, last_seen_at, last_inventory_checked_at,
            last_inventory_check_attempt_at, inventory_check_failures
     FROM products
     WHERE id = COALESCE(
+      (SELECT id FROM products INDEXED BY ${CONFIRM_INDEX}
+        WHERE shop_key = ?
+          AND is_active = 1
+          AND inventory_check_failures > 0
+          AND last_inventory_check_attempt_at <= ?
+          AND last_seen_at <= ?
+          AND ${RECHECKABLE_URL}
+        ORDER BY last_inventory_check_attempt_at ASC, last_seen_at ASC, id ASC
+        LIMIT 1),
       (SELECT id FROM products INDEXED BY ${ATTEMPT_INDEX}
         WHERE shop_key = ?
           AND is_active = 1
@@ -51,7 +77,19 @@ export async function selectInventoryRecheckCandidate(
         LIMIT 1)
     )
   `)
-      .bind(shopKey, staleBefore, shopKey, retryBefore, staleBefore),
+      .bind(
+        shopKey,
+        retryBefore,
+        staleBefore,
+        pattern,
+        shopKey,
+        staleBefore,
+        pattern,
+        shopKey,
+        retryBefore,
+        staleBefore,
+        pattern,
+      ),
   );
 }
 

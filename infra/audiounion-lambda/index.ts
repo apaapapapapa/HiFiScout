@@ -206,7 +206,7 @@ async function fetchValidatedUpstream(
     const location = response.headers.get("location")?.trim();
     if (!location) throw new RedirectRejectedError("redirect response had no Location header");
     try {
-      target = new URL(location, href);
+      target = upgradedKnownRedirect(new URL(location, href));
     } catch {
       throw new RedirectRejectedError("redirect Location is not a resolvable URL");
     }
@@ -438,10 +438,49 @@ function isAllowedHifidoUrl(url: URL): boolean {
   return Number.isSafeInteger(offset) && offset >= 0 && offset % 30 === 0;
 }
 
+const HIFIDO_DETAIL_PATH = /^\/\d{2}-\d{5}-\d{5}-\d{2}\.html$/;
+const HIFIDO_SOLD_PATH = /^\/sold\/\d{2}-\d{5}-\d{5}-\d{2}\.html$/;
+
+/** Exact Hifido product pages, used by inventory recheck: `/<id>.html` or `/<id>.html?LNG=J`. */
+function isAllowedHifidoDetailUrl(url: URL): boolean {
+  return (
+    url.protocol === "https:" &&
+    url.hostname === HIFIDO_HOST &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === "" &&
+    HIFIDO_DETAIL_PATH.test(url.pathname) &&
+    (url.search === "" || url.search === "?LNG=J") &&
+    url.hash === ""
+  );
+}
+
 function isAllowedTarget(requestedUrl: URL, env: RelayEnv): boolean {
   if (requestedUrl.toString() === configuredEntryUrl(env)) return true;
   if (isAllowedAudioUnionDetailUrl(requestedUrl)) return true;
+  if (isAllowedHifidoDetailUrl(requestedUrl)) return true;
   return isAllowedHifidoUrl(requestedUrl);
+}
+
+/**
+ * Hifido moves a sold product page to `/sold/<id>.html` with an absolute `http://` Location on its
+ * own host. That one destination is requested over HTTPS instead (the page is served there too);
+ * every other plain-HTTP destination is still rejected by {@link assertAllowedUpstream}.
+ */
+function upgradedKnownRedirect(target: URL): URL {
+  if (
+    target.protocol === "http:" &&
+    target.hostname === HIFIDO_HOST &&
+    target.port === "" &&
+    !target.username &&
+    !target.password &&
+    HIFIDO_SOLD_PATH.test(target.pathname)
+  ) {
+    const upgraded = new URL(target.toString());
+    upgraded.protocol = "https:";
+    return upgraded;
+  }
+  return target;
 }
 
 function safeUserAgent(value: unknown, fallback?: string): string {

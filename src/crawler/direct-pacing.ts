@@ -1,7 +1,7 @@
 import { decodeHtmlResponse } from "./fetch.js";
 import { createRobotsGate, fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
 import { allowedOriginSet, fetchFollowingValidatedRedirects } from "./redirects.js";
-import type { AugmentedCrawlError, RobotsCache } from "./types.js";
+import type { AugmentedCrawlError, RelayPage, RobotsCache } from "./types.js";
 
 const CRAWL_HTTP_TIMEOUT_MS = 30_000;
 
@@ -55,8 +55,19 @@ export async function prepareDirectFetchPermit(
   };
 }
 
-/** Fetches the exact target authorized by a prepared permit without introducing any sleep. */
-export async function fetchPreparedDirectHtmlPage(
+interface PreparedDirectRequestOptions {
+  userAgent: string;
+  fetchFn?: typeof fetch;
+  nowMs?: number;
+  allowedRedirectOrigins?: readonly string[];
+  robotsCache?: RobotsCache;
+}
+
+/**
+ * Requests the exact target authorized by a prepared permit without introducing any sleep, and
+ * returns the final response of its validated redirect chain together with the chain's deadline.
+ */
+async function requestPreparedDirect(
   permit: DirectFetchPermit,
   targetUrl: string,
   {
@@ -65,14 +76,8 @@ export async function fetchPreparedDirectHtmlPage(
     nowMs = Date.now(),
     allowedRedirectOrigins = [],
     robotsCache = new Map(),
-  }: {
-    userAgent: string;
-    fetchFn?: typeof fetch;
-    nowMs?: number;
-    allowedRedirectOrigins?: readonly string[];
-    robotsCache?: RobotsCache;
-  },
-): Promise<string> {
+  }: PreparedDirectRequestOptions,
+): Promise<{ response: Response; deadline: AbortSignal }> {
   if (targetUrl !== permit.targetUrl || userAgent !== permit.userAgent) {
     throw new Error("direct fetch permit identity mismatch");
   }
@@ -109,6 +114,16 @@ export async function fetchPreparedDirectHtmlPage(
       },
     },
   );
+  return { response, deadline };
+}
+
+/** Fetches the exact target authorized by a prepared permit without introducing any sleep. */
+export async function fetchPreparedDirectHtmlPage(
+  permit: DirectFetchPermit,
+  targetUrl: string,
+  options: PreparedDirectRequestOptions,
+): Promise<string> {
+  const { response, deadline } = await requestPreparedDirect(permit, targetUrl, options);
   if (response.status === 403 || response.status === 429) {
     const error: AugmentedCrawlError = new Error(`crawl blocked with HTTP ${response.status}`);
     error.status = response.status;
@@ -120,4 +135,27 @@ export async function fetchPreparedDirectHtmlPage(
     throw new Error(`unexpected content type: ${contentType}`);
   }
   return decodeHtmlResponse(response, { signal: deadline });
+}
+
+/**
+ * Fetches a prepared target and reports its outcome instead of failing on a non-success status, in
+ * the same shape the Relay returns. Inventory recheck reads a 404 as evidence, not as an error; only
+ * a 200 HTML body is read, and every other body is released unread.
+ */
+export async function fetchPreparedDirectPage(
+  permit: DirectFetchPermit,
+  targetUrl: string,
+  options: PreparedDirectRequestOptions,
+): Promise<RelayPage> {
+  const { response, deadline } = await requestPreparedDirect(permit, targetUrl, options);
+  const contentType = response.headers.get("content-type") || "";
+  if (response.status !== 200 || !contentType.toLowerCase().includes("text/html")) {
+    await response.body?.cancel().catch(() => {});
+    return { status: response.status, contentType, body: "" };
+  }
+  return {
+    status: response.status,
+    contentType,
+    body: await decodeHtmlResponse(response, { signal: deadline }),
+  };
 }

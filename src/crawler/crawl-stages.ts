@@ -13,6 +13,7 @@ export type CrawlStage =
   | "manufacturer_resolution"
   | "category_enrichment"
   | "listing_write"
+  | "stale_listing_expiry"
   | "search_projection"
   | "identity_resolution"
   | "search_entity"
