@@ -21,7 +21,6 @@ import {
 const NOW = "2026-10-22T00:00:00.000Z";
 const EXPIRY = {
   unknownBefore: "2026-10-08T00:00:00.000Z",
-  deactivateBefore: "2026-10-01T00:00:00.000Z",
   limit: 50,
 };
 const FRESH = "2026-10-21T00:00:00.000Z";
@@ -70,7 +69,7 @@ async function state(db: QueryableDatabase, sourceId: string, shop = "shop") {
     .first<{ is_active: number; stock_status: string; last_changed_at: string }>();
 }
 
-test("expiry deactivates long-unseen listings and downgrades aging in-stock ones only", async () => {
+test("expiry never deactivates without sale evidence, even after 30 days", async () => {
   const { db, dispose } = await database();
   try {
     await insertListings(db, "ancient-", 2, { seen: ANCIENT });
@@ -88,13 +87,11 @@ test("expiry deactivates long-unseen listings and downgrades aging in-stock ones
 
     const result = await expireStaleListings(db, "shop", EXPIRY, new Set(["observed-1"]), NOW);
 
-    assert.deepEqual(
-      new Set(result.deactivatedSourceIds),
-      new Set(["ancient-1", "ancient-2", "ancient-sold-1", "failing-1", "old-check-1"]),
-    );
-    assert.deepEqual(new Set(result.unknownSourceIds), new Set(["aging-1", "aging-2"]));
-    for (const id of result.deactivatedSourceIds) assert.equal((await state(db, id))?.is_active, 0);
-    for (const id of ["aging-1", "aging-2"]) {
+    assert.deepEqual(result.deactivatedSourceIds, []);
+    const unknownIds = ["ancient-1", "ancient-2", "failing-1", "old-check-1", "aging-1", "aging-2"];
+    assert.deepEqual(new Set(result.unknownSourceIds), new Set(unknownIds));
+    assert.equal((await state(db, "ancient-sold-1"))?.is_active, 1);
+    for (const id of unknownIds) {
       const row = await state(db, id);
       assert.equal(row?.is_active, 1);
       assert.equal(row?.stock_status, "unknown");
@@ -125,11 +122,9 @@ test("expiry changes at most its limit per step, oldest first", async () => {
     await insertListings(db, "older-", 3, { seen: "2026-08-01T00:00:00.000Z" });
     await insertListings(db, "aging-", 5, { seen: AGING });
     const result = await expireStaleListings(db, "shop", { ...EXPIRY, limit: 3 }, new Set(), NOW);
-    assert.deepEqual(
-      new Set(result.deactivatedSourceIds),
-      new Set(["older-1", "older-2", "older-3"]),
-    );
+    assert.deepEqual(new Set(result.unknownSourceIds), new Set(["older-1", "older-2", "older-3"]));
     assert.equal(result.unknownSourceIds.length, 3);
+    assert.deepEqual(result.deactivatedSourceIds, []);
   } finally {
     await dispose();
   }
@@ -142,7 +137,7 @@ test("expiry seeks the active last-seen index without sorting or scanning the sh
     await insertListings(inner, "ancient-", 1, { seen: ANCIENT });
     await insertListings(inner, "aging-", 1, { seen: AGING });
     await expireStaleListings(db, "shop", EXPIRY, new Set(), NOW);
-    assert.equal(selects(executed).length, 2);
+    assert.equal(selects(executed).length, 1);
     assertNoGrowingTableScans(sqlite, executed, { label: "stale listing expiry" });
     assertNoSortBeforeLimit(sqlite, executed, "stale listing expiry");
     for (const statement of selects(executed)) {
@@ -180,17 +175,17 @@ test("expiry reads the stale listings, not the shop's recently seen inventory", 
       const result = await expireStaleListings(boundary.db, "shop", EXPIRY, new Set(), NOW);
       const cost = boundary.metrics();
       console.log(JSON.stringify({ sample: `crawl-expire-stale-${size}`, ...cost }));
-      assert.equal(result.deactivatedSourceIds.length, STALE);
+      assert.equal(result.deactivatedSourceIds.length, 0);
       assert.equal(result.unknownSourceIds.length, STALE);
-      assert.equal(cost.sqlStatements, 4, JSON.stringify(cost));
+      assert.equal(cost.sqlStatements, 2, JSON.stringify(cost));
       reads.push(cost.rowsRead ?? -1);
       await recordCostSample(`crawl-expire-stale-${size}`, "local-workerd", cost, fixture, [
         `${STALE} long-unseen and ${STALE} aging in-stock listings among ${size} recently seen active listings of the same shop; real migrated D1.`,
       ]);
-      // The aging listings stay active as `unknown`; retire them so the next size starts alike.
+      // Reset both cohorts outside measurement so every size has identical stale inventory.
       await db
-        .prepare("UPDATE products SET is_active = 0 WHERE source_id LIKE ?")
-        .bind(`aging-${size}-%`)
+        .prepare("UPDATE products SET is_active = 0 WHERE source_id LIKE ? OR source_id LIKE ?")
+        .bind(`aging-${size}-%`, `ancient-${size}-%`)
         .run();
     }
     assert.ok(Math.max(...reads) - Math.min(...reads) <= 2, `reads grew: ${reads}`);

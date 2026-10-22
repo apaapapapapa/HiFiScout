@@ -151,7 +151,7 @@ export interface StaleListingSettings {
   enabled: boolean;
   /** An `in_stock` listing unseen this long is downgraded to `unknown`. */
   unknownAfterHours: number;
-  /** A listing unseen this long is deactivated. */
+  /** Legacy configuration horizon; elapsed time never authorizes deactivation. */
   expireAfterHours: number;
   /** Successful crawls the shop must have completed within the expiry window. */
   minSuccessfulRuns: number;
@@ -203,6 +203,7 @@ export type ShopEnvSuffix =
   | "STALE_LISTING_EXPIRY_ENABLED"
   | "STALE_LISTING_EXPIRY_HOURS"
   | "STALE_LISTING_UNKNOWN_HOURS"
+  | "STALE_LISTING_UNKNOWN_ENABLED"
   | "STALE_LISTING_MIN_RUNS"
   | "STALE_LISTING_BATCH_SIZE";
 

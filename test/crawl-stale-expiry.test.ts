@@ -119,24 +119,25 @@ function state(sqlite: ReturnType<typeof migratedSqlite>["sqlite"], sourceId: st
   };
 }
 
-test("a partial crawl expires listings it has long stopped seeing and owes their derived work", async () => {
+test("a partial crawl marks old stock unknown without ending listings and owes their derived work", async () => {
   const { sqlite, db } = await seededShop(2);
   const result = await crawl(db, [listing("seen")], EXPIRY_ENV);
 
   assert.equal(result.status, "success");
   assert.equal(result.status === "success" && result.deactivateMissing, false);
-  assert.equal(result.status === "success" && result.deactivatedCount, 1);
-  assert.deepEqual(state(sqlite, "ancient"), { is_active: 0, stock_status: "in_stock" });
+  assert.equal(result.status === "success" && result.deactivatedCount, 0);
+  assert.deepEqual(state(sqlite, "ancient"), { is_active: 1, stock_status: "unknown" });
   assert.deepEqual(state(sqlite, "aging"), { is_active: 1, stock_status: "unknown" });
   assert.deepEqual(state(sqlite, "seen"), { is_active: 1, stock_status: "in_stock" });
   const message = sqlite
     .prepare("SELECT message FROM crawl_runs WHERE shop_key = ? ORDER BY id DESC LIMIT 1")
     .get(SHOP) as { message: string };
-  assert.match(message.message, /stale_expiry=\{"deactivated":1,"unknown":1\}/);
+  assert.match(message.message, /stale_expiry=\{"deactivated":0,"unknown":2\}/);
 
-  // A later sighting restores the aging listing from seller evidence.
-  await crawl(db, [listing("seen"), listing("aging")], EXPIRY_ENV);
+  // A later sighting restores both stale cohorts from seller evidence.
+  await crawl(db, [listing("seen"), listing("aging"), listing("ancient")], EXPIRY_ENV);
   assert.deepEqual(state(sqlite, "aging"), { is_active: 1, stock_status: "in_stock" });
+  assert.deepEqual(state(sqlite, "ancient"), { is_active: 1, stock_status: "in_stock" });
 });
 
 test("expiry waits until the shop's recent crawls have kept succeeding", async () => {
@@ -172,6 +173,21 @@ test("stale-listing settings come from the shop definition, with floors, overrid
   );
   assert.equal(
     getShopStaleListingSettings(vars({ HIFIDO_STALE_LISTING_EXPIRY_ENABLED: "false" }), hifido)
+      .enabled,
+    false,
+  );
+  assert.equal(
+    getShopStaleListingSettings(
+      vars({
+        HIFIDO_STALE_LISTING_EXPIRY_ENABLED: "false",
+        HIFIDO_STALE_LISTING_UNKNOWN_ENABLED: "true",
+      }),
+      hifido,
+    ).enabled,
+    true,
+  );
+  assert.equal(
+    getShopStaleListingSettings(vars({ HIFIDO_STALE_LISTING_UNKNOWN_ENABLED: "false" }), hifido)
       .enabled,
     false,
   );

@@ -60,22 +60,21 @@ finalization refreshes the affected listing's public search projection.
 
 ## Stale-listing expiry
 
-A partial or unknown-coverage crawl never deactivates a listing for being absent. A shop whose
-definition declares `defaultStaleListingExpiry` (overridable through `<PREFIX>_STALE_LISTING_*`, with
-`_EXPIRY_ENABLED=false` as the kill switch) instead ages listings out after a successful crawl:
+Partial/unknown-coverage crawls never end a listing merely because time passed. Stage A changes
+old `in_stock` listings to `unknown`; Stage B belongs to the independent inventory recheck, which
+requires repeated missing/sold detail-page evidence. Complete-coverage `deactivateMissing` is unchanged.
 
-- an `in_stock` listing unseen beyond the unknown horizon becomes `unknown`;
-- a listing unseen beyond the expiry horizon is deactivated.
+Stage A uses the shop's `defaultStaleListingExpiry` unknown horizon and bounded batch. Its
+`<PREFIX>_STALE_LISTING_UNKNOWN_ENABLED` flag defaults to the legacy `_STALE_LISTING_EXPIRY_ENABLED`
+flag for compatibility. Stage B uses `<PREFIX>_INVENTORY_RECHECK_ENABLED`. The legacy expiry-hours
+setting remains accepted but never authorizes deactivation. The next normal sighting restores a
+listing from seller evidence; changed listings join the existing derived work set.
 
-Both run only when the shop completed its configured number of successful crawls within the
-unknown horizon, so an outage never ages the inventory out, and never touch a listing the running
-crawl observed. A detail recheck newer than the horizon that did not find the listing unavailable
-vouches for it. Neither horizon may come within twice the product touch interval (and never under
-two days). Each step changes a bounded batch of the oldest-seen listings through the active
-last-seen index; the changed listings join the crawl's derived work set like any other deactivation.
-The next sighting rewrites a listing from seller evidence, so both steps are reversible. Each
-shop's horizons must outlast the longest time its crawl can leave a still-listed page unvisited;
-`test/crawl-stale-expiry.test.ts` checks this for Hifido's clock-driven rotation.
+Stage A currently requires the configured recent-success count, excludes this crawl's observations,
+and retains the recent-detail-check guard. The subsequent evidence/quality hardening separates
+confirmed availability from ambiguous checks and strengthens collection-quality gating. The unknown
+horizon cannot be shorter than twice the touch interval (minimum two days); Hifido's rotation-gap
+regression remains mandatory.
 
 ## Daily shop schedules
 
