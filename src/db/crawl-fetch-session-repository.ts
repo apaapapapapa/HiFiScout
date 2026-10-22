@@ -2,6 +2,10 @@ import type { CrawlPage } from "../crawler/types.js";
 import type { CrawlFetchProgress } from "./crawl-fetch-progress.js";
 import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
+import {
+  DETAIL_PAGE_KEY_PREFIX,
+  EVIDENCE_PAGE_KEY_PREFIX,
+} from "./crawl-fetch-detail-repository.js";
 
 export type CrawlFetchSessionStatus = "collecting" | "finalizing" | "completed" | "failed";
 export type CrawlFetchPageState = "pending" | "fetched" | "parsed" | "ignored";
@@ -207,7 +211,7 @@ export async function listCrawlFetchPages(
   return result.results || [];
 }
 
-/** Two index endpoints describe this run's dense frontier without reading seller payloads. */
+/** Seek this run's listing endpoints, skipping its bounded appended category-detail rows. */
 export async function crawlFetchPlanSummary(
   db: QueryableDatabase,
   runId: string,
@@ -215,15 +219,17 @@ export async function crawlFetchPlanSummary(
   const row = await firstMeasured<{ page_key: string; expected_pages: number }>(
     db
       .prepare(`
-        SELECT page_key, (
-          SELECT COALESCE(MAX(ordinal), -1) + 1 FROM crawl_fetch_pages WHERE run_id = ?
-        ) AS expected_pages
+        SELECT page_key, COALESCE((
+          SELECT ordinal + 1 FROM crawl_fetch_pages
+          WHERE run_id = ? AND page_key NOT GLOB ? AND page_key NOT GLOB ?
+          ORDER BY ordinal DESC LIMIT 1
+        ), 0) AS expected_pages
         FROM crawl_fetch_pages
         WHERE run_id = ?
         ORDER BY ordinal ASC
         LIMIT 1
       `)
-      .bind(runId, runId),
+      .bind(runId, `${DETAIL_PAGE_KEY_PREFIX}*`, `${EVIDENCE_PAGE_KEY_PREFIX}*`, runId),
   );
   return { firstPageKey: row?.page_key ?? null, expectedPages: row?.expected_pages ?? 0 };
 }
