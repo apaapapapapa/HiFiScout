@@ -118,9 +118,14 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/crawler/crawl-scheduler*",
       "src/crawler/crawl-continuation.ts",
       "src/crawler/direct-pacing.ts",
+      "src/crawler/relay.ts",
       "src/crawler/resumable-*",
     ],
-    suites: ["test/crawl-do-collection-progress.test.ts", "test/crawl-do-inventory-batch.test.ts"],
+    suites: [
+      "test/crawl-do-collection-progress.test.ts",
+      "test/crawl-do-inventory-batch.test.ts",
+      "test/relay.test.ts",
+    ],
     samples: {
       "crawl-do-retry": { environment: "local-mock", limits: { doAlarms: 3, doStorageWrites: 2 } },
     },

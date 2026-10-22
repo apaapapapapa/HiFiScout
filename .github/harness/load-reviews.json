@@ -3693,8 +3693,8 @@
       "id": "load-contracts",
       "baseSha": "b06f4ca8331df3a9688f8afed30e967361a7326a",
       "beforeDigest": "a795c5d3f98f15f8bf2cb6591e512f7373acee8a67c9c3d3f0321e2f18acea6c",
-      "afterDigest": "c098710715e6d29c04237a458854bbc4b20fefe9f721d9e4bbfee2081302c2d2",
-      "reason": "Register the collection-quality policy and the real-D1 scheduler snapshot/permit and collection-safety regressions under inventory recheck. Clarify PREPARE selection versus FETCH primary-key fencing. Existing samples, budget ceilings and regression gates are unchanged; this adds coverage without waivers.",
+      "afterDigest": "c06bab6ac0e4295ac324a2490383f1135a34c19db9be6329dd5f4cf0b47cf17c",
+      "reason": "Register the collection-quality policy and the real-D1 scheduler snapshot/permit and collection-safety regressions under inventory recheck. Clarify PREPARE selection versus FETCH primary-key fencing. Existing samples, budget ceilings and regression gates are unchanged; this adds coverage without waivers. Register relay final-URL propagation with crawl recovery and its relay regression suite; no I/O or load ceilings change.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
       ]
