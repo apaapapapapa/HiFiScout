@@ -97,12 +97,14 @@ export async function selectInventoryRecheckCandidate(
 function inventoryFence(candidate?: InventoryRecheckCandidateRow, attemptedAt?: string) {
   if (!candidate) return { sql: "", values: [] as (string | number | null)[] };
   return {
-    sql: ` AND source_id = ? AND source_url = ? AND last_seen_at = ? AND last_changed_at = ?
+    sql: ` AND source_id = ? AND source_url = ? AND title = ? AND model = ? AND last_seen_at = ? AND last_changed_at = ?
       AND stock_status = ? AND last_inventory_checked_at IS ? AND inventory_check_failures = ?
       AND last_confirmed_available_at IS ? AND last_inventory_check_attempt_at IS ?`,
     values: [
       candidate.source_id,
       candidate.source_url,
+      candidate.title,
+      candidate.model,
       candidate.last_seen_at,
       candidate.last_changed_at,
       candidate.stock_status,

@@ -333,3 +333,23 @@ test("HTTP 200 WAF challenge defers without clearing earlier sold confirmation",
   });
   assert.equal(h.stored.has(STORAGE_KEY), false);
 });
+
+test("metadata-only identity changes fence a prepared inventory result", async () => {
+  const h = await harness({ batchSize: "1", listings: 1 });
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/robots.txt")) return new Response("", { status: 404 });
+    // Metadata corrections need not advance the listing's price/stock change timestamp.
+    h.sqlite.exec("UPDATE products SET title='Shure SE-200',model='SE-200' WHERE source_id='g1'");
+    return new Response("<h1>Shure SE-100</h1><p>在庫がありません</p>", {
+      headers: { "content-type": "text/html" },
+    });
+  });
+  await h.alarm();
+  h.advance(1000);
+  await h.alarm();
+  assert.deepEqual(h.row(1), {
+    is_active: 1,
+    stock_status: "in_stock",
+    inventory_check_failures: 0,
+  });
+});
