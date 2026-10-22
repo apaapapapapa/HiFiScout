@@ -13,6 +13,11 @@ import {
 import { isCrawlQuietHours } from "../src/crawler/crawl-window.js";
 import { hifidoRecheckPage } from "../src/crawler/shops/hifido.js";
 import { crawlShop } from "../src/crawler/run.js";
+import { processFinalize } from "../src/crawler/resumable-finalize.js";
+import {
+  ensureCrawlFetchSession,
+  getCrawlFetchSession,
+} from "../src/db/crawl-fetch-session-repository.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
 import type { CrawlerEnv, ShopPlugin } from "../src/crawler/types.js";
@@ -146,6 +151,66 @@ test("expiry waits until the shop's recent crawls have kept succeeding", async (
   await crawl(db, [listing("seen")], EXPIRY_ENV);
   assert.deepEqual(state(sqlite, "ancient"), { is_active: 1, stock_status: "in_stock" });
   assert.deepEqual(state(sqlite, "aging"), { is_active: 1, stock_status: "in_stock" });
+});
+
+test("staged collection uses its real page plan rather than the maximum page budget", async () => {
+  for (const incomplete of [false, true]) {
+    const { sqlite, db } = await seededShop(2);
+    const at = new Date().toISOString();
+    const runId = `planned-pages-${incomplete}`;
+    await ensureCrawlFetchSession(db, {
+      runId,
+      shopKey: SHOP,
+      requestedAt: at,
+      maxPages: 50,
+      pageLimit: 50,
+      createdAt: at,
+      pages: [
+        { key: LISTING_PAGE, page: LISTING_PAGE, ordinal: 0 },
+        ...(incomplete
+          ? [{ key: `${LISTING_PAGE}page2`, page: `${LISTING_PAGE}page2`, ordinal: 1 }]
+          : []),
+      ],
+    });
+    sqlite
+      .prepare(
+        "UPDATE crawl_fetch_pages SET state = 'parsed', products_json = ?, item_count = 1 WHERE run_id = ? AND ordinal = 0",
+      )
+      .run(JSON.stringify([listing("seen")]), runId);
+    sqlite
+      .prepare(
+        "UPDATE crawl_fetch_sessions SET pages_fetched = 1, pages_parsed = 1, next_phase = 'finalize', next_page_key = NULL WHERE run_id = ?",
+      )
+      .run(runId);
+    const session = await getCrawlFetchSession(db, runId);
+    assert.ok(session);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response("nf", { status: 404 });
+    try {
+      await processFinalize(
+        {
+          DB: db,
+          DYNAMIC_AUDIO_REQUEST_DELAY_MS: "0",
+          CRAWL_MIN_ITEM_BASELINE: "100000",
+          ...EXPIRY_ENV,
+        } as unknown as Parameters<typeof processFinalize>[0],
+        adapterFor([listing("seen")]),
+        session,
+        {},
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assert.deepEqual(state(sqlite, "ancient"), {
+      is_active: 1,
+      stock_status: incomplete ? "in_stock" : "unknown",
+    });
+    const row = sqlite
+      .prepare("SELECT message FROM crawl_runs WHERE shop_key = ? ORDER BY id DESC LIMIT 1")
+      .get(SHOP) as { message: string };
+    if (incomplete) assert.match(row.message, /coverage_unreliable/);
+    else assert.match(row.message, /stale_expiry=\{"deactivated":0,"unknown":2\}/);
+  }
 });
 
 test("expiry is off unless the shop configures it", async () => {

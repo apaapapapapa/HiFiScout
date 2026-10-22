@@ -207,23 +207,25 @@ export async function listCrawlFetchPages(
   return result.results || [];
 }
 
-/** First listing-page key without materializing every staged row and its seller payload. */
-export async function firstCrawlFetchPageKey(
+/** Two index endpoints describe this run's dense frontier without reading seller payloads. */
+export async function crawlFetchPlanSummary(
   db: QueryableDatabase,
   runId: string,
-): Promise<string | null> {
-  const row = await firstMeasured<Pick<CrawlFetchPageRow, "page_key">>(
+): Promise<{ firstPageKey: string | null; expectedPages: number }> {
+  const row = await firstMeasured<{ page_key: string; expected_pages: number }>(
     db
       .prepare(`
-        SELECT page_key
+        SELECT page_key, (
+          SELECT COALESCE(MAX(ordinal), -1) + 1 FROM crawl_fetch_pages WHERE run_id = ?
+        ) AS expected_pages
         FROM crawl_fetch_pages
         WHERE run_id = ?
         ORDER BY ordinal ASC
         LIMIT 1
       `)
-      .bind(runId),
+      .bind(runId, runId),
   );
-  return row?.page_key ?? null;
+  return { firstPageKey: row?.page_key ?? null, expectedPages: row?.expected_pages ?? 0 };
 }
 
 export async function listActiveCrawlFetchSessions(
