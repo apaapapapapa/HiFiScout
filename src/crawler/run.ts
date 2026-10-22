@@ -452,7 +452,6 @@ async function staleListingExpiryFor(
     return null;
   return {
     unknownBefore,
-    deactivateBefore: before(settings.expireAfterHours),
     limit: settings.batchSize,
   };
 }

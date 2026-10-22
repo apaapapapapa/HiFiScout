@@ -1,0 +1,130 @@
+{
+  "baseline": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+  "boundary": "Stage A only; Stage B remains repeated detail confirmation",
+  "scope": "Local workerd; not production billing or CPU",
+  "rows": [
+    {
+      "id": "crawl-expire-stale-100",
+      "before": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-100",
+        "sourceSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:07:23.990Z",
+        "profileHash": "4cd50339cfb0398d96c53faf90df330add504a2d156b9adfaa7ac55e7df7444b",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 1373,
+          "rowsWritten": 801,
+          "sqlStatements": 4
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 100 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      },
+      "after": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-100",
+        "sourceSha": "3dd947753aa36a04c9e93d39efeff72a0d0ab22d",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:11:04.124Z",
+        "profileHash": "c865dbb21e1b3085885c3768bf171e114d1f7a59ee3f2641b9b172a74e44d034",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 507,
+          "rowsWritten": 200,
+          "sqlStatements": 2
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 100 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      }
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "before": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-1000",
+        "sourceSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:07:24.135Z",
+        "profileHash": "4cd50339cfb0398d96c53faf90df330add504a2d156b9adfaa7ac55e7df7444b",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 1374,
+          "rowsWritten": 800,
+          "sqlStatements": 4
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 1000 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      },
+      "after": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-1000",
+        "sourceSha": "3dd947753aa36a04c9e93d39efeff72a0d0ab22d",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:11:04.413Z",
+        "profileHash": "c865dbb21e1b3085885c3768bf171e114d1f7a59ee3f2641b9b172a74e44d034",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 507,
+          "rowsWritten": 200,
+          "sqlStatements": 2
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 1000 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      }
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "before": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-10000",
+        "sourceSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:07:24.591Z",
+        "profileHash": "4cd50339cfb0398d96c53faf90df330add504a2d156b9adfaa7ac55e7df7444b",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 1374,
+          "rowsWritten": 800,
+          "sqlStatements": 4
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 10000 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      },
+      "after": {
+        "schemaVersion": 1,
+        "kind": "cost-sample",
+        "id": "crawl-expire-stale-10000",
+        "sourceSha": "3dd947753aa36a04c9e93d39efeff72a0d0ab22d",
+        "checkoutClean": true,
+        "recordedAt": "2026-10-22T11:11:05.239Z",
+        "profileHash": "c865dbb21e1b3085885c3768bf171e114d1f7a59ee3f2641b9b172a74e44d034",
+        "environment": "local-workerd",
+        "metrics": {
+          "rowsRead": 507,
+          "rowsWritten": 200,
+          "sqlStatements": 2
+        },
+        "notes": [
+          "50 long-unseen and 50 aging in-stock listings among 10000 recently seen active listings of the same shop; real migrated D1."
+        ],
+        "queryPlans": []
+      }
+    }
+  ]
+}

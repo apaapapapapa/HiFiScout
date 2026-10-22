@@ -1,18 +1,9 @@
 /**
- * Stale-listing expiry for shops whose crawl cannot see their whole inventory.
- *
- * A complete-coverage crawl deactivates every listing it did not see. A partial one cannot: a
- * listing missing from a recent-arrivals feed may still be for sale. What it can prove is time. A
- * listing the crawl still sees is touched at least once per touch interval, so one left unseen far
- * beyond that, while the shop's crawls keep succeeding, is no longer on the pages the crawl reaches.
- * It is first downgraded to `unknown` (no longer advertised as in stock), then deactivated. Both
- * steps are reversed by the next sighting, which rewrites the listing from seller evidence.
- *
- * A detail recheck that recently found the listing available (or could not decide) is newer
- * evidence than its age, so it holds both steps until it is itself older than the horizon.
+ * Stage A: age an unseen in-stock listing to unknown, never to sold or inactive.
+ * Elapsed time is not sale evidence for partial/unknown-coverage shops. Stage B is owned by
+ * inventory-recheck's repeated detail-page confirmation, independently of this stage's flag.
  */
 
-import { deactivateProductsBySourceIds } from "./product-write-repository.js";
 import type { ProductRow, QueryableDatabase } from "./types.js";
 
 /** Partial (`is_active = 1`) index on `(shop_key, last_seen_at)`. */
@@ -23,8 +14,6 @@ const UPDATE_CHUNK_SIZE = 50;
 export interface StaleListingExpiry {
   /** In-stock listings last seen before this instant become `unknown`. */
   unknownBefore: string;
-  /** Listings last seen before this instant are deactivated. */
-  deactivateBefore: string;
   /** Upper bound on listings each step changes. */
   limit: number;
 }
@@ -43,13 +32,12 @@ async function staleSourceIds(
   shopKey: string,
   before: string,
   limit: number,
-  inStockOnly: boolean,
 ): Promise<string[]> {
   const result = await db
     .prepare(`
       SELECT source_id FROM products INDEXED BY ${LAST_SEEN_INDEX}
       WHERE shop_key = ? AND is_active = 1 AND last_seen_at < ?
-        ${inStockOnly ? "AND stock_status = 'in_stock'" : ""}
+        AND stock_status = 'in_stock'
         AND ${UNVOUCHED}
       ORDER BY last_seen_at ASC
       LIMIT ?`)
@@ -58,25 +46,15 @@ async function staleSourceIds(
   return (result.results || []).map((row) => row.source_id);
 }
 
-/**
- * Applies both expiry steps to the shop's oldest-seen listings, never touching one observed by the
- * crawl that is running. Each step reads the active-listing `last_seen_at` index from its oldest
- * entry and stops at its limit, so the shop's recently seen inventory is never visited.
- */
+/** Changes only stale in-stock listings; the current crawl's observations are protected. */
 export async function expireStaleListings(
   db: QueryableDatabase,
   shopKey: string,
-  { unknownBefore, deactivateBefore, limit }: StaleListingExpiry,
+  { unknownBefore, limit }: StaleListingExpiry,
   observedSourceIds: ReadonlySet<string>,
   changedAt: string,
 ): Promise<StaleListingExpiryResult> {
-  const deactivatedSourceIds = (
-    await staleSourceIds(db, shopKey, deactivateBefore, limit, false)
-  ).filter((sourceId) => !observedSourceIds.has(sourceId));
-  if (deactivatedSourceIds.length)
-    await deactivateProductsBySourceIds(db, shopKey, deactivatedSourceIds);
-
-  const unknownSourceIds = (await staleSourceIds(db, shopKey, unknownBefore, limit, true)).filter(
+  const unknownSourceIds = (await staleSourceIds(db, shopKey, unknownBefore, limit)).filter(
     (sourceId) => !observedSourceIds.has(sourceId),
   );
   const statements: D1PreparedStatement[] = [];
@@ -95,7 +73,7 @@ export async function expireStaleListings(
     );
   }
   if (statements.length) await db.batch(statements);
-  return { unknownSourceIds, deactivatedSourceIds };
+  return { unknownSourceIds, deactivatedSourceIds: [] };
 }
 
 /**

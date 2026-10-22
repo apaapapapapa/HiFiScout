@@ -104,7 +104,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       scheduleCron: SHARED_HOURLY_CRON,
       transportConfigurationRequired: true,
       defaultInventoryRecheckBatchSize: 4,
-      // Only the new-arrivals page is crawled. Rechecks vouch for listings still for sale.
+      // Age unseen listings to unknown only. Detail rechecks independently confirm sales.
       defaultStaleListingExpiry: {
         unknownAfterHours: 14 * 24,
         expireAfterHours: 21 * 24,
@@ -168,7 +168,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultInventoryRecheckBatchSize: 5,
       // The recent pages plus one rotating older page per crawl. The rotation follows the clock, so
       // a slot can fall in the nightly pause for several cycles: a listing still for sale may go
-      // unseen for 19.5 days, plus one touch interval. Both horizons stay beyond that.
+      // unseen for 19.5 days, plus one touch interval. Unknown aging stays beyond that.
       defaultStaleListingExpiry: {
         unknownAfterHours: 21 * 24,
         expireAfterHours: 28 * 24,

@@ -58,6 +58,7 @@ const SHOP_ENV_SUFFIX_SET: Readonly<Record<ShopEnvSuffix, true>> = {
   STALE_LISTING_EXPIRY_ENABLED: true,
   STALE_LISTING_EXPIRY_HOURS: true,
   STALE_LISTING_UNKNOWN_HOURS: true,
+  STALE_LISTING_UNKNOWN_ENABLED: true,
   STALE_LISTING_MIN_RUNS: true,
   STALE_LISTING_BATCH_SIZE: true,
 };
@@ -175,7 +176,9 @@ export const MAX_STALE_LISTING_BATCH_SIZE = 200;
 const DEFAULT_STALE_LISTING_BATCH_SIZE = 50;
 
 /**
- * Stale-listing expiry is opt-in per shop: a shop definition declares its horizons, and
+ * Stage A (unknown) is opt-in per shop; Stage B uses INVENTORY_RECHECK_ENABLED independently.
+ * The legacy EXPIRY_ENABLED flag remains a fallback for UNKNOWN_ENABLED.
+ * Stale-listing aging is opt-in per shop: a shop definition declares its horizons, and
  * `<PREFIX>_STALE_LISTING_*` variables override them (`_ENABLED=false` is the kill switch). A
  * listing the crawl still sees is touched at least once per touch interval, so neither horizon may
  * come within twice that interval of the present (and never under two days): an unchanged listing
@@ -205,7 +208,11 @@ export function getShopStaleListingSettings(
   );
   return {
     enabled:
-      configured > 0 && booleanFlag(shopEnvValue(env, shop, "STALE_LISTING_EXPIRY_ENABLED"), true),
+      configured > 0 &&
+      booleanFlag(
+        shopEnvValue(env, shop, "STALE_LISTING_UNKNOWN_ENABLED"),
+        booleanFlag(shopEnvValue(env, shop, "STALE_LISTING_EXPIRY_ENABLED"), true),
+      ),
     unknownAfterHours,
     expireAfterHours,
     minSuccessfulRuns: positiveInt(

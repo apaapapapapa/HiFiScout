@@ -3588,6 +3588,36 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/812",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/39724880868"
       ]
+    },
+    {
+      "id": "crawl-expire-stale-100",
+      "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+      "beforeDigest": "1443f97c98fe9de94cea559133a05d6a9179a84abb2a7bd755d6270dc575b9fd",
+      "afterDigest": "feac11af89caa4b98bc0a8eb4ce572762f98affe6a6c09a13724e7c288ebe9e7",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+      "beforeDigest": "54e6aa7edb557a56e3b5228744171912145f3ec8eb52005963f4ff5363dea50f",
+      "afterDigest": "51f00a4470ea433b5897c2546c7e7f0df9daca3bd918312a9a5f0648ba067af0",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
+      "beforeDigest": "103d5bdba0303a022ea0ffaec4480c2e79f1149186ee70605b27725a886a4d48",
+      "afterDigest": "88138d343660c6cb7c36629704d64d1c959215806aa5d65c8d3675e61f117b47",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
+      ]
     }
   ]
 }
