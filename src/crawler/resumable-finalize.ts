@@ -3,7 +3,7 @@ import {
   claimCrawlFetchFinalization,
   completeCrawlFetchSession,
   failCrawlFetchSession,
-  firstCrawlFetchPageKey,
+  crawlFetchPlanSummary,
   getCrawlFetchSession,
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
@@ -123,8 +123,8 @@ export async function processFinalize(
   const stagedAccounting = accountReads(env.DB);
   const products = await loadStagedCrawlProducts(stagedAccounting.db, session.run_id);
   const seedAccounting = accountReads(env.DB);
-  const seedUrl =
-    (await firstCrawlFetchPageKey(seedAccounting.db, session.run_id)) || `${plugin.baseUrl}/`;
+  const plan = await crawlFetchPlanSummary(seedAccounting.db, session.run_id);
+  const seedUrl = plan.firstPageKey || `${plugin.baseUrl}/`;
   const synthetic = new URL(seedUrl);
   synthetic.searchParams.set("__hifiscout_staged_run", session.run_id);
   const syntheticUrl = synthetic.toString();
@@ -166,7 +166,7 @@ export async function processFinalize(
       collectionEvidence: {
         fetchedPages: claimedSession.pages_fetched,
         parsedPages: claimedSession.pages_parsed,
-        expectedPages: Math.min(claimedSession.max_pages, claimedSession.page_limit),
+        expectedPages: plan.expectedPages,
         uncertainCoverage: Boolean(claimedSession.coverage_incomplete),
       },
       ...(enrichmentDecidedAt ? { enrichmentDecidedAt } : {}),

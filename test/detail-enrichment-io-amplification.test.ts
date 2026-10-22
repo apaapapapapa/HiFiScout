@@ -8,9 +8,11 @@ import {
   recordCrawlFetchDetailPage,
 } from "../src/db/crawl-fetch-detail-repository.js";
 import { loadStagedCrawlProducts } from "../src/db/crawl-fetch-page-repository.js";
-import { firstCrawlFetchPageKey } from "../src/db/crawl-fetch-session-repository.js";
+import { crawlFetchPlanSummary } from "../src/db/crawl-fetch-session-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
+import { database } from "./helpers/d1-write-budget.js";
+import { accountReads } from "../src/db/read-accounting.js";
 
 /**
  * The reads the detail-enrichment phase makes against D1, and what they are allowed to cost.
@@ -202,7 +204,7 @@ test("a source id listed on two pages keeps the later page's copy", async () => 
   );
 });
 
-test("finalization reads only the first staged page key for its synthetic seed", async () => {
+test("finalization uses actual planned pages, including incomplete pages, without reading payloads", async () => {
   const { sqlite, db } = migratedSqlite();
   seedSession(sqlite, RUN);
   seedPages(sqlite, RUN, [
@@ -211,7 +213,10 @@ test("finalization reads only the first staged page key for its synthetic seed",
   ]);
   const recording = recordingDatabase(db);
 
-  assert.equal(await firstCrawlFetchPageKey(recording.db, RUN), "p1");
+  assert.deepEqual(await crawlFetchPlanSummary(recording.db, RUN), {
+    firstPageKey: "p1",
+    expectedPages: 2,
+  });
 
   const statement = recording.executed[0];
   assert.ok(statement);
@@ -223,6 +228,49 @@ test("finalization reads only the first staged page key for its synthetic seed",
       "sqlite_autoindex_crawl_fetch_pages_2",
     ),
   );
+});
+
+test("actual page-plan endpoints stay bounded as unrelated frontier pages grow", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`INSERT INTO crawl_fetch_sessions
+      (run_id,shop_key,requested_at,max_pages,page_limit,created_at,updated_at)
+      VALUES ('plan','shop','at',50,50,'at','at'),('other','shop','later',10000,10000,'at','at')`)
+      .run();
+    await db
+      .prepare(`INSERT INTO crawl_fetch_pages(run_id,page_key,page_json,ordinal,state)
+      VALUES ('plan','p1','{}',0,'parsed'),('plan','p2','{}',1,'pending')`)
+      .run();
+    const costs = [];
+    for (const size of [100, 1000, 10000]) {
+      await db
+        .prepare(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?)
+        INSERT OR IGNORE INTO crawl_fetch_pages(run_id,page_key,page_json,ordinal,state)
+        SELECT 'other','other-'||x,'{}',x-1,'parsed' FROM n`)
+        .bind(size)
+        .run();
+      const measured = accountReads(db);
+      assert.deepEqual(await crawlFetchPlanSummary(measured.db, "plan"), {
+        firstPageKey: "p1",
+        expectedPages: 2,
+      });
+      const cost = {
+        size,
+        rowsRead: measured.rowsRead(),
+        rowsWritten: measured.rowsWritten(),
+        statements: measured.countedStatements(),
+      };
+      assert.ok(cost.rowsRead <= 6, JSON.stringify(cost));
+      assert.equal(cost.rowsWritten, 0);
+      assert.equal(cost.statements, 1);
+      costs.push(cost);
+    }
+    assert.equal(new Set(costs.map((cost) => cost.rowsRead)).size, 1);
+    console.log(JSON.stringify({ event: "inventory_page_plan_cost", costs }));
+  } finally {
+    await dispose();
+  }
 });
 
 test("appending a detail row costs one index seek, not a walk of the run", async () => {
