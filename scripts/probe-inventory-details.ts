@@ -37,6 +37,7 @@ for (const row of input) {
     stockBefore: row.stock_status,
     checkedAt: new Date().toISOString(),
     expected: row.expected ?? null,
+    expectedRedirect: row.expected_redirect === 1,
   };
   try {
     let page: RelayPage;
@@ -67,14 +68,21 @@ for (const row of input) {
             model: row.model,
           })
         : "deferred";
+    const evidenceUrlVerified = Boolean(
+      page.finalUrl &&
+      (policy.isEvidenceUrl?.(row.source_url, page.finalUrl) ?? page.finalUrl === row.source_url),
+    );
     Object.assign(report, {
       httpStatus: page.status,
       finalUrl: page.finalUrl ?? null,
       classification,
       soldRedirect: Boolean(page.finalUrl?.includes("/sold/")),
+      evidenceUrlVerified,
     });
-    if (row.expected && (classification !== row.expected || !page.finalUrl)) failed = true;
-    if (row.expected === "sold_out" && !page.finalUrl?.includes("/sold/")) failed = true;
+    if (row.expected && (classification !== row.expected || !evidenceUrlVerified)) failed = true;
+    // Current sold listings can remain at their original URL; archived redirects are a
+    // separate transport case and need a separate, explicitly selected product.
+    if (row.expected_redirect === 1 && !report.soldRedirect) failed = true;
   } catch {
     // Errors can contain relay URLs or permit details. Persist only this bounded diagnosis.
     Object.assign(report, { classification: "deferred", error: "transport_or_permit_failure" });
@@ -85,7 +93,8 @@ for (const row of input) {
 }
 if (
   !reports.some((r) => r.shop === "hifido" && r.expected === "in_stock") ||
-  !reports.some((r) => r.shop === "hifido" && r.expected === "sold_out")
+  !reports.some((r) => r.shop === "hifido" && r.expected === "sold_out") ||
+  !reports.some((r) => r.shop === "hifido" && r.expectedRedirect)
 )
   failed = true;
 await writeFile(
