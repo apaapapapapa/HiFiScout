@@ -2309,7 +2309,7 @@
       "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
       "beforeDigest": "68fbfaea0bcc645132a783070edf8ef088cdedb7a2b4612b79eaec9397efc38d",
       "afterDigest": "92ac0244c7e12f6ad9b44830b9671587b59493e8369bbac99cbd41ba27c743d8",
-      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases and the one-job-per-domain spread cases.",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 100 finished jobs in the run and 2,000 in an older run. A small live run (5 live jobs on 5 domains, plus the finalizer) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases and the one-job-per-domain spread cases.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/806"
       ]
@@ -2319,7 +2319,7 @@
       "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
       "beforeDigest": "b8fbda2c056f9751d363c607e9b321e2386538d6cf78ac58c0f835a96faa8287",
       "afterDigest": "fafe759301072b45b5871b3658619b4afd09ad54a6beccb2a39b74facea06c5a",
-      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases.",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 1,000 finished jobs in the run and 2,000 in an older run. A small live run (5 live jobs on 5 domains, plus the finalizer) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases and the one-job-per-domain spread cases.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/806"
       ]
@@ -2329,7 +2329,7 @@
       "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
       "beforeDigest": "20eeb88502ad85773b8ed7b28402023ffcbc4199f37c3ebd9cfa8e84fac78ab7",
       "afterDigest": "60464f1e0338886ec042b413a1d65f4ba82864e929bfa713565ce8e88934018b",
-      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. A small live run (5 jobs on 7 domains) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases.",
+      "reason": "Reviewed real-workerd claim baseline after moving run claims and wake state to per-domain seeks: 94 reads (was 67), 5 writes and four statements for one claim plus wake state with 10,000 finished jobs in the run and 2,000 in an older run. A small live run (5 live jobs on 5 domains, plus the finalizer) now pays a fixed per-domain cost; finished jobs still add no reads, and live runs of 50 to 800 jobs fall from 409-8,040 to 105-272 reads per claim, empty claim and wait (catalog-verification-live-claim-*). The fixture file also gained those live-run cases and the one-job-per-domain spread cases.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/806"
       ]
@@ -2429,7 +2429,7 @@
       "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "1a2aafd7feacba2a8ebe45b4eaa799dbd424de4a7b146dd4b455a2ecae78195b",
-      "reason": "Reviewed initial real-workerd baseline: 338 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 20 domains, the registry's scale of manufacturer domains. This is the least favourable shape for the per-domain selectors: each waiting domain costs about 15 reads across the two claims and the wait, more than the former per-job selectors paid for a single job (they read 240 rows for the same sequence). Daily runs of up to 200 candidates on these domains average about ten jobs per domain, where the per-domain selectors read far less (catalog-verification-live-claim-*).",
+      "reason": "Reviewed initial real-workerd baseline: 338 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 20 domains, the registry's scale of manufacturer domains. This is the least favourable shape for the per-domain selectors: each waiting domain costs about 15 reads across the two claims and the wait, more than the former per-job selectors paid for a single job (they read 240 rows for the same sequence, whose wait was the full wake state; the per-domain consumer reads the exact outstanding count separately, 25 more rows here, once per wake). A full daily run of 200 candidates spans at most the 19 registered manufacturer hostnames, so it starts with at least ten jobs per waiting domain, where the per-domain selectors read far less; smaller runs approach this shape (catalog-verification-live-claim-*).",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/806"
       ]
@@ -2439,7 +2439,7 @@
       "baseSha": "48f26ad7d9db0b660af75d1464cc220ccd7ebba0",
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "e65d58062de887fdf6620ccd8ceb9ec6f393d37f0c966b2bb41be3d3bbbe8992",
-      "reason": "Reviewed initial real-workerd baseline: 938 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 60 domains, three times the registered manufacturer domains. It gates the per-domain constant (about 15 reads per waiting domain across the two claims and the wait, asserted at 18 or fewer) for the adverse spread the registry does not reach today; the former per-job selectors read 640 rows for the same sequence.",
+      "reason": "Reviewed initial real-workerd baseline: 938 reads, 5 writes and five statements for a claim, an empty claim and its wait with one live job on each of 60 domains, three times the registered manufacturer domains. It gates the per-domain constant (about 15 reads per waiting domain across the two claims and the wait, asserted at 18 or fewer) for the adverse spread the registry does not reach today; the former per-job selectors read 640 rows for the same sequence, whose wait was the full wake state; the per-domain consumer reads the exact outstanding count separately, 65 more rows here, once per wake.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/806"
       ]
@@ -3369,6 +3369,38 @@
       "afterDigest": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a",
       "reason": "Register the category change/replay boundary, its existing correctness/recovery suites and nine new scale measurements. Existing owners, samples, absolute ceilings, per-suite limits and CPU policy are unchanged. The new 600-second fixture deadline permits measuring the inefficient pre-fix 10k replay; it changes no existing fixture or CI load-runner deadline. Both CI load suites pass. Clean same-fixture before/after evidence, source verification and CPU measurements are retained in evaluations/2026-10-21-catalog-p1b.json.",
       "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+    },
+    {
+      "id": "manufacturer-alias-fresh-isolate-100",
+      "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "8f2aa04defac6daa8f840fcfcdd398cd40a6a9e5d80944ff5c7111fa52712a51",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement (the registry clock with its persisted snapshot row) for a fresh isolate's manufacturer alias evidence with 134 aliases stored, including the 32 that migrations seed. The same fixture on base abd8afc read 405 rows in three statements, scanning every alias, its table row and its manufacturer; the returned evidence is identical (snapshot equivalence and edit-invalidation tests).",
+      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+    },
+    {
+      "id": "manufacturer-alias-fresh-isolate-1000",
+      "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "01e54b9bf531b87ed2cd4150514a33753eaf7a35a87a9c17397568eafb41bc63",
+      "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement for a fresh isolate's manufacturer alias evidence with 1,136 aliases stored, the same as with 134. The same fixture on base abd8afc read 2,955 rows in three statements. Production attributed about 1,613 rows to each such load (79 loads in 19 observed hours).",
+      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+    },
+    {
+      "id": "manufacturer-alias-rebuild-1000",
+      "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
+      "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "afterDigest": "2fa3e303bace2ba72233c60bcf09d727c2adbb291b1435046c8424f292edf3ce",
+      "reason": "Reviewed initial real-workerd baseline: 2,957 reads, 1 write and three statements for a load after an alias edit with 1,136 aliases stored: the revision read that finds no current snapshot, the former scan and one conditional snapshot write, the same round trips as the base abd8afc load (2,955 rows in three statements). It runs until the first write of each registry revision lands; identical concurrent rebuilds write nothing.",
+      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "abd8afc8fa8577d100ef1a8f2fc9f92419e481bb",
+      "beforeDigest": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a",
+      "afterDigest": "bd4528568f6d9057c50167a8f3bd7bc8a0cce0ac8901e30f3c5818091ab5a6fc",
+      "reason": "Register the manufacturer alias evidence boundary (src/db/manufacturer-repository.ts) with its existing alias suites, the new snapshot suite and three samples. Production attributed about 127,000 reads in 19 observed hours to fresh-isolate alias scans; a fresh isolate now reads the revision and one persisted snapshot row in one statement, and a rebuild keeps the former three round trips, so the remediation sweep's call floor is unchanged. Other contracts, ceilings and CPU policy are unchanged.",
+      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
     }
   ]
 }

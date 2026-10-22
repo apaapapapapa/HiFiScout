@@ -101,6 +101,8 @@ cases so removing a test cannot silently remove a requirement.
   finished jobs in the run, and a claim, an empty claim and its wait with 50, 200 and 800 live
   jobs spread over 15 domains, held by one paced domain or waiting out a retry backoff, and with
   one live job on each of 20 and 60 domains.
+- Manufacturer alias evidence: a fresh isolate with about 130 and 1,140 stored aliases (the clock
+  and its snapshot row in one statement), and a load after an alias edit (a full scan stored once).
 - Listing replay: unchanged product/metadata/projection publication with zero physical writes.
 - Scheduling: every configured Cron firing over a whole UTC day, per-shop dispatch counts and
   the sum of configured initial-page ceilings, including disabled shops conservatively.
