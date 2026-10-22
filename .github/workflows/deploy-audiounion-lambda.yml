@@ -294,10 +294,12 @@ jobs:
               WHERE shop_key='hifido' AND is_active=1 AND stock_status='in_stock' ORDER BY last_seen_at DESC LIMIT 1;
             SELECT id,shop_key,source_id,source_url,title,model,is_active,stock_status,'sold_out' AS expected FROM products
               WHERE shop_key='hifido' AND is_active=1 AND stock_status='sold_out' ORDER BY last_seen_at DESC LIMIT 1;
+            SELECT id,shop_key,source_id,source_url,title,model,is_active,stock_status,'sold_out' AS expected,1 AS expected_redirect FROM products
+              WHERE id=2609 AND shop_key='hifido' AND source_id='26-50529-16848-00';
             SELECT id,shop_key,source_id,source_url,title,model,is_active,stock_status FROM products
               WHERE shop_key='fujiya-avic' AND is_active=1 AND stock_status='in_stock' ORDER BY last_seen_at DESC LIMIT 1;
             SELECT id,shop_key,source_id,source_url,title,model,is_active,stock_status FROM products
-              WHERE id IN (3879,3880,3881) AND shop_key='audiounion' AND is_active=0 AND stock_status='in_stock';
+              WHERE id IN (3408,3416) AND shop_key='hifido' AND is_active=0 AND stock_status='unknown';
           " > "$RUNNER_TEMP/inventory-probe-query.json"
           jq '[.[].results[]]' "$RUNNER_TEMP/inventory-probe-query.json" > "$RUNNER_TEMP/inventory-probe-candidates.json"
           CRAWL_RELAY_URL="$relay_url" CRAWL_RELAY_TOKEN="$relay_token" \
