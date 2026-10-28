@@ -3698,6 +3698,18 @@
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-collection-guards/evaluations/2026-10-22-inventory-guards.json"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c06bab6ac0e4295ac324a2490383f1135a34c19db9be6329dd5f4cf0b47cf17c",
+      "afterDigest": "60401ee6e3163cac0265e7790f91adab3fc5f2e6c9f5966ce43c397fbb3117ca",
+      "reason": "Register AudioUnion category discovery, URL/diagnostic parsing and the shared discovery strategy under the existing schedule-and-continuation contract, and require the renewal and confirmed-empty recovery regression suites. CI run 40647085251 captured clean base 3ae1566d and candidate merge ff31c193 (PR head b21a6161): both registered test sets passed and all 104 cost comparisons passed. Daily schedule is unchanged at 391 invocations, 61 dispatches and 1619 planned pages; inline checkpoints remain 196 reads/176 writes/59 statements, split checkpoints 316/256/99, and interrupted recovery 3 alarms/2 DO writes. The gate reported only these four previously unregistered paths. This review accepts the additive source/suite registration; no required sample, fixture, dependency pin, workload budget or CPU ceiling is removed or relaxed, and every other gate remains required.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40647085251/artifacts/12798212642",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40647085251/artifacts/12797568199"
+      ]
     }
   ]
 }
