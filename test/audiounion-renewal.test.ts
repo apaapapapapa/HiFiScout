@@ -27,6 +27,7 @@ import { processFetch } from "../src/crawler/resumable-page-steps.js";
 import { ensureSession } from "../src/crawler/resumable-session.js";
 import { createHandler } from "../infra/audiounion-lambda/index.js";
 import { initialPageQueue, coverageDecision } from "../src/crawler/strategies.js";
+import type { ShopPlugin } from "../src/crawler/types.js";
 import { selectInventoryRecheckCandidate } from "../src/db/inventory-recheck-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
@@ -321,11 +322,23 @@ function deepCategoryPage(url: string): string {
     ${card({ code: `${current.category}-${current.page}` })}`;
 }
 
+// AudioUnion's own discovery over two of its categories keeps this collection small; the test
+// above holds all categories' followed pages to the production ceiling.
+const categories = AUDIOUNION_CATEGORIES.slice(0, 2);
+const twoCategories: ShopPlugin = {
+  ...plugin,
+  discovery: {
+    ...plugin.discovery,
+    initialTargets: () => categories.map((name) => `https://www.audiounion.jp/shop/c/c${name}_lS/`),
+  },
+};
+
 test("a deep renewed catalog lets the staged finalizer age a retired legacy listing", async () => {
-  for (const [ceiling, pages, stockStatus] of [
-    ["40", AUDIOUNION_CATEGORIES.length * AUDIOUNION_CATEGORY_PAGE_DEPTH, "unknown"],
+  const followed = categories.length * AUDIOUNION_CATEGORY_PAGE_DEPTH;
+  for (const [ceiling, stockStatus] of [
+    [followed, "unknown"],
     // A ceiling below the followed pages truncates the frontier and still fails closed.
-    ["20", 20, "in_stock"],
+    [followed - 1, "in_stock"],
   ] as const) {
     const { sqlite, db } = migratedSqlite();
     const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -346,7 +359,7 @@ test("a deep renewed catalog lets the staged finalizer age a retired legacy list
       DB: db,
       AUDIOUNION_ENTRY_URL: "",
       AUDIOUNION_REQUEST_DELAY_MS: "0",
-      AUDIOUNION_MAX_PAGES: ceiling,
+      AUDIOUNION_MAX_PAGES: String(ceiling),
       AUDIOUNION_STALE_LISTING_MIN_RUNS: "2",
       AUDIOUNION_INVENTORY_RECHECK_ENABLED: "false",
       CRAWL_MIN_ITEM_BASELINE: "100000",
@@ -370,19 +383,19 @@ test("a deep renewed catalog lets the staged finalizer age a retired legacy list
     console.log = () => {};
     console.warn = () => {};
     try {
-      let session = await ensureSession(env, plugin, body, runId, options);
+      let session = await ensureSession(env, twoCategories, body, runId, options);
       for (let step = 0; session.next_phase === "fetch"; step += 1) {
-        assert.ok(step < 60, "collection must stay bounded");
-        await processFetch(env, plugin, session, body, options);
+        assert.ok(step < 20, "collection must stay bounded");
+        await processFetch(env, twoCategories, session, body, options);
         const next = await readCollectionSession(db, runId, state);
         assert.ok(next);
         session = next;
       }
-      assert.equal(session.pages_parsed, pages);
+      assert.equal(session.pages_parsed, ceiling);
       assert.equal(session.coverage_incomplete, stockStatus === "unknown" ? 0 : 1);
       // Finalization republishes staged listings; only its robots lookup reaches this stub.
       globalThis.fetch = async () => new Response("nf", { status: 404 });
-      const result = await processFinalize(env, plugin, session, options);
+      const result = await processFinalize(env, twoCategories, session, options);
       assert.equal(result.kind === "terminal" ? result.result.status : result.kind, "success");
     } finally {
       console.log = log;
