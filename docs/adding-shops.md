@@ -325,8 +325,12 @@ old numeric IDs. Legacy rows are not merged by model name, and legacy route disa
 sold evidence: inventory rechecks select the new URL prefix only. Existing bounded stale-listing
 aging remains subject to its collection-quality guards (including ambiguous empty or truncated pages).
 The storefront's explicit empty-category notice is a valid zero-item page, so it does not by itself
-prevent aging after an otherwise reliable collection;
-this source change does not backfill or delete production listings.
+prevent aging after an otherwise reliable collection.
+
+Retired legacy routes no longer reach a product page, so migration
+`0144_retire_audiounion_legacy_listings.sql` ends the active `/ct/detail/used/` rows once: they
+become inactive, in-stock rows become `unknown` rather than sold, and other states are kept. It does
+not merge them into new goods rows; new listings appear only through collection.
 
 Detail availability requires the stored goods code to match the used detail's own code and stock
 controls. Warranty, accessories and condition facts come only from its explicit labeled fields and
