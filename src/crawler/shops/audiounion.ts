@@ -357,6 +357,14 @@ function parseAudioUnion(html: string, pageUrl: string): SellerProduct[] {
   return fallback.map((item) => repairIdentity(item, candidates.get(item.sourceId)));
 }
 
+function hasEmptyCategoryNotice(source: string): boolean {
+  const category = listingFieldHtml(source, "block-category-list");
+  return (
+    listingFieldText(category, "alert") === "ご指定の条件に一致する商品が見つかりませんでした。" &&
+    !listingBlocks(category, "dl", "block-thumbnail-t--goods").length
+  );
+}
+
 export const audioUnionAdapter = {
   key: "audiounion",
   name: "Audio Union",
@@ -379,14 +387,7 @@ export const audioUnionAdapter = {
       if (!current) return [];
       const source = stripRawTextElements(html, ["script", "style", "noscript"]);
       const pager = listingFieldHtml(source, "block-goods-list--pager");
-      if (!pager) {
-        const category = listingFieldHtml(source, "block-category-list");
-        return listingFieldText(category, "alert") ===
-          "ご指定の条件に一致する商品が見つかりませんでした。" &&
-          !listingBlocks(category, "dl", "block-thumbnail-t--goods").length
-          ? []
-          : null;
-      }
+      if (!pager) return hasEmptyCategoryNotice(source) ? [] : null;
       const next = listingFieldHtml(pager, "pager-next");
       if (!next) return [];
       const href = next.match(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
@@ -400,6 +401,12 @@ export const audioUnionAdapter = {
       } catch {
         return null;
       }
+    },
+    isConfirmedEmptyPage(html, pageUrl) {
+      return (
+        audioUnionCategoryPage(pageUrl) !== null &&
+        hasEmptyCategoryNotice(stripRawTextElements(html, ["script", "style", "noscript"]))
+      );
     },
   },
   parse(html, pageUrl = DEFAULT_ENTRY_URL) {

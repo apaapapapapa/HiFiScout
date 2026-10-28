@@ -323,6 +323,8 @@ export interface DiscoveryCapability<TPage extends CrawlPage = CrawlPage> {
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
   /** `null` means this page made coverage uncertain; `[]` means no additional targets. */
   discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
+  /** Explicit seller evidence of zero listings; only trusted when discovery also returns `[]`. */
+  isConfirmedEmptyPage?(html: string, page: TPage): boolean;
 }
 
 // ---------------------------------------------------------------------------

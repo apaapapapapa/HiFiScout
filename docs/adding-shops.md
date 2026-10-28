@@ -56,6 +56,7 @@ interface DiscoveryCapability<TPage extends CrawlPage> {
   };
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
   discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
+  isConfirmedEmptyPage?(html: string, page: TPage): boolean;
 }
 ```
 
@@ -83,6 +84,11 @@ URLs, and tracks incomplete discovery. A shop must never fetch another listing p
 - `[]` when that page conclusively exposes no additional targets;
 - additional typed targets when pagination/category expansion is known;
 - `null` when the page layout prevents the adapter from knowing whether discovery is complete.
+
+An optional `isConfirmedEmptyPage()` may recognize explicit seller evidence that this category has
+no listings. It is trusted only with a zero-product parse and `discoverTargets()` returning `[]`.
+This preserves collection safety for a valid empty category in both direct and resumable crawls;
+missing/malformed markup, uncertain pagination and an entirely empty crawl still fail closed.
 
 Legacy pagination flags are not accepted. Empty-page behavior, item-count validation, and the
 additional page budget are expressed only through the typed `discovery.policy` object.
@@ -312,7 +318,9 @@ same card; MSRP and buyback quotes are not selling prices. Inquiry-only prices r
 New source IDs use `goods:<goods-code>` because the seller supplies no verified mapping to the
 old numeric IDs. Legacy rows are not merged by model name, and legacy route disappearance is not
 sold evidence: inventory rechecks select the new URL prefix only. Existing bounded stale-listing
-aging remains subject to its collection-quality guards (including empty or truncated pages);
+aging remains subject to its collection-quality guards (including ambiguous empty or truncated pages).
+The storefront's explicit empty-category notice is a valid zero-item page, so it does not by itself
+prevent aging after an otherwise reliable collection;
 this source change does not backfill or delete production listings.
 
 Detail availability requires the stored goods code to match the used detail's own code and stock

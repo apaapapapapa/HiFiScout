@@ -82,6 +82,12 @@ function validateDiscovery(adapter: ShopAdapter): void {
   if (discovery.discoverTargets !== undefined && typeof discovery.discoverTargets !== "function") {
     invalid(key, "discovery.discoverTargets must be a function when present");
   }
+  if (
+    discovery.isConfirmedEmptyPage !== undefined &&
+    typeof discovery.isConfirmedEmptyPage !== "function"
+  ) {
+    invalid(key, "discovery.isConfirmedEmptyPage must be a function when present");
+  }
   if (!discovery.policy) invalid(key, "discovery.policy is required");
   if (discovery.policy.emptyPage !== "stop" && discovery.policy.emptyPage !== "continue") {
     invalid(key, `discovery.policy.emptyPage ${String(discovery.policy.emptyPage)} is invalid`);

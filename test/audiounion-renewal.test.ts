@@ -168,6 +168,15 @@ test("renewed AudioUnion discovery stays partial, capped, used-only and on the i
   const empty =
     '<div class="block-category-list"><p class="alert">ご指定の条件に一致する商品が見つかりませんでした。</p></div>';
   assert.deepEqual(audioUnionAdapter.discovery.discoverTargets(empty, CATEGORY), []);
+  assert.equal(audioUnionAdapter.discovery.isConfirmedEmptyPage(empty, CATEGORY), true);
+  for (const ambiguous of [
+    "<html>error</html>",
+    `<script>${empty}</script>`,
+    empty.replace("</div>", `${card()}</div>`),
+    empty.replace('class="block-category-list"', 'class="unrelated"'),
+  ])
+    assert.equal(audioUnionAdapter.discovery.isConfirmedEmptyPage(ambiguous, CATEGORY), false);
+  assert.equal(audioUnionAdapter.discovery.isConfirmedEmptyPage(empty, DETAIL), false);
   assert.equal(
     audioUnionAdapter.discovery.discoverTargets(`<script>${empty}</script>`, CATEGORY),
     null,
