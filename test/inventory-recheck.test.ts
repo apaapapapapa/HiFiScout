@@ -330,3 +330,31 @@ test("inventory and detail facts share one paced fetch and failures never erase 
     },
   ]);
 });
+
+test("storefront detail facts are saved only for the goods code being rechecked", async () => {
+  const goodsUrl = "https://www.audiounion.jp/shop/g/g22U9059782635/";
+  const storefront = (code: string) => `<div class="pane-goods-right-side">
+    <input id="hidden_goods" value="${code}" type="hidden">
+    <input id="hidden_class1" value="S" type="hidden">
+    <dl class="is-guarantee"><dt>保証：</dt><dd>6か月</dd></dl>
+    <dl class="block-goods-code"><dt>商品コード</dt><dd id="spec_goods">${code}</dd></dl>
+    <dl class="block-goods-stock"><dt>在庫</dt><dd id="spec_stock_msg">1</dd></dl></div>`;
+  const outcomes: unknown[] = [];
+  const saved: unknown[] = [];
+  for (const code of ["22U9059782635", "22U0000000001"]) {
+    const result = await recheck(env(), {
+      now: NOW,
+      repository: fakeRepository(
+        candidate({ source_id: "goods:22U9059782635", source_url: goodsUrl }),
+      ),
+      fetchPage: async () => ({ status: 200, contentType: "text/html", body: storefront(code) }),
+      saveDetailFacts: async (_db, id, facts) => {
+        saved.push({ id, facts: facts.map((fact) => fact.factId) });
+      },
+    });
+    outcomes.push(result.outcome);
+  }
+  // Another goods code leaves availability ambiguous, and its fields are not this listing's facts.
+  assert.deepEqual(outcomes, ["in_stock", "ambiguous"]);
+  assert.deepEqual(saved, [{ id: 7, facts: ["shop_warranty"] }]);
+});

@@ -246,10 +246,15 @@ export interface InventoryRecheckPolicy {
   isEvidenceUrl?(sourceUrl: string, finalUrl: string): boolean;
   /** A verification challenge is deferred, never an inventory observation. */
   isChallengePage?(html: string): boolean;
-  /** Null means the expected listing fields could not be read; an empty array clears old detail facts. */
+  /**
+   * Null means the expected listing fields could not be read; an empty array clears old detail
+   * facts. `listing` is the stored listing being rechecked, so a page about other goods can return
+   * null.
+   */
   extractOfferFacts?(
     html: string,
     observedAt: string,
+    listing?: InventoryRecheckListing,
   ): import("../catalog/types.js").OfferFact[] | null;
   /** Reject anything outside the shop's own detail-page URL contract. */
   isDetailUrl(value: string): boolean;

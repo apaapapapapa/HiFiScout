@@ -245,7 +245,8 @@ test("renewed detail availability requires the matching used goods identity and 
 });
 
 test("renewed AudioUnion offer facts read explicit used-detail fields", () => {
-  const facts = extractAudioUnionOfferFacts(detail(), "2026-10-28T00:00:00Z");
+  const listing = { sourceUrl: DETAIL };
+  const facts = extractAudioUnionOfferFacts(detail(), "2026-10-28T00:00:00Z", listing);
   assert.deepEqual(
     facts?.map((fact) => [fact.factId, fact.state, fact.warrantyMonths]),
     [
@@ -256,8 +257,11 @@ test("renewed AudioUnion offer facts read explicit used-detail fields", () => {
     ],
   );
   assert.ok(facts?.every((fact) => fact.ruleId.startsWith("audiounion.detail.v2.")));
-  assert.equal(extractAudioUnionOfferFacts(`<script>${detail()}</script>`, "2026-10-28"), null);
-  assert.equal(extractAudioUnionOfferFacts(detail({ kind: "B" }), "2026-10-28"), null);
+  for (const html of [`<script>${detail()}</script>`, detail({ kind: "B" })])
+    assert.equal(extractAudioUnionOfferFacts(html, "2026-10-28", listing), null);
+  // Recheck persists facts even for ambiguous availability, so other goods' fields stay unread.
+  assert.equal(extractAudioUnionOfferFacts(detail({ code: "OTHER" }), "2026-10-28", listing), null);
+  assert.equal(extractAudioUnionOfferFacts(detail(), "2026-10-28"), null);
   const diagnostic = diagnoseAudioUnionHtml(
     card() + `<script>${card({ code: "hidden" })}</script>`,
   );

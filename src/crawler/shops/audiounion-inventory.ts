@@ -115,10 +115,16 @@ export function classifyAudioUnionInventoryPage(
 }
 
 /** Listing-specific fields only; model specifications and generic store policies are not offers. */
-export function extractAudioUnionOfferFacts(html: string, observedAt: string): OfferFact[] | null {
+export function extractAudioUnionOfferFacts(
+  html: string,
+  observedAt: string,
+  listing?: Pick<InventoryRecheckListing, "sourceUrl">,
+): OfferFact[] | null {
   const source = stripRawTextElements(html, ["script", "style", "noscript"]);
   const section = listingFieldHtml(source, "used_item_info", "id");
   const modern = storefrontDetail(source);
+  // As for availability, a storefront detail describes only the goods code it declares.
+  if (modern && (!listing || audioUnionGoodsCode(listing.sourceUrl) !== modern.code)) return null;
   if (!section && !modern) return null;
   const modernFields: Record<string, string> = {};
   if (modern) {

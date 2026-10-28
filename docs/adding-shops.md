@@ -329,7 +329,8 @@ prevent aging after an otherwise reliable collection;
 this source change does not backfill or delete production listings.
 
 Detail availability requires the stored goods code to match the used detail's own code and stock
-controls. Warranty, accessories and condition facts come only from its explicit labeled fields.
+controls. Warranty, accessories and condition facts come only from its explicit labeled fields and
+are read only when the same goods code matches, since rechecks keep facts for ambiguous pages too.
 The relay deployment probes a public category and one of its current detail links through the normal
 robots-aware PREPARE/FETCH flow, without relying on old D1 URLs.
 
