@@ -327,10 +327,13 @@ aging remains subject to its collection-quality guards (including ambiguous empt
 The storefront's explicit empty-category notice is a valid zero-item page, so it does not by itself
 prevent aging after an otherwise reliable collection.
 
-Retired legacy routes no longer reach a product page, so migration
-`0144_retire_audiounion_legacy_listings.sql` ends the active `/ct/detail/used/` rows once: they
-become inactive, in-stock rows become `unknown` rather than sold, and other states are kept. It does
-not merge them into new goods rows; new listings appear only through collection.
+Retired legacy routes no longer reach a product page. After deployment, the confirmed-production
+maintenance workflow (`apply-manual-category-authority.yml`) runs
+`scripts/retire-audiounion-legacy-listings.ts` once per change: active `/ct/detail/used/` rows become
+inactive in bounded batches, in-stock rows become `unknown` rather than sold, and other states are
+kept. It refuses an unexpectedly large scope, does not merge rows into new goods, and a repeated run
+changes nothing; new listings appear only through collection. It is not a migration because a data
+statement in every test database's migration replay changes the measured D1 workloads.
 
 Detail availability requires the stored goods code to match the used detail's own code and stock
 controls. Warranty, accessories and condition facts come only from its explicit labeled fields and

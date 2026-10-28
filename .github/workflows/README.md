@@ -226,7 +226,8 @@ additional join-order rewrite was needed there.
 
 - `product-data-audit.yml` — full production representation export for manual audit.
 - `apply-approved-category-audit.yml` — apply an explicitly approved category audit.
-- `apply-manual-category-authority.yml` — apply explicit manual category authority.
+- `apply-manual-category-authority.yml` — apply explicit manual category authority and other
+  operator-confirmed listing corrections, such as retiring AudioUnion's legacy detail listings.
 - `resolver-replay-drain.yml` — bounded resolver replay maintenance.
 
 These workflows are intentionally separate from deployment and post-deploy verification because they can mutate or exhaustively inspect production data.

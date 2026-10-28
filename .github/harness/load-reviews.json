@@ -3710,6 +3710,1150 @@
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/40647085251/artifacts/12798212642",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/40647085251/artifacts/12797568199"
       ]
+    },
+    {
+      "id": "cpu-hifido-parse",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "587c5d22e89c3484404d4bba1fbc7a3f1265d547169f7b66d33711d413c5b01a",
+      "afterDigest": "154f00cbda48435e09d2a6d2c41a87830a72c71ad18de6e796e894cee5ab6009",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-hifido-normalize",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "339f945601cf77dac298514eb0218baec274b1c84d645baa70f3d3728b4a5b19",
+      "afterDigest": "e8fb4ccd7df4d39ac6076f631a500fd788878db264a0f20ac6aea8ff61c62b6f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-rewire-parse",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "25d31154cf48b0a516548136ff28116f1ddedf0d07200a23451b6a5045c7c936",
+      "afterDigest": "12addc943811957e603e59126588d76c9eeb5081c76f3ec880235d4c5290e6a2",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-rewire-normalize",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "4c69f98d877c2286ef52e378c232713e5095ccc19da92e63b04ad52d97a8cb46",
+      "afterDigest": "1df6e625814d8b2556aeca19141a41ee37097d53b595330017510042804be2af",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-rewire-discover",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "800fdd0b6b9af0661f967aec0554afbc906181fb00b3ddcd2c22b4039ed9369b",
+      "afterDigest": "3f5ae1d463b9041af751a01f1df1112e6dc7c25fbe8cf91562ce752c01ccce60",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "manufacturer-alias-fresh-isolate-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "8f2aa04defac6daa8f840fcfcdd398cd40a6a9e5d80944ff5c7111fa52712a51",
+      "afterDigest": "fde89ea489824aa59c224b6109b169499d236a5f228d1a4ac9c3bd9a8ceef804",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "manufacturer-alias-fresh-isolate-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "01e54b9bf531b87ed2cd4150514a33753eaf7a35a87a9c17397568eafb41bc63",
+      "afterDigest": "ad21caf03e1251a847f9c8c53136573c22c42257a99d9a97824c533ca10905d2",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "manufacturer-alias-rebuild-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "2fa3e303bace2ba72233c60bcf09d727c2adbb291b1435046c8424f292edf3ce",
+      "afterDigest": "c019d8c9c5c73c320744c151de9acc117fe1edaa66042cb6581f642a5934a3a3",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "retention-history-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a976946d87760ef423bbde045f3783554526a4e46359139d1a497b98fbfa79c2",
+      "afterDigest": "127731c879bbd8914793dd2e9eff0c509c463247d795e1a8d66d074e39aabee2",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "retention-history-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a4f52fa938c04e9d2c9967a3db6c16b8c8a2f5c82f9b8b8538ae76a98b7b1f2b",
+      "afterDigest": "bcd8d096da42493c7ca32a9289cc79cb219554369a62dc63b50f3c5d62d39fd9",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "retention-history-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b40855e1c0f17c206e10a6095215aff2338cc3da1623aeb5f2d5702da3c47f17",
+      "afterDigest": "33689961b4f810dbc4783ee88506dada2510ca5d95c45ecbd23f623e81ccdd0f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "maintenance-continuation",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "e053c01766bcefde97e7d9aebd3b51def8a35c3f508c0f15028488916e790787",
+      "afterDigest": "7240f4742d62f6302b9695c4c3eda21e7ea3dd4a57e5fccf7fc5dad2cf73a28f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b9eb2cb2e4614c00ae33242f2a89eb7c1009bb74f408c5c401e483126acdc255",
+      "afterDigest": "e92acfbfc98b98a0debbc66911cde5c3330955e5ea58ca86a0689aab860dbdf1",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-parse",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "073d5134e2bbae23c312d6322ce88a009468ac8aadfb9af4c15792f1ff01bd17",
+      "afterDigest": "6d5786202fea8706821d2b393f1da376244f00d3d70bcc5554f3d22884735bab",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-normalize",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "3b0fa7fb3e3868378c10b1409520741150bdbed093c458e461e30054855d0bfa",
+      "afterDigest": "e787c60e5e6e5d1cc502bf55e8de70aba3384fc074598d77c6702d5b351849fb",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "cpu-dynamic-audio-discover",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "9f9041fadd61b941d79c7a42157637327f4bfbbd7cb0619d1d86bfa9f4899188",
+      "afterDigest": "8f44ef1d37e3dbd4288cd02f0fb8518c03cf8922c28be5b26c975f7b5c338220",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories, which changes only the package-lock.json input of this benchmark's profile; the benchmarked parser sources and the absolute CPU gate are unchanged. CI run 40707841161 (head e757f4a) recorded relative CPU within ordinary same-runner variation in both directions across the eight parser samples. This accepts the dependency profile only.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-50",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "6d0f3439ff7a731588177676bba8e9e57420800172910f0d69c6ca5e50735203",
+      "afterDigest": "5a99ca3b44579568eda105909ab2ff27a723121a305dbc7c61a49da818dcd31d",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-200",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "de82bab231da7918fef09fed5368ddbb72638635c5dc973d97b15cf078fd96a1",
+      "afterDigest": "91fe974232109491eeb67cbea458cf836bef69fb42b35c75bd1e7700b95b71f5",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-backoff-800",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "2f7720d64589db7a060e7e33997c034a0ffa5142e407cd4c5602902bc16fadcf",
+      "afterDigest": "a5ee02198d51fcee803433f76547a9cc37f6b7d39e7e2ebcfc951e3f89b9c058",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-spread-20",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b04c4224931cb5c0ac3f12bcde63e6c6145d798f60b30cc1d55cd00d949233cb",
+      "afterDigest": "6e5eca6d84f5c738ce42e1724df1ea5f7f4e0555c3e0484936f4c4165ec663d0",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-spread-60",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "8f8c3adc855b67079e58bf54dc16201213c3b78642d3941efbf7175f6a6b40f3",
+      "afterDigest": "bdc9c9956bf389eea86b3def381c7b932520c875c3b5031bcf2e63afc21ae905",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-confirmation-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "1fd8566f50b0bb571357d04bb7bba449425b3f3435504deddb8eb8d2d9dc611a",
+      "afterDigest": "f0642072d00e5aba7fd8c38de75da7766f30a78d0ace3d5d4b47e2e0b3ecae26",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "1600c6566ad5b8d3fb5e731dfe1da82f43dbf5341fb9dfb56cc4d7102a544bb4",
+      "afterDigest": "314c8ec5f796bd90af1d947a5338793f65dc45942e4d96aaf8cf2a6dde6fd97d",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "648eec7a4b879493efba0cc4c1d7f579ea203de44e038c545b1a7db5cc5705b9",
+      "afterDigest": "694fe2f5dede427dacc99dbc0cd6696ef0dffed09a6f86812df450175ab2f0e4",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-confirmation-5000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "28eca7bf15d89fe6f67b76725769450faad5c0edc285097c195d9e45bcfe9b0e",
+      "afterDigest": "e52e671c3082815fa303d921aa51567e1d63584c407fc7d64a80bd9b8bb9c07a",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-never-attempted-5000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b02ac2d36c00019db2161cec9e58ab141a7ed6cfd5d36fb26df377693e7e8dc0",
+      "afterDigest": "5f58e2299cacb966986cb4dcf89ce201afc731106955842497b4fff69bcbaab5",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "inventory-recheck-oldest-attempt-5000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "3789db909a3e89a9cbb9b25b905086e18c7eaa42f0bbf2545fb84f8e03f5c78e",
+      "afterDigest": "342228075df66350c756290a287bf64b5ae7317316ff2bedc91377ecb0be2d47",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b1a47ed42a61fcf30d8913e8aa4968163ed47e61a757f2e189db6cf846c6b947",
+      "afterDigest": "7b9a02d247f9f455fdfe37661e0f606c7a13be889d6c530d7f79673236fc1328",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "7aa7f31c14253b53d2e134534dd99915a8ceff54bb25e864641832b7189b8d3a",
+      "afterDigest": "188c4de6cd6c7774533679475cf5efbac098223280c673589e8f4f631c626eee",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "7457b81355afff6a7220a14505c04fc5a2a95d9b76403461fdce89d67269ecc9",
+      "afterDigest": "a24e37cd6aa463dc064ac20590134f5fdb387fc3ffb9fbd0f2f6d8e4bb257faf",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "26230469544dfff5f7e2fb1e8ee26290bce0c37b6964c704eef858f319381143",
+      "afterDigest": "1ab55a45e72f136a41bc4eb6343f6179771e48625dc14e3940edf2652f7e9001",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-claim-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c37b476c9ca7d454f713d24aec96f5a76250c65b34ff2d2bc0722f594b6ead01",
+      "afterDigest": "0b03807b49053f338e4b43bf5557c3e46ac16ff2d15302e459d8c1542e0d8f54",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-50",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "49f95a3408a9d356cdf608d10b5a5c3c36f9385ce73fe4aa390f077b5e884142",
+      "afterDigest": "da781ede01e3d4ab83424db8f2bb893e9ee73cc3028a557021459c0fbcadb005",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-200",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a64ec9f52fbdf5fb5125a268b53da80698e14b2428bb83f2383c500596d93a68",
+      "afterDigest": "098dff98284d7e3f2efd9bf878367eb3db98762fed7163f02745b4c472a6c00e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-interleaved-800",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "764c6f239f94d1e6c31bbb9693320cc20c7771e530d478cea6d597b3c97fbe04",
+      "afterDigest": "761dd616af7ba709bc5a252ddba661642e99f87e4dbe36993839f69ab323ca2e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-50",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "6009c331660ca0b4839fcb7fdb603ef375cdfd455f3eb109cdb24dcd3dd0294a",
+      "afterDigest": "236a8a0684073d7f19d0d7a866c2a67d4fcfff7c56d86db2a3ddc99449ae8cb7",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-200",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "5da6d0de3cd621fa71bdb46ac0d0483acb67e5cfd17570a09515a46ddd248325",
+      "afterDigest": "62a185127e4a6f197aa1e890ee5db5f186abafe528cbfa8bd945abc29e7fa402",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-verification-live-claim-dominant-800",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "6eabdd12981e0e6183146a7abc10966792c9a39d0857fe17d6acfec55dd9e6d7",
+      "afterDigest": "c20e7f938528613d7f7d77c3ec48a18156fd8d3b371017e7a63c808272da3e9f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "b53867cb2ab928017f8e196f8f1d24dc7de946aa81e6ded2970c919d06c9ef5a",
+      "afterDigest": "986d5f8e81de27c1baa83a7f37cea65709bce1d21e1882e7cc1f20d0b26f984b",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-unchanged-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "562175172aaf0417ce492f9f231372d4ead036658bcd02be330aa4ee8c9e5676",
+      "afterDigest": "46503a568d283dfe8c72ec72a1b6bf3dfc2e9fb166df56f46410b91a339cc4b5",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a7474502046067eebc062f22dc7353fbe6e81bf82195b28d0f7f7c510b87c25f",
+      "afterDigest": "dda5a3bbe3a221a4d848b1c4c89d82b11d28c55e3b670ce9385916daaa136a90",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "63131f071c5c7ae9199fdda2fa6a846f1a62d502d1bd883f0ca87bf48519a9e7",
+      "afterDigest": "1e30e98c21a080b40c9e55b94ad8f27904aca9b105d934d52df65f54452ebc45",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "487c1c5931f17b7a5cb807a4b326b50911fb230aeece73c727fb2d27a11bb171",
+      "afterDigest": "89c224db728bcf5fea2532303df026742bf662b39aa601726ac2ef03c76bae0b",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-unchanged-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "37afc91eb99297c0e8e30c8ba05db3a9f46e8c09ff11135d0a8e9dd39039f27a",
+      "afterDigest": "bd0cc73642da09b0fd0fda721974932ada19652adc21129c5f4a53c5cf5aa50e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "944ab9c3d8dc0f38310658bb68a64c3bdabc71abbaf21dd8990d529435bfa18e",
+      "afterDigest": "261d720dce3e0ff7c998cb78926cc071eb95ce4fecb7dc661151a6d3cb906e57",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-few-changes-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "f459ce2fe9d95b215d8ea0d9c6760a44597fcc7fe6fcc6c1b060d11d6979a4ba",
+      "afterDigest": "a774e1f169b66f307bbdb731857d54e8a3dde78150bd3d36aa40c548bcbbba2e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-many-changes-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "25910065a81596b02e97d44c97219065b747dc422ac916ac1b4924f2d63d59d6",
+      "afterDigest": "b6998f4bb5b322fab2c71bfdb768e6f96ff1ba1a460117d91b9731b93955bbd8",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-unchanged-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "5bcfe1248c5cc2304cf31cde909e49e7f5f898ba9ac1e3b948c1bb52050e139d",
+      "afterDigest": "35664b2a8845d1938dd175094bebab775aa017df5458917cee1b68104474bb7c",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "candidate-publication-timestamps-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "ac336a8ab7d4505d598380e219caccc91ce2435c43730081209d29a18b4247e6",
+      "afterDigest": "982fdf94729f809109d84710aec9a194c10db2ca8c7259835d6593b324da9d8a",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-rows-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "f6b73dcb88ee75c127c2163d2c9c7dfd8fb754c5850af5802789e767a83125f9",
+      "afterDigest": "3db3413e3ed86122d5ca629d2d37ed02af527ffe1c91437f7896d346708d0896",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-rows-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "5ac796c27e539abbcc176314b284141255ae3d5b79046fac699495e08bbd6126",
+      "afterDigest": "ce3aeb3ac0335efa800f00fd90b7bbd22ba48d0fd5b17e22622030979a86fb43",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-rows-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "1a74b864a57691d4655c0b18ba9a2b43ee005b5af8d11b1e6345b3ad1132c642",
+      "afterDigest": "832184821c8d04be6baf9e4a8afb98157f9da70cd3ba4800a33732f31a82cc00",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "df18e525a96de8cdde48a776654c93e07174e09e81f2fdd34fc27413b2657e21",
+      "afterDigest": "f08ae3b0ad4248417cd627b223b82303c0f4f3ffdb18b31b5c3b66b957f76609",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "f4d2de30eadd39f8a4b431a35891a07549951fc294659532567ec68b28f0cc61",
+      "afterDigest": "6c353defb1436251c3e55ca76ae7119349ff43fb0dfc600a01b44e9ffa7c63fd",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "74f4eb300cb606483e3da7d4979a9116433c67b5f370db8026678a4ed1b5e516",
+      "afterDigest": "a662e806fea34c35af1da27437ebc86b2bf80e3fd0c91263c02997d48176b517",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "8f6618afda0e3d14e3f361629618d239bf5191a236e3867ac70b7051688ff92b",
+      "afterDigest": "9684d32d5b9c6de33f94ff80cd25cb26bb9cf0d2289634490c25ca8a069e7119",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "fd954d7d2f9909af2c291dd9501d165d78c75d3fb5201d78914bae58fe62c8b8",
+      "afterDigest": "2881dbb045ce58e309b57cc91c994a30c465edd689e2ce7e2af1193f7845e46e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-remediation-backlog-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c3b6d2d14c1970e9282d1dca6f8ebf587843f252dc7a44fb13f640380a6140cc",
+      "afterDigest": "fd2082f0e1c77079364b771f34e0c40af71a47bf21d6ff85880ac71c03375acf",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "4005c8516451e6024405bafcce86937bbce9d7738de32669c6795949ff69e901",
+      "afterDigest": "cc27416cc3e1e736c834325721c9d49528897d6b0f679a0a0dd9a23a225ace7d",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-duplicates-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "51b3c720ee7b51937d7f25a43204f03ba97275a6ff9aed686a617943bfa0cd14",
+      "afterDigest": "141931d1960bc2971e4c676325ed981c5fa2e258f865094e9434e423b5cc61ca",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-unchanged-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "887ca9834dad933f88cc5c677e573470cc953711920610ffc14ef786bf5d7ada",
+      "afterDigest": "5cf3cfca09d7678d0686d3fd8c8ce60835d5c520c7d31ba6e9ff4810a0f6bccb",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-few-price-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "48d838d40143a5cf8a76c774f1d262ad417f254604f5094a818eedbde3f3ec60",
+      "afterDigest": "138cee013fc72459a01e9601a995268fb7cd9c7ecbe44a7f2131a7b5652ac7fe",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-many-price-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "991749b4ce8659deec86363f100d9818e0ebe3bc0771b6abb405cff0fa46d99a",
+      "afterDigest": "773b7f81142c289a47d77da43fe5a1959e974dd0854b1a2e07892c6f076244dc",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "dq-snapshot-unchanged-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "21244f1ae65a5873632c2aa48cd902451de84ee49a4b993e08632838db4b92d2",
+      "afterDigest": "ca9cc4af34c350a8ad83f8f74745f2425f8bb73c9a36d56b65afb9462d9f076b",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "dq-snapshot-unchanged-5000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "3216d12d3866ead4531ca2a5e9c61bbe1e73eb192554740ed462f33479af61e3",
+      "afterDigest": "2a2ed342f7a62b47c8d6b480dc503edbb2b5de37614c9334a924b604bad38e0d",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "dq-snapshot-changed-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a7f05d5fdad841b40758ae5c5301a5b8aad6fce7c95d4b59f1c9ee29065ed196",
+      "afterDigest": "d244c18564c0bebaec8c3a756f35ebf0b92647d7d914b4a42400378e301a1d15",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "dq-snapshot-changed-5000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "5cc49bd102814956333ec549780b4fa82b890018e996fb97f72df4dd5d5f62bc",
+      "afterDigest": "4ee327a2dab37b7d9a5a82045fc38d6a5022a9d837d6190b1dc5e0430d943ed7",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "8e128d669f1698665672d72e2aa54c932ba712946ab722d5952900550e79b4ca",
+      "afterDigest": "a0137df3f0549e0b562f1db5170b4ad86d4decf133d2d012d20e55c8c9d3624b",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-photo-search-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "26787c884463aae56f8a834c0c7ec7e4e0b3d9c4aa30490ca330439fa9098db1",
+      "afterDigest": "b9af8e89d6f657a24fa6fa10f3ff71f1f3d352a4c4f34a15ca00df8c15c8e3ff",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-photo-replay",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "3b9f9f4301f44da20964f6856828b9cf56027b5837d363ffcc109d02f72a1a88",
+      "afterDigest": "03696d600c35bda5065fd9bd818a410445e1af84d80f2bf2201529070d40b429",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "catalog-photo-update",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "fe71ced28cfa4c5e439ea39aea19f9615027797a26117a41e9e9957d73deb1bd",
+      "afterDigest": "51cabb2d470efa152c473b299cce76a94532129c72acf697acb7d5b4a5b3e58c",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c446e69a429a9e411e6180be6ceabbd3ac2a5ffa8297419b10952e9ed714caff",
+      "afterDigest": "a077f98512616f9d83d9562bd81e765eb1db93e65fbc6cc7bc143efd5338190e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "dd5ece977270b576c00f22787b17257080445db2ffe259f0e394eda5d0d0bda7",
+      "afterDigest": "01016f28b9167506cf1bba8a97d50b74f8aa7d5b8541209e33c84b74d0386284",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "d8c61f6f366f73721102d4f279d65890218c240d505871e0ed912310f72cd5ae",
+      "afterDigest": "9362f1147afa037cd4c545fe5fbcba32bcb78dd5240f649bb861c834b924acb6",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "532584fb4050a6c8067188655737f980dfe3e90a3438bf7e819fe4043f480a66",
+      "afterDigest": "6986b30621a7d788ab0dd86a773196c0c63f9ee12f68b929d157bdd37b6f430a",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-expire-stale-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "457568b39eae26df1f34bcbfbab2d0bc1236553ef3168dc0c5060eafa27b5a42",
+      "afterDigest": "619ed4d687411bb66235c48f3fc572c213d008074a4c95ae8507fe66f53e1acf",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-unchanged-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "fdea396ef5aecd1d09e5b961a48afec686ae33d90fcbf0a1571459c3c2356e4b",
+      "afterDigest": "66d37e5cbbd91f7667c184348ade229ca0c73876e4c7e01dae725e6b80e73785",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-few-price-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "9a56caf745ae98bebb5a66db097689e0e9533fde9c0d897a899e33faed8232af",
+      "afterDigest": "bc87006ddc6564af2bd1f7f168da19e045b03e728bc19686e8e8e947f9486c66",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-many-price-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "97682658c05bbd9ef8154a97b2cc67e5d9383471102b86c249df0f8f0ca6e733",
+      "afterDigest": "f3f583d863fc0610f713e2e60c81489e449adf3de085ddde13f958367e7f25a6",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-unchanged-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "0a0ba00f34f149fe381656bba65e573dd6e119930b76f84abc0ac25ee2f11149",
+      "afterDigest": "912b5c48808a3502d8b801a5cd7bed21aa4f37e6507a768ff6c1e390a506f091",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-few-price-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "bab4eb7596c727430795c62802c455d824c0872521aebd2ddfa1c2b3c64879da",
+      "afterDigest": "4f9c16f410439aeca6860974aa42f4809cb0e455f2f351614c06726deb9e0bc5",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-override-many-price-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "0a28226dee38307ca1445ed75418236faa3b222f030deb1913c2eeb8a78591c9",
+      "afterDigest": "1aecd899a74702044e1c52bdbea5b3a7002a01b8cb0f041727615d3226679577",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-split",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "4cd5478bd2a77ec75cf5e4f22b0da321062f878cd0d7237f0367cd5ad1ef05af",
+      "afterDigest": "4c66eb693a2b9dcb2c4952c9574acf5657f51b84fe40f6aacdcd709f2338322f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-do-retry",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "de17dc88ec1f69c933a126297ae44f43934c11203c965b215cea6415aba22043",
+      "afterDigest": "aa451d6acd11a18ca3c1213dc797d547659dd53d94422f87d0cb71f2eb3db43f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "queue-export-redelivery",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "e5c98c5bf66fa859d71fab810185a06534a9162ca5cf91795c6f4bc77ab032da",
+      "afterDigest": "2e5e4c70048ed7731fc39009448ea6a5649030778f2bc841da0f047aef55fd51",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "category-prune",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "37b37a16008a47a1bb5d5c2160789bf073e71dc5bfb0b9c0c9dcf1745e19d3b3",
+      "afterDigest": "1b65071fcc8c4226c2927ca85df8a7c7a55f5df1d1fb8c4d76eb5b57facbb3c0",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "search-new-total",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a92b992c37443f0a8d9e37b562cfc8df812b3e5739fad60b4942485735922fd2",
+      "afterDigest": "af80d4692a322bf68d23425667795654579af41692e037d34480efa4d995ed9d",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "search-price-drop-total",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "1f98c6d9174b77d9eb5bca184cd0e0bdacbe4c7380052dd405a49f5dbfcc1b30",
+      "afterDigest": "5a908b05dafcd7975294342315c6b988989fa89e30bcdc5b1379a28b7ba062ce",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "projection-unchanged",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "348a8f3b5bece1eb17984a1967df1ef6f82147b6873f56437a05fd536930c3fc",
+      "afterDigest": "2759bc9f3c73894669494ef05ba46f6e0dc2f2016f6d9c96453bf565dadaa748",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "995c6a720ab4dbdee691ba1f43487cc36c499c3468585a4838791a3ecb0fbde1",
+      "afterDigest": "7041f2b001c1d130c1edb8864064604aeb60e50ab9e05580d2a722a7f9e063f3",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-1000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "ffef89dbd9e8a5e42236bae936771697b27f9021ef9373ac13c291b0b4befe16",
+      "afterDigest": "4c635d3440796d96749c20ef0e19e49397b41a2749b88d48ecaac0502c5488cb",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "search-sync-catalog-offers-10000",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "d302f3393b6184a212401496b25de1857a7b508ea0d39aefa63b6cd87886695f",
+      "afterDigest": "c433d997d1486dd1223902c54a6629cdc22934e833408bb76ffb5984946cb5d3",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-deactivate-missing-100",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "d10791cbbb033568f9e68067e84911d4b5ba80eb63843e713c5a33c7e992b1eb",
+      "afterDigest": "3d82b26229d824e40a964f6b4cfaa79d5fe57779daa0c0d49a3a2969c4ef03ba",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "notification-candidates",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "ca7320abc3bdf7095b446a2c7ad91f2acb67b956b09d657c835ee10ee5b5edc6",
+      "afterDigest": "5dbe2a0ba8c0c944a0ac6e706bc9d0d012852ab79be0cb6639a65fcf1b1e8e95",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "notification-matches",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "93b9376a99849c45dc389668a83dc2e4a5c5a25542a1d7eb0a6a765ea8f02b79",
+      "afterDigest": "60adf4f60cbb3de98d9fc8fd53f05f3108a9267b305a2560864d657412336d73",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "notification-outbox-replay",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "cff2a2e747533f4722d03ad3f79b1e09606b690612cd93837e0db85919541e36",
+      "afterDigest": "348384978d40243e5ce7e0375257e02c58e6adaa8cb3dd051fc3ee9ece08f679",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-replay",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "a930f480ad5893ed28366897bab64ea726b6a63173f7543344166c885c2dd036",
+      "afterDigest": "6083effb77743dbe332249a86fab331fbc8ef5207d2610c26166ff3d9da5d536",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-price-change",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c49308fcbe85308375ea7b2e63d6885b1481b91508553f8251d3f2f76f0a8015",
+      "afterDigest": "588e7edcc88bf70268eb795a4eef2e1e9d53e1a3e3373ffd8c8834966b55584e",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-catalog-shared",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "493c1a80f2b0cf70ed1ba4f380a915be3de7aba3f2117879b25f8348e5ee6f4b",
+      "afterDigest": "4e5a00a98ef45fbf685b6a81b3dbcba168f7592daf42b7b77969eb849b89b53f",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-catalog-replay",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "f0fc096d4814bea48d757141dbdfccfa741fc55dc703bdb83c50b5274b468584",
+      "afterDigest": "7a18b1dfe8d355960bbf1c4ad926de2aa3f6ad2c2b1443defa8a6d99863fdada",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-search-page",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "c81719971a5e96301d4119689e53fcc7b7aa18c083494c632ff41af267b27f03",
+      "afterDigest": "c5bb82b99fdea65fefcbfa819e1b95c5c460693b2784be132f4176d3c3f72c83",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-search-filtered",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "3029aff55c04ee2ba3cbc60782ee7081c73f6db207b193b66af34f322898bdef",
+      "afterDigest": "366684c29da0c15904a0b36ee07e72d589bae1404f954155afe4fca0c929a9da",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "auction-admin-status",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "ec5c61e9478a1e4f316b1c7e6db5ee14f28a9985afaaa668af4983cc913f0057",
+      "afterDigest": "cc16a47cc5a0593d57cb85aec3417008757004739da68c356dd16c6e4d292e95",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
+    },
+    {
+      "id": "crawl-checkpoint-inline",
+      "baseSha": "3ae1566d4a053680e6b8b445292a4613992d6592",
+      "beforeDigest": "1cba282215f25eb4c0517c8acdce0f5c5285d121c5d8ed12978b9997baad4fee",
+      "afterDigest": "563da05b99ae092c4129f83bf518524ba2a470ad51b04aae2495639eccfa4e06",
+      "reason": "Miniflare's scoped undici override moves from 7.29.1 to 7.30.1 for the October 2026 undici advisories (including high GHSA-4w7w-5xrc-9h26, GHSA-xjj6-f33q-929c and GHSA-2m5v-pch6-74hx), which changes only the package-lock.json input of every cost profile. CI run 40707841161 (head e757f4a, without any data migration) measured all 96 deterministic samples with metrics identical to base 3ae1566; fixtures, application queries, contracts and absolute limits are unchanged. This accepts the measured dependency profile only, as for the 7.29.0 -> 7.29.1 patch.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/819",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
+      ]
     }
   ]
 }
