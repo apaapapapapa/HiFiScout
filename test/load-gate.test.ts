@@ -276,10 +276,21 @@ test("a failing gate names its unreviewed rows and their review digests as annot
   const annotations = loadGateAnnotations(result);
   const row = result.rows.find((candidate) => candidate.id === "lookup");
   assert.ok(row);
+  // The row line states the unreviewed comparison, so its problem is not repeated.
   assert.deepEqual(annotations, [
-    `::error title=load-gate 1/2 base ${BASE}::problem comparison_unknown:lookup`,
-    `::error title=load-gate 2/2 base ${BASE}::row lookup unknown metrics=identical before=${row.beforeDigest} after=${row.afterDigest}`,
+    `::error title=load-gate 1/1 base ${BASE}::row lookup unknown same ${row.beforeDigest} ${row.afterDigest}`,
   ]);
+  data.after = [
+    {
+      ...sample(HEAD),
+      profileHash: "d".repeat(64),
+      metrics: { ...sample(HEAD).metrics, rowsRead: 90 },
+    },
+  ];
+  assert.match(
+    loadGateAnnotations(evaluateLoadGate(data)).join(""),
+    /::row lookup unknown rowsRead:100>90 [a-f0-9]{64} [a-f0-9]{64}$/u,
+  );
   // Many rows share at most ten annotations, with newlines escaped for the workflow command.
   const many = { ...result, problems: Array.from({ length: 25 }, (_, index) => `p${index}`) };
   const packed = loadGateAnnotations(many);

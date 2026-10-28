@@ -301,17 +301,21 @@ const MAX_ANNOTATION_CHARS = 3500;
  */
 export function loadGateAnnotations(result: ReturnType<typeof evaluateLoadGate>): string[] {
   if (result.status === "pass") return [];
+  const rows = result.rows.filter(
+    (row) => row.status !== "pass" && row.status !== "reviewed_baseline",
+  );
+  const described = new Set(rows.map((row) => row.id));
   const lines = [
-    ...result.problems.map((problem) => `problem ${problem}`),
-    ...result.rows
-      .filter((row) => row.status !== "pass" && row.status !== "reviewed_baseline")
-      .map((row) => {
-        const metrics = row.comparison?.rows ?? [];
-        const changed = metrics.some(
-          (metric) => metric.metric !== "cpuUs" && metric.baseline !== metric.candidate,
-        );
-        return `row ${row.id} ${row.status} metrics=${changed ? "changed" : "identical"} before=${row.beforeDigest} after=${row.afterDigest}`;
-      }),
+    // A row line below already states each unreviewed comparison.
+    ...result.problems
+      .filter((problem) => !described.has(problem.replace(/^comparison_[a-z_]+:/u, "")))
+      .map((problem) => `problem ${problem}`),
+    ...rows.map((row) => {
+      const changes = (row.comparison?.rows ?? [])
+        .filter((metric) => metric.metric !== "cpuUs" && metric.baseline !== metric.candidate)
+        .map((metric) => `${metric.metric}:${metric.baseline}>${metric.candidate}`);
+      return `row ${row.id} ${row.status} ${changes.join(",") || "same"} ${row.beforeDigest} ${row.afterDigest}`;
+    }),
   ];
   const chunks: string[][] = [];
   const perChunk = Math.ceil(lines.length / MAX_ANNOTATIONS);
