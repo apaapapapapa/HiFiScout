@@ -3,6 +3,7 @@ import { test } from "vite-plus/test";
 import {
   evaluateLoadGate,
   loadCoverage,
+  loadGateAnnotations,
   loadDigest,
   parseLoadReviews,
   sampleReviewDigest,
@@ -264,4 +265,25 @@ test("review records require a reason, durable repository evidence and unambiguo
     () => parseLoadReviews({ schemaVersion: 1, reviews: [review, review] }),
     /duplicate_load_review/,
   );
+});
+
+test("a failing gate names its unreviewed rows and their review digests as annotations", () => {
+  const data = input();
+  assert.deepEqual(loadGateAnnotations(evaluateLoadGate(data)), []);
+  // A dependency profile change alone leaves deterministic metrics identical but unreviewed.
+  data.after = [{ ...sample(HEAD), profileHash: "d".repeat(64) }];
+  const result = evaluateLoadGate(data);
+  const annotations = loadGateAnnotations(result);
+  const row = result.rows.find((candidate) => candidate.id === "lookup");
+  assert.ok(row);
+  assert.deepEqual(annotations, [
+    `::error title=load-gate 1/2 base ${BASE}::problem comparison_unknown:lookup`,
+    `::error title=load-gate 2/2 base ${BASE}::row lookup unknown metrics=identical before=${row.beforeDigest} after=${row.afterDigest}`,
+  ]);
+  // Many rows share at most ten annotations, with newlines escaped for the workflow command.
+  const many = { ...result, problems: Array.from({ length: 25 }, (_, index) => `p${index}`) };
+  const packed = loadGateAnnotations(many);
+  assert.equal(packed.length, 9);
+  assert.ok(packed[0].endsWith("::problem p0%0Aproblem p1%0Aproblem p2"));
+  assert.ok(packed.every((line) => !/[\r\n]/u.test(line)));
 });

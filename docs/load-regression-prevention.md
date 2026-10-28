@@ -49,7 +49,9 @@ contract fails. Direct DB/storage access added elsewhere in `src` is also treate
 Registration maps a boundary to maintained tests; it does not prove execution coverage of every
 branch. Add a representative measured scenario when adding a new operation, not just a filename.
 
-CI retains `load-baseline` and `cost-evidence` (including `load-gate.json`) for 30 days. Missing,
+CI retains `load-baseline` and `cost-evidence` (including `load-gate.json`) for 30 days. A failing
+gate also records its problems and each unreviewed row's metric change and review digests as at
+most ten check-run annotations, readable through the Checks API without logs or artifacts. Missing,
 failed, stale, dirty, skipped and incomparable observations fail the gate. Never replace a failed
 baseline run with a fabricated observation or a different source SHA.
 

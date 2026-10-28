@@ -290,6 +290,40 @@ export function evaluateLoadGate(input: LoadGateInput) {
   };
 }
 
+/** GitHub keeps ten error annotations per step; longer messages are truncated. */
+const MAX_ANNOTATIONS = 10;
+const MAX_ANNOTATION_CHARS = 3500;
+
+/**
+ * Check-run annotations stating why a gate failed, readable through the Checks API when logs and
+ * artifacts are not. Each unreviewed row carries the digests a sealed review must name and whether
+ * its measured metrics changed; nothing here accepts a review.
+ */
+export function loadGateAnnotations(result: ReturnType<typeof evaluateLoadGate>): string[] {
+  if (result.status === "pass") return [];
+  const lines = [
+    ...result.problems.map((problem) => `problem ${problem}`),
+    ...result.rows
+      .filter((row) => row.status !== "pass" && row.status !== "reviewed_baseline")
+      .map((row) => {
+        const metrics = row.comparison?.rows ?? [];
+        const changed = metrics.some(
+          (metric) => metric.metric !== "cpuUs" && metric.baseline !== metric.candidate,
+        );
+        return `row ${row.id} ${row.status} metrics=${changed ? "changed" : "identical"} before=${row.beforeDigest} after=${row.afterDigest}`;
+      }),
+  ];
+  const chunks: string[][] = [];
+  const perChunk = Math.ceil(lines.length / MAX_ANNOTATIONS);
+  for (let index = 0; index < lines.length; index += perChunk)
+    chunks.push(lines.slice(index, index + perChunk));
+  return chunks.map((chunk, index) => {
+    const message = chunk.join("\n").slice(0, MAX_ANNOTATION_CHARS);
+    const escaped = message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+    return `::error title=load-gate ${index + 1}/${chunks.length} base ${result.baselineSha}::${escaped}`;
+  });
+}
+
 export async function runLoadGate(
   baseSha: string,
   baselineDirectory: string,
@@ -399,5 +433,7 @@ export async function runLoadGate(
       problems: result.problems,
     }),
   );
+  if (process.env.GITHUB_ACTIONS === "true")
+    for (const line of loadGateAnnotations(result)) console.log(line);
   return reportExitCode(result.status);
 }
