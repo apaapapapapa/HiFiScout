@@ -290,6 +290,35 @@ other editorial content.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
 
 
+## AudioUnion collection
+
+The October 28, 2026 storefront renewal replaced `/ct/detail/used/<id>/` links with
+`/shop/g/g<goods-code>/` and the old new-arrivals route redirects to a search page excluded by
+the seller's robots.txt. Collection now starts from the public categories' **used-only** routes
+(`/shop/c/c<category>_lS/`) and follows only the immediate next page of the same category.
+The category list lives in `src/crawler/shops/audiounion-urls.ts`, shared with the relay allowlist.
+An obsolete legacy entry override selects these defaults; other explicit entry overrides remain
+subject to normal origin and robots checks.
+
+The existing total page ceiling and seller pacing still apply. Initial category pages precede
+their continuation pages, and an empty category does not stop the other categories. Coverage stays
+**partial**, including when all observed links end: neither omitted goods nor a truncated category
+can deactivate stored inventory. The small home-page new-arrivals carousel is not a substitute for
+the category feeds. The existing schedule/continuation and inventory-recheck load contracts retain
+their ceilings; this changes discovery within that budget, not dispatch frequency or recheck volume.
+
+Cards must explicitly identify `class1=S`. Maker, model, category and selling price come from the
+same card; MSRP and buyback quotes are not selling prices. Inquiry-only prices remain unknown.
+New source IDs use `goods:<goods-code>` because the seller supplies no verified mapping to the
+old numeric IDs. Legacy rows are not merged by model name, and legacy route disappearance is not
+sold evidence: inventory rechecks select the new URL prefix only. Existing bounded stale-listing
+aging handles unseen old rows; this source change does not backfill or delete production listings.
+
+Detail availability requires the stored goods code to match the used detail's own code and stock
+controls. Warranty, accessories and condition facts come only from its explicit labeled fields.
+The relay deployment probes a public category and one of its current detail links through the normal
+robots-aware PREPARE/FETCH flow, without relying on old D1 URLs.
+
 ## e☆イヤホン collection
 
 `e-earphone` reads the public `/collections/recently-used` HTML feed. It shares the normal

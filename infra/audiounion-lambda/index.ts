@@ -1,5 +1,9 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { APIGatewayProxyEventHeaders, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import {
+  audioUnionCategoryPage,
+  audioUnionGoodsCode,
+} from "../../src/crawler/shops/audiounion-urls.js";
 
 /**
  * One header record for every direction: the response branches below build
@@ -103,7 +107,7 @@ interface CreateHandlerOptions {
 
 type RelayHandler = (event?: RelayEvent) => Promise<RelayResponse>;
 
-const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
+const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/shop/c/camp-integrated-all_lS/";
 const DEFAULT_USER_AGENT = "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)";
 const DEFAULT_HIFIDO_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)";
@@ -420,6 +424,7 @@ function configuredEntryUrl(env: RelayEnv): string {
 }
 
 function isAllowedAudioUnionDetailUrl(url: URL): boolean {
+  if (audioUnionGoodsCode(url.href)) return true;
   return (
     url.protocol === "https:" &&
     url.hostname === AUDIOUNION_HOST &&
@@ -464,6 +469,7 @@ function isAllowedHifidoDetailUrl(url: URL): boolean {
 
 function isAllowedTarget(requestedUrl: URL, env: RelayEnv): boolean {
   if (requestedUrl.toString() === configuredEntryUrl(env)) return true;
+  if (audioUnionCategoryPage(requestedUrl.href)) return true;
   if (isAllowedAudioUnionDetailUrl(requestedUrl)) return true;
   if (isAllowedHifidoDetailUrl(requestedUrl)) return true;
   return isAllowedHifidoUrl(requestedUrl);

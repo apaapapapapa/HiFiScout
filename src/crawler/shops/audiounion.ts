@@ -7,7 +7,20 @@ import {
   splitManufacturerModel,
   stableSourceId,
 } from "../normalize.js";
-import { listingBlocks, listingFieldHtml, listingFieldText } from "../listing-fields.js";
+import {
+  listingAttribute,
+  listingBlocks,
+  listingFieldHtml,
+  listingFieldText,
+} from "../listing-fields.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
+import {
+  AUDIOUNION_CATEGORIES,
+  AUDIOUNION_ORIGIN,
+  AUDIOUNION_LEGACY_ENTRY_URL,
+  audioUnionCategoryPage,
+  audioUnionGoodsCode,
+} from "./audiounion-urls.js";
 import { availabilityFromSignals } from "../availability.js";
 import { parseProductPage } from "../parser.js";
 import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
@@ -18,7 +31,7 @@ export const AUDIOUNION_CATEGORY_MAPPING = Object.freeze({
   "USB-DAC/プリメインアンプ": "AMP.INTEGRATED",
 });
 
-const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
+const DEFAULT_ENTRY_URL = `${AUDIOUNION_ORIGIN}/shop/c/camp-integrated-all_lS/`;
 const DETAIL_URL_PATTERN = /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i;
 const BRAND_SUFFIXES = new Set([
   "audio",
@@ -242,7 +255,61 @@ function repairIdentity(
   return item;
 }
 
+function parseStorefrontCards(cards: string[], pageUrl: string): SellerProduct[] {
+  const products = new Map<string, SellerProduct>();
+  for (const card of cards) {
+    // The same card template also presents new goods and buyback quotes.
+    const classes = [...card.matchAll(/<input\b([^>]*)>/gi)]
+      .filter((match) => listingAttribute(match[1], "name") === "class1")
+      .map((match) => listingAttribute(match[1], "value"));
+    if (classes.length !== 1 || classes[0] !== "S") continue;
+    const name = listingFieldHtml(card, "block-thumbnail-t--goods-name");
+    const href = name.match(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+    if (!href) continue;
+    let sourceUrl: string;
+    try {
+      sourceUrl = new URL(cleanText(href), pageUrl).href;
+    } catch {
+      continue;
+    }
+    const code = audioUnionGoodsCode(sourceUrl);
+    const model = cleanText(name);
+    if (!code || !model) continue;
+    const manufacturer = listingFieldText(card, "block-thumbnail-t--goods-brand");
+    const rawCategory = listingFieldText(card, "block-thumbnail-t--goods-category");
+    // net-price is MSRP; an inquiry-only offer has no advertised selling price.
+    const priceYen = parseYen(listingFieldText(card, "js-enhanced-ecommerce-goods-price"));
+    const text = stripTagsKeepingSpacing(card);
+    const soldOut = /売約済み?|売り切れ|売切|sold\s*out|在庫なし|完売|品切れ|販売終了|ご成約/i.test(
+      text,
+    );
+    const positive = /在庫あり|カートに(?:入れる|追加する)|購入する/i.test(text);
+    const title = cleanText(`${manufacturer} ${model}`);
+    const sourceId = `goods:${code}`;
+    products.set(sourceId, {
+      sourceId,
+      sourceUrl,
+      title,
+      rawManufacturer: manufacturer,
+      manufacturer,
+      model,
+      rawCategory,
+      category: inferCategory(title, rawCategory),
+      conditionText: "中古",
+      priceYen,
+      stockStatus: availabilityFromSignals({
+        soldOut,
+        inStock: positive || (!soldOut && priceYen !== null),
+      }),
+    });
+  }
+  return [...products.values()];
+}
+
 function parseAudioUnion(html: string, pageUrl: string): SellerProduct[] {
+  html = stripRawTextElements(html, ["script", "style", "noscript"]);
+  const storefrontCards = listingBlocks(html, "dl", "block-thumbnail-t--goods");
+  if (storefrontCards.length) return parseStorefrontCards(storefrontCards, pageUrl);
   const cards = listingBlocks(html, "li", "item");
   if (cards.length) {
     const products: SellerProduct[] = [];
@@ -296,9 +363,36 @@ export const audioUnionAdapter = {
   baseUrl: "https://www.audiounion.jp",
   discovery: {
     coverage: "partial",
-    policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
+    policy: { emptyPage: "continue", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets({ env }) {
-      yield env.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
+      const override = env.AUDIOUNION_ENTRY_URL?.trim();
+      if (override && override !== AUDIOUNION_LEGACY_ENTRY_URL) {
+        yield override;
+        return;
+      }
+      // Search is robots-disallowed. Category pages expose the seller's public used filter.
+      for (const category of AUDIOUNION_CATEGORIES)
+        yield `${AUDIOUNION_ORIGIN}/shop/c/c${category}_lS/`;
+    },
+    discoverTargets(html, pageUrl) {
+      const current = audioUnionCategoryPage(pageUrl);
+      if (!current) return [];
+      const source = stripRawTextElements(html, ["script", "style", "noscript"]);
+      const pager = listingFieldHtml(source, "block-goods-list--pager");
+      if (!pager) return null;
+      const next = listingFieldHtml(pager, "pager-next");
+      if (!next) return [];
+      const href = next.match(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+      if (!href) return null;
+      try {
+        const target = new URL(cleanText(href), pageUrl).href;
+        const parsed = audioUnionCategoryPage(target);
+        return parsed?.category === current.category && parsed.page === current.page + 1
+          ? [target]
+          : null;
+      } catch {
+        return null;
+      }
     },
   },
   parse(html, pageUrl = DEFAULT_ENTRY_URL) {

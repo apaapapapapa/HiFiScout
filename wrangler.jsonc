@@ -46,6 +46,7 @@
     "AI_CATALOG_ENABLED": "true",
     "AI_CATALOG_EVALUATION_POLICY": "{\"model\":\"@cf/qwen/qwen3-30b-a3b-fp8\",\"kind\":\"catalog_model_lead\",\"promptVersion\":3,\"schemaVersion\":2,\"maxJobsPerDay\":25,\"maxAttempts\":2,\"maxInputTokens\":2000,\"maxRequestBytes\":1744,\"maxOutputTokens\":300,\"maxResponseBytes\":4096,\"maxCandidates\":5,\"maxNeuronsPerDay\":1000,\"inputNeuronsPerMillion\":4625,\"outputNeuronsPerMillion\":30475,\"retentionDays\":180}",
     "AUDIOUNION_ENABLED": "true",
+    "AUDIOUNION_ENTRY_URL": "",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",
     "HIFIDO_ENABLED": "true",
@@ -90,7 +91,6 @@
     "KNOWLEDGE_CATALOG_QUEUE_WAKE_MAX_JOBS": "8",
     "KNOWLEDGE_CATALOG_QUEUE_WAKE_WALL_BUDGET_MS": "25000",
     "KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS": "10000",
-    "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }, { "binding": "OPS_BUCKET", "bucket_name": "hifiscout-d1-observations" }],

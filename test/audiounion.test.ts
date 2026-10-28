@@ -2,9 +2,15 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { audioUnionAdapter } from "../src/crawler/shops/audiounion.js";
 
-test("Audio Union uses only the allowed new-arrival used feed", () => {
+test("Audio Union uses bounded public used-category feeds after the storefront renewal", () => {
   const urls = [...audioUnionAdapter.discovery.initialTargets({ maxPages: 40, env: {} })];
-  assert.deepEqual(urls, ["https://www.audiounion.jp/st/new_arrival_used.html"]);
+  assert.equal(urls.length, 11);
+  assert.equal(new Set(urls).size, 11);
+  assert.ok(
+    urls.every(
+      (url) => url.startsWith("https://www.audiounion.jp/shop/c/c") && url.endsWith("_lS/"),
+    ),
+  );
   assert.equal(audioUnionAdapter.discovery.coverage, "partial");
 });
 

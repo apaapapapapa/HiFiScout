@@ -9,7 +9,7 @@ Parameters:
     MinLength: 32
   AudioUnionEntryUrl:
     Type: String
-    Default: https://www.audiounion.jp/st/new_arrival_used.html
+    Default: https://www.audiounion.jp/shop/c/camp-integrated-all_lS/
   CrawlerUserAgent:
     Type: String
     Default: HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)

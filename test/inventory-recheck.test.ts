@@ -138,7 +138,7 @@ test("recheck marks an explicit listing purchase control as available", async ()
     {
       staleBefore: "2026-08-10T10:00:00.000Z",
       retryBefore: "2026-08-10T10:00:00.000Z",
-      candidateUrlPrefix: "https://www.audiounion.jp/ct/detail/used/",
+      candidateUrlPrefix: "https://www.audiounion.jp/shop/g/g",
     },
   ]);
   assert.deepEqual(repository.calls[1], ["attempt", 7, NOW.toISOString()]);

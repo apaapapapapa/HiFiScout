@@ -7,6 +7,7 @@ on:
     paths:
       - 'infra/audiounion-lambda/index.ts'
       - 'infra/audiounion-lambda/template.yaml'
+      - 'src/crawler/shops/audiounion-urls.ts'
       - 'scripts/probe-inventory-details.ts'
       - '.github/workflows/deploy-audiounion-lambda.yml'
   workflow_dispatch:
@@ -40,7 +41,7 @@ jobs:
       - name: Verify detail identity, WAF and paced batch contracts
         env:
           WRANGLER_SEND_METRICS: 'false'
-        run: vp test run test/audiounion-lambda.test.ts test/shop-inventory-classifiers.test.ts test/crawl-do-inventory-batch.test.ts
+        run: vp test run test/audiounion-lambda.test.ts test/audiounion-renewal.test.ts test/shop-inventory-classifiers.test.ts test/crawl-do-inventory-batch.test.ts
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
@@ -198,21 +199,9 @@ jobs:
             --query 'FunctionUrl' \
             --output text)"
 
-          product_json="$(vp exec wrangler d1 execute DB --remote --json --command "
-            SELECT source_url
-            FROM products
-            WHERE shop_key = 'audiounion'
-              AND is_active = 1
-              AND stock_status = 'in_stock'
-              AND source_url LIKE 'https://www.audiounion.jp/ct/detail/used/%'
-            ORDER BY last_seen_at DESC
-            LIMIT 1;")"
-          detail_url="$(jq -r '.[0].results[0].source_url // empty' <<< "$product_json")"
-          if [ -z "$detail_url" ]; then
-            echo "No active AudioUnion used-detail URL is available for the deployment probe."
-            exit 1
-          fi
-
+          # Search is robots-disallowed after the renewal. Probe a public used-category page,
+          # then one detail it actually lists; stored legacy IDs no longer identify these goods.
+          category_url='https://www.audiounion.jp/shop/c/camp-integrated-all_lS/'
           hifido_url='https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0'
 
           prepare_relay() {
@@ -236,18 +225,21 @@ jobs:
 
           audiounion_prepare="$RUNNER_TEMP/audiounion-prepare.json"
           hifido_prepare="$RUNNER_TEMP/hifido-prepare.json"
-          prepare_relay "$detail_url" "$audiounion_prepare"
+          prepare_relay "$category_url" "$audiounion_prepare"
           prepare_relay "$hifido_url" "$hifido_prepare"
 
-          max_not_before_ms="$(jq -s 'map(.notBeforeMs) | max' \
-            "$audiounion_prepare" "$hifido_prepare")"
-          now_ms="$(date +%s%3N)"
-          if [ "$now_ms" -lt "$max_not_before_ms" ]; then
-            wait_ms=$((max_not_before_ms - now_ms + 1000))
-            wait_seconds=$(((wait_ms + 999) / 1000))
-            echo "Waiting $wait_seconds seconds outside Lambda until both permits are valid."
-            sleep "$wait_seconds"
-          fi
+          wait_for_permits() {
+            local max_not_before_ms now_ms wait_ms wait_seconds
+            max_not_before_ms="$(jq -s 'map(.notBeforeMs) | max' "$@")"
+            now_ms="$(date +%s%3N)"
+            if [ "$now_ms" -lt "$max_not_before_ms" ]; then
+              wait_ms=$((max_not_before_ms - now_ms + 1000))
+              wait_seconds=$(((wait_ms + 999) / 1000))
+              echo "Waiting $wait_seconds seconds outside Lambda until permits are valid."
+              sleep "$wait_seconds"
+            fi
+          }
+          wait_for_permits "$audiounion_prepare" "$hifido_prepare"
 
           fetch_relay() {
             local prepared_file="$1"
@@ -270,12 +262,33 @@ jobs:
             test -s "$body_file"
           }
 
-          audiounion_headers="$RUNNER_TEMP/audiounion-detail-headers.txt"
-          audiounion_body="$RUNNER_TEMP/audiounion-detail.html"
+          audiounion_headers="$RUNNER_TEMP/audiounion-category-headers.txt"
+          audiounion_body="$RUNNER_TEMP/audiounion-category.html"
           hifido_headers="$RUNNER_TEMP/hifido-relay-headers.txt"
           hifido_body="$RUNNER_TEMP/hifido-relay.html"
           fetch_relay "$audiounion_prepare" "$audiounion_headers" "$audiounion_body"
           fetch_relay "$hifido_prepare" "$hifido_headers" "$hifido_body"
+
+          detail_url="$(AUDIOUNION_LISTING_FILE="$audiounion_body" node --import tsx --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { audioUnionAdapter } from './src/crawler/shops/audiounion.ts';
+          const items = audioUnionAdapter.parse(readFileSync(process.env.AUDIOUNION_LISTING_FILE, 'utf8'));
+          const item = items.find((item) => item.stockStatus === 'in_stock' && item.priceYen > 0);
+          if (!item) throw new Error('AudioUnion public category yielded no priced used listing');
+          console.log(item.sourceUrl);
+          NODE
+          )"
+          prepare_relay "$detail_url" "$audiounion_prepare"
+          wait_for_permits "$audiounion_prepare"
+          detail_body="$RUNNER_TEMP/audiounion-detail.html"
+          fetch_relay "$audiounion_prepare" "$RUNNER_TEMP/audiounion-detail-headers.txt" "$detail_body"
+          AUDIOUNION_DETAIL_FILE="$detail_body" AUDIOUNION_DETAIL_URL="$detail_url" node --import tsx --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { classifyAudioUnionInventoryPage } from './src/crawler/shops/audiounion-inventory.ts';
+          const classification = classifyAudioUnionInventoryPage(readFileSync(process.env.AUDIOUNION_DETAIL_FILE, 'utf8'), { sourceUrl: process.env.AUDIOUNION_DETAIL_URL });
+          if (classification === 'unknown') throw new Error('AudioUnion used-detail evidence was ambiguous');
+          console.log(`AudioUnion detail availability: ${classification}`);
+          NODE
 
           grep -Eqi 'list-item|ハイファイ堂|hifido' "$hifido_body"
           echo "AudioUnion and Hifido PREPARE/FETCH protocol verified through the Tokyo relay."
