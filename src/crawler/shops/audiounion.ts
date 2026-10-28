@@ -32,6 +32,14 @@ export const AUDIOUNION_CATEGORY_MAPPING = Object.freeze({
 });
 
 const DEFAULT_ENTRY_URL = `${AUDIOUNION_ORIGIN}/shop/c/camp-integrated-all_lS/`;
+/**
+ * Pages followed per category, the first included. All categories' leading pages fit within the
+ * shop's page ceiling, so a healthy collection never truncates its own frontier. The staged
+ * finalizer reads a truncated frontier as unreliable coverage; following every continuation of a
+ * catalog deeper than the ceiling would defer stale-listing aging on every run and leave unseen
+ * listings, including retired legacy URLs, in stock indefinitely.
+ */
+export const AUDIOUNION_CATEGORY_PAGE_DEPTH = 3;
 const DETAIL_URL_PATTERN = /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i;
 const BRAND_SUFFIXES = new Set([
   "audio",
@@ -395,9 +403,10 @@ export const audioUnionAdapter = {
       try {
         const target = new URL(cleanText(href), pageUrl).href;
         const parsed = audioUnionCategoryPage(target);
-        return parsed?.category === current.category && parsed.page === current.page + 1
-          ? [target]
-          : null;
+        if (!parsed || parsed.category !== current.category || parsed.page !== current.page + 1)
+          return null;
+        // A valid continuation past the fixed depth is not followed; coverage stays partial.
+        return current.page < AUDIOUNION_CATEGORY_PAGE_DEPTH ? [target] : [];
       } catch {
         return null;
       }

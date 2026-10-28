@@ -301,13 +301,18 @@ other editorial content.
 The October 28, 2026 storefront renewal replaced `/ct/detail/used/<id>/` links with
 `/shop/g/g<goods-code>/` and the old new-arrivals route redirects to a search page excluded by
 the seller's robots.txt. Collection now starts from the public categories' **used-only** routes
-(`/shop/c/c<category>_lS/`) and follows only the immediate next page of the same category.
+(`/shop/c/c<category>_lS/`) and follows only the immediate next page of the same category, up to
+`AUDIOUNION_CATEGORY_PAGE_DEPTH` pages per category (`src/crawler/shops/audiounion.ts`).
 The category list lives in `src/crawler/shops/audiounion-urls.ts`, shared with the relay allowlist.
 An obsolete legacy entry override selects these defaults; other explicit entry overrides remain
 subject to normal origin and robots checks.
 
 The existing total page ceiling and seller pacing still apply. Initial category pages precede
-their continuation pages, and an empty category does not stop the other categories. Coverage stays
+their continuation pages, and an empty category does not stop the other categories. Every
+category's followed pages together stay within the configured ceiling (a test checks
+`wrangler.jsonc`): the staged finalizer treats a frontier truncated by the ceiling as unreliable
+coverage, so a catalog deeper than the ceiling would otherwise defer stale-listing aging on every
+run. A lower ceiling still truncates and fails closed. Coverage stays
 **partial**, including when all observed links end: neither omitted goods nor a truncated category
 can deactivate stored inventory. The small home-page new-arrivals carousel is not a substitute for
 the category feeds. The existing schedule/continuation and inventory-recheck load contracts retain

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
-import { audioUnionAdapter } from "../src/crawler/shops/audiounion.js";
+import { getCrawlerSettings, getShopMaxPages } from "../src/config.js";
+import {
+  AUDIOUNION_CATEGORY_PAGE_DEPTH,
+  audioUnionAdapter,
+} from "../src/crawler/shops/audiounion.js";
 import {
   audioUnionInventoryRecheck,
   classifyAudioUnionInventoryPage,
@@ -8,6 +13,18 @@ import {
   isAudioUnionUsedDetailUrl,
 } from "../src/crawler/shops/audiounion-inventory.js";
 import { diagnoseAudioUnionHtml } from "../src/crawler/shops/audiounion-diagnostics.js";
+import {
+  AUDIOUNION_CATEGORIES,
+  audioUnionCategoryPage,
+} from "../src/crawler/shops/audiounion-urls.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
+import {
+  readCollectionSession,
+  type CollectionProgressState,
+} from "../src/crawler/collection-progress.js";
+import { processFinalize } from "../src/crawler/resumable-finalize.js";
+import { processFetch } from "../src/crawler/resumable-page-steps.js";
+import { ensureSession } from "../src/crawler/resumable-session.js";
 import { createHandler } from "../infra/audiounion-lambda/index.js";
 import { initialPageQueue, coverageDecision } from "../src/crawler/strategies.js";
 import { selectInventoryRecheckCandidate } from "../src/db/inventory-recheck-repository.js";
@@ -165,6 +182,12 @@ test("renewed AudioUnion discovery stays partial, capped, used-only and on the i
     [],
   );
   assert.equal(audioUnionAdapter.discovery.discoverTargets("<html>error</html>", CATEGORY), null);
+  // The last followed page still validates its pager, but a valid continuation is not queued.
+  const deepest = CATEGORY.replace("_lS", `_p${AUDIOUNION_CATEGORY_PAGE_DEPTH}_lS`);
+  const beyond = CATEGORY.replace("_lS", `_p${AUDIOUNION_CATEGORY_PAGE_DEPTH + 1}_lS`);
+  assert.deepEqual(audioUnionAdapter.discovery.discoverTargets(page(beyond), deepest), []);
+  assert.equal(audioUnionAdapter.discovery.discoverTargets(page(next), deepest), null);
+  assert.equal(audioUnionAdapter.discovery.discoverTargets("<html>error</html>", deepest), null);
   const empty =
     '<div class="block-category-list"><p class="alert">ご指定の条件に一致する商品が見つかりませんでした。</p></div>';
   assert.deepEqual(audioUnionAdapter.discovery.discoverTargets(empty, CATEGORY), []);
@@ -267,6 +290,106 @@ test("legacy URL retirement cannot become a sold observation or starve new detai
     );
   } finally {
     sqlite.close();
+  }
+});
+
+const audioUnion = getShopPlugin("audiounion");
+assert.ok(audioUnion);
+const plugin = audioUnion;
+
+test("every followed AudioUnion category page fits the configured page ceiling", () => {
+  const { vars } = JSON.parse(readFileSync("wrangler.jsonc", "utf8")) as { vars: Env };
+  const ceiling = getShopMaxPages(
+    vars,
+    plugin.definition,
+    getCrawlerSettings(vars).maxPagesPerShop,
+  );
+  assert.ok(AUDIOUNION_CATEGORIES.length * AUDIOUNION_CATEGORY_PAGE_DEPTH <= ceiling);
+});
+
+/** One priced used card per page; every category continues beyond the whole crawl's budget. */
+function deepCategoryPage(url: string): string {
+  const current = audioUnionCategoryPage(url);
+  assert.ok(current);
+  const next = `/shop/c/c${current.category}_p${current.page + 1}_lS/`;
+  const pager = `<li class="pager-next"><a href="${next}">次</a></li>`;
+  return `<div class="block-goods-list--pager"><ul>${pager}</ul></div>
+    ${card({ code: `${current.category}-${current.page}` })}`;
+}
+
+test("a deep renewed catalog lets the staged finalizer age a retired legacy listing", async () => {
+  for (const [ceiling, pages, stockStatus] of [
+    ["40", AUDIOUNION_CATEGORIES.length * AUDIOUNION_CATEGORY_PAGE_DEPTH, "unknown"],
+    // A ceiling below the followed pages truncates the frontier and still fails closed.
+    ["20", 20, "in_stock"],
+  ] as const) {
+    const { sqlite, db } = migratedSqlite();
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+    // A legacy listing unseen for 20 days after an otherwise healthy, recently successful history.
+    sqlite.exec(`
+      INSERT INTO products(shop_key, source_id, title, source_url, first_seen_at, last_seen_at,
+        last_changed_at, stock_status, is_active)
+      VALUES ('audiounion', '223257', 'SOULNOTE A-0S',
+        'https://www.audiounion.jp/ct/detail/used/223257/',
+        '${hoursAgo(720)}', '${hoursAgo(480)}', '${hoursAgo(720)}', 'in_stock', 1);
+      INSERT INTO shop_sync_state(shop_key, last_success_at)
+      VALUES ('audiounion', '${hoursAgo(1)}');
+      INSERT INTO crawl_runs(shop_key, started_at, status)
+      VALUES ('audiounion', '${hoursAgo(1)}', 'success'),
+        ('audiounion', '${hoursAgo(2)}', 'success');
+    `);
+    const env = {
+      DB: db,
+      AUDIOUNION_ENTRY_URL: "",
+      AUDIOUNION_REQUEST_DELAY_MS: "0",
+      AUDIOUNION_MAX_PAGES: ceiling,
+      AUDIOUNION_STALE_LISTING_MIN_RUNS: "2",
+      AUDIOUNION_INVENTORY_RECHECK_ENABLED: "false",
+      CRAWL_MIN_ITEM_BASELINE: "100000",
+    } as unknown as Parameters<typeof processFinalize>[0];
+    const runId = `deep-catalog-${ceiling}`;
+    const body = {
+      shopKey: plugin.key,
+      force: true,
+      requestedAt: hoursAgo(0),
+      jobId: runId,
+      collectionRunId: runId,
+    };
+    const state: CollectionProgressState = { value: null };
+    const options = {
+      collectionProgress: state,
+      parseFetchedPage: true,
+      fetchHtmlPage: async (url: string) => deepCategoryPage(url),
+    };
+    const { log, warn } = console;
+    const originalFetch = globalThis.fetch;
+    console.log = () => {};
+    console.warn = () => {};
+    try {
+      let session = await ensureSession(env, plugin, body, runId, options);
+      for (let step = 0; session.next_phase === "fetch"; step += 1) {
+        assert.ok(step < 60, "collection must stay bounded");
+        await processFetch(env, plugin, session, body, options);
+        const next = await readCollectionSession(db, runId, state);
+        assert.ok(next);
+        session = next;
+      }
+      assert.equal(session.pages_parsed, pages);
+      assert.equal(session.coverage_incomplete, stockStatus === "unknown" ? 0 : 1);
+      // Finalization republishes staged listings; only its robots lookup reaches this stub.
+      globalThis.fetch = async () => new Response("nf", { status: 404 });
+      const result = await processFinalize(env, plugin, session, options);
+      assert.equal(result.kind === "terminal" ? result.result.status : result.kind, "success");
+    } finally {
+      console.log = log;
+      console.warn = warn;
+      globalThis.fetch = originalFetch;
+    }
+    assert.equal(
+      sqlite.prepare("SELECT stock_status FROM products WHERE source_id='223257'").get()
+        ?.stock_status,
+      stockStatus,
+    );
   }
 });
 
