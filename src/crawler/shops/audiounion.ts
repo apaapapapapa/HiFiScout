@@ -379,7 +379,14 @@ export const audioUnionAdapter = {
       if (!current) return [];
       const source = stripRawTextElements(html, ["script", "style", "noscript"]);
       const pager = listingFieldHtml(source, "block-goods-list--pager");
-      if (!pager) return null;
+      if (!pager) {
+        const category = listingFieldHtml(source, "block-category-list");
+        return listingFieldText(category, "alert") ===
+          "ご指定の条件に一致する商品が見つかりませんでした。" &&
+          !listingBlocks(category, "dl", "block-thumbnail-t--goods").length
+          ? []
+          : null;
+      }
       const next = listingFieldHtml(pager, "pager-next");
       if (!next) return [];
       const href = next.match(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];

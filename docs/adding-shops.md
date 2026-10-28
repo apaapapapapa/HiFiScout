@@ -312,7 +312,8 @@ same card; MSRP and buyback quotes are not selling prices. Inquiry-only prices r
 New source IDs use `goods:<goods-code>` because the seller supplies no verified mapping to the
 old numeric IDs. Legacy rows are not merged by model name, and legacy route disappearance is not
 sold evidence: inventory rechecks select the new URL prefix only. Existing bounded stale-listing
-aging handles unseen old rows; this source change does not backfill or delete production listings.
+aging remains subject to its collection-quality guards (including empty or truncated pages);
+this source change does not backfill or delete production listings.
 
 Detail availability requires the stored goods code to match the used detail's own code and stock
 controls. Warranty, accessories and condition facts come only from its explicit labeled fields.

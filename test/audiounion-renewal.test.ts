@@ -165,6 +165,13 @@ test("renewed AudioUnion discovery stays partial, capped, used-only and on the i
     [],
   );
   assert.equal(audioUnionAdapter.discovery.discoverTargets("<html>error</html>", CATEGORY), null);
+  const empty =
+    '<div class="block-category-list"><p class="alert">ご指定の条件に一致する商品が見つかりませんでした。</p></div>';
+  assert.deepEqual(audioUnionAdapter.discovery.discoverTargets(empty, CATEGORY), []);
+  assert.equal(
+    audioUnionAdapter.discovery.discoverTargets(`<script>${empty}</script>`, CATEGORY),
+    null,
+  );
 });
 
 test("renewed detail availability requires the matching used goods identity and its stock controls", () => {
