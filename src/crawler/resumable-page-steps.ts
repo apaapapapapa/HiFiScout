@@ -30,7 +30,12 @@ import {
   workerVersion,
 } from "./resumable-queue-contract.js";
 import { continued, failCollection } from "./resumable-session.js";
-import { discoverPages, shouldContinueAfterEmpty, targetUrl } from "./strategies.js";
+import {
+  discoverPages,
+  isConfirmedEmptyPage,
+  shouldContinueAfterEmpty,
+  targetUrl,
+} from "./strategies.js";
 import { createTransport } from "./transport.js";
 import type { FetchHtmlPageOptions, RobotsCache, ShopPlugin } from "./types.js";
 
@@ -258,7 +263,12 @@ async function parseAndCommitPage(
     accepted.push({ key: candidate.key, page: candidate.page, ordinal: nextOrdinal++ });
   }
 
-  if (!products.length && plugin.discovery.discoverTargets) coverageIncomplete = true;
+  if (
+    !products.length &&
+    plugin.discovery.discoverTargets &&
+    !isConfirmedEmptyPage(plugin, row.html_text, page, discovered)
+  )
+    coverageIncomplete = true;
   const reachedEnd =
     products.length === 0 && frontier.hasStagedItems && !shouldContinueAfterEmpty(plugin);
   let nextPageKey = frontier.nextPendingPageKey || accepted[0]?.key || null;

@@ -30,6 +30,7 @@ import { saveSellerDetailOfferFacts } from "../db/seller-detail-offer-repository
 import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../db/types.js";
 import type {
   CrawlerEnv,
+  InventoryRecheckListing,
   InventoryRecheckResult,
   InventoryRecheckSettings,
   RelayPage,
@@ -391,14 +392,16 @@ export async function recheckShopInventory(
         productId: candidate.id,
         sourceId: candidate.source_id,
       };
-    const facts = policy.extractOfferFacts?.(page.body, attemptedAt);
-
-    const classification = policy.classifyPage(page.body, {
+    const listing: InventoryRecheckListing = {
       sourceId: candidate.source_id,
       sourceUrl: candidate.source_url,
       title: candidate.title,
       model: candidate.model,
-    });
+    };
+    // Facts are saved even when availability stays ambiguous, so they need the same identity.
+    const facts = policy.extractOfferFacts?.(page.body, attemptedAt, listing);
+
+    const classification = policy.classifyPage(page.body, listing);
     const decision = inventoryDecision(
       candidate,
       classification,

@@ -7,7 +7,10 @@
  * without re-fetching the page.
  */
 
-const PRODUCT_LINK = /(?:https?:\/\/www\.audiounion\.jp)?\/ct\/detail\/used\/(\d+)\/?/gi;
+import { stripRawTextElements } from "../../html/raw-text.js";
+
+const PRODUCT_LINK =
+  /(?:https?:\/\/www\.audiounion\.jp)?\/(?:ct\/detail\/used\/(\d+)\/?|shop\/g\/g([0-9A-Za-z-]{1,40})\/)/gi;
 const POSITIVE_CONTEXT = /在庫あり|カートに入れる|購入する/i;
 const SOLD_CONTEXT = /売約済み?|売り切れ|売切|sold\s*out|在庫なし|完売|品切れ|販売終了|ご成約/i;
 
@@ -29,7 +32,7 @@ function countMatches(value: string, pattern: RegExp): number {
 }
 
 export function diagnoseAudioUnionHtml(html: string): AudioUnionPageDiagnostic {
-  const text = String(html || "");
+  const text = stripRawTextElements(html, ["script", "style", "noscript"]);
   const matches = [...text.matchAll(PRODUCT_LINK)];
   const seen = new Set<string>();
   let positiveContexts = 0;
@@ -37,7 +40,7 @@ export function diagnoseAudioUnionHtml(html: string): AudioUnionPageDiagnostic {
   let neutralContexts = 0;
 
   for (const match of matches) {
-    const id = match[1];
+    const id = match[1] || `goods:${match[2]}`;
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const start = Math.max(0, (match.index || 0) - CONTEXT_BEFORE);

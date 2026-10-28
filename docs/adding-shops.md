@@ -56,6 +56,7 @@ interface DiscoveryCapability<TPage extends CrawlPage> {
   };
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
   discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
+  isConfirmedEmptyPage?(html: string, page: TPage): boolean;
 }
 ```
 
@@ -83,6 +84,11 @@ URLs, and tracks incomplete discovery. A shop must never fetch another listing p
 - `[]` when that page conclusively exposes no additional targets;
 - additional typed targets when pagination/category expansion is known;
 - `null` when the page layout prevents the adapter from knowing whether discovery is complete.
+
+An optional `isConfirmedEmptyPage()` may recognize explicit seller evidence that this category has
+no listings. It is trusted only with a zero-product parse and `discoverTargets()` returning `[]`.
+This preserves collection safety for a valid empty category in both direct and resumable crawls;
+missing/malformed markup, uncertain pagination and an entirely empty crawl still fail closed.
 
 Legacy pagination flags are not accepted. Empty-page behavior, item-count validation, and the
 additional page budget are expressed only through the typed `discovery.policy` object.
@@ -289,6 +295,51 @@ other editorial content.
    `CRAWL_RELAY_TOKEN`.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
 
+
+## AudioUnion collection
+
+The October 28, 2026 storefront renewal replaced `/ct/detail/used/<id>/` links with
+`/shop/g/g<goods-code>/` and the old new-arrivals route redirects to a search page excluded by
+the seller's robots.txt. Collection now starts from the public categories' **used-only** routes
+(`/shop/c/c<category>_lS/`) and follows only the immediate next page of the same category, up to
+`AUDIOUNION_CATEGORY_PAGE_DEPTH` pages per category (`src/crawler/shops/audiounion.ts`).
+The category list lives in `src/crawler/shops/audiounion-urls.ts`, shared with the relay allowlist.
+An obsolete legacy entry override selects these defaults; other explicit entry overrides remain
+subject to normal origin and robots checks.
+
+The existing total page ceiling and seller pacing still apply. Initial category pages precede
+their continuation pages, and an empty category does not stop the other categories. Every
+category's followed pages together stay within the configured ceiling (a test checks
+`wrangler.jsonc`): the staged finalizer treats a frontier truncated by the ceiling as unreliable
+coverage, so a catalog deeper than the ceiling would otherwise defer stale-listing aging on every
+run. A lower ceiling still truncates and fails closed. Coverage stays
+**partial**, including when all observed links end: neither omitted goods nor a truncated category
+can deactivate stored inventory. The small home-page new-arrivals carousel is not a substitute for
+the category feeds. The existing schedule/continuation and inventory-recheck load contracts retain
+their ceilings; this changes discovery within that budget, not dispatch frequency or recheck volume.
+
+Cards must explicitly identify `class1=S`. Maker, model, category and selling price come from the
+same card; MSRP and buyback quotes are not selling prices. Inquiry-only prices remain unknown.
+New source IDs use `goods:<goods-code>` because the seller supplies no verified mapping to the
+old numeric IDs. Legacy rows are not merged by model name, and legacy route disappearance is not
+sold evidence: inventory rechecks select the new URL prefix only. Existing bounded stale-listing
+aging remains subject to its collection-quality guards (including ambiguous empty or truncated pages).
+The storefront's explicit empty-category notice is a valid zero-item page, so it does not by itself
+prevent aging after an otherwise reliable collection.
+
+Retired legacy routes no longer reach a product page. After deployment, the confirmed-production
+maintenance workflow (`apply-manual-category-authority.yml`) runs
+`scripts/retire-audiounion-legacy-listings.ts` once per change: active `/ct/detail/used/` rows become
+inactive in bounded batches, in-stock rows become `unknown` rather than sold, and other states are
+kept. It refuses an unexpectedly large scope, does not merge rows into new goods, and a repeated run
+changes nothing; new listings appear only through collection. It is not a migration because a data
+statement in every test database's migration replay changes the measured D1 workloads.
+
+Detail availability requires the stored goods code to match the used detail's own code and stock
+controls. Warranty, accessories and condition facts come only from its explicit labeled fields and
+are read only when the same goods code matches, since rechecks keep facts for ambiguous pages too.
+The relay deployment probes a public category and one of its current detail links through the normal
+robots-aware PREPARE/FETCH flow, without relying on old D1 URLs.
 
 ## e☆イヤホン collection
 

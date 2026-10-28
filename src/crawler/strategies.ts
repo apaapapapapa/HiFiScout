@@ -74,6 +74,15 @@ export function shouldContinueAfterEmpty(adapter: DiscoveryAdapter<CrawlPage>): 
   return adapter.discovery.policy.emptyPage === "continue";
 }
 
+export function isConfirmedEmptyPage<TPage extends CrawlPage>(
+  adapter: DiscoveryAdapter<TPage>,
+  html: string,
+  page: TPage,
+  discovered: readonly TPage[] | null,
+): boolean {
+  return discovered?.length === 0 && adapter.discovery.isConfirmedEmptyPage?.(html, page) === true;
+}
+
 export function coverageDecision(
   adapter: DiscoveryAdapter<CrawlPage>,
   { reachedEnd, coverageIncomplete, queueEmpty }: CoverageSignals,

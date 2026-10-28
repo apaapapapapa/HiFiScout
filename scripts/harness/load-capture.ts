@@ -23,6 +23,9 @@ export async function captureLoad(directory: string): Promise<number> {
   await mkdir(directory); // Never merge samples from an earlier execution.
   const samples = join(directory, "samples");
   const env = { ...process.env, HARNESS_COST_OUTPUT: resolve(samples) };
+  // The registered suites take close to four minutes on a hosted runner; four minutes killed the
+  // run on slower runners and failed the capture without a test failure. The job's ten-minute
+  // limit still bounds the whole capture.
   const test = spawnSync(
     "vp",
     [
@@ -34,7 +37,7 @@ export async function captureLoad(directory: string): Promise<number> {
       "--reporter=json",
       `--outputFile.json=${join(directory, "tests.json")}`,
     ],
-    { env, encoding: "utf8", timeout: 240000, maxBuffer: 16 * 1024 * 1024 },
+    { env, encoding: "utf8", timeout: 420000, maxBuffer: 16 * 1024 * 1024 },
   );
   await writeFile(join(directory, "tests.log"), `${test.stdout ?? ""}\n${test.stderr ?? ""}`);
   // CPU ceilings are evaluated from complete same-runner medians by the required load gate.

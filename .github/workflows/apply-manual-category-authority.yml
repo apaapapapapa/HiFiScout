@@ -10,6 +10,7 @@ on:
       - 'scripts/reclassify-knowledge-catalog-products.ts'
       - 'scripts/apply-manual-category-authority.ts'
       - 'scripts/apply-confirmed-switch-bundle-category.ts'
+      - 'scripts/retire-audiounion-legacy-listings.ts'
       - '.github/workflows/apply-manual-category-authority.yml'
   workflow_dispatch:
 
@@ -139,3 +140,9 @@ jobs:
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: vp exec tsx scripts/apply-manual-category-authority.ts
+
+      - name: Retire AudioUnion's legacy detail listings
+        if: steps.deployment.outputs.available == 'true'
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: vp exec tsx scripts/retire-audiounion-legacy-listings.ts

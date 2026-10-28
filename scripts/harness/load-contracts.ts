@@ -439,6 +439,10 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/db/scheduled-maintenance-*",
       "src/crawler/schedule.ts",
       "src/crawler/crawl-window.ts",
+      "src/crawler/strategies.ts",
+      "src/crawler/shops/audiounion.ts",
+      "src/crawler/shops/audiounion-urls.ts",
+      "src/crawler/shops/audiounion-diagnostics.ts",
       "src/crawler/shops/index.ts",
       "src/crawler/shops/registry.ts",
       "wrangler*.jsonc",
@@ -448,6 +452,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/scheduled-invocation-budget.test.ts",
       "test/scheduled-catalog-dispatch-budget.test.ts",
       "test/crawl-daily-schedule.test.ts",
+      "test/audiounion-renewal.test.ts",
+      "test/crawl-confirmed-empty.test.ts",
     ],
     samples: {
       "maintenance-continuation": {
@@ -460,7 +466,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       },
     },
     reason:
-      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. Planned pages are a scenario bound, not observed HTTP traffic.",
+      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. AudioUnion renewal regressions cover bounded category discovery, relay guards and explicit-empty evidence through collection receipts. Planned pages are a scenario bound, not observed HTTP traffic.",
   },
 ];
 

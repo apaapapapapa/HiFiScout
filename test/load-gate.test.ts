@@ -3,6 +3,7 @@ import { test } from "vite-plus/test";
 import {
   evaluateLoadGate,
   loadCoverage,
+  loadGateAnnotations,
   loadDigest,
   parseLoadReviews,
   sampleReviewDigest,
@@ -264,4 +265,36 @@ test("review records require a reason, durable repository evidence and unambiguo
     () => parseLoadReviews({ schemaVersion: 1, reviews: [review, review] }),
     /duplicate_load_review/,
   );
+});
+
+test("a failing gate names its unreviewed rows and their review digests as annotations", () => {
+  const data = input();
+  assert.deepEqual(loadGateAnnotations(evaluateLoadGate(data)), []);
+  // A dependency profile change alone leaves deterministic metrics identical but unreviewed.
+  data.after = [{ ...sample(HEAD), profileHash: "d".repeat(64) }];
+  const result = evaluateLoadGate(data);
+  const annotations = loadGateAnnotations(result);
+  const row = result.rows.find((candidate) => candidate.id === "lookup");
+  assert.ok(row);
+  // The row line states the unreviewed comparison, so its problem is not repeated.
+  assert.deepEqual(annotations, [
+    `::error title=load-gate 1/1 base ${BASE}::row lookup unknown same ${row.beforeDigest} ${row.afterDigest}`,
+  ]);
+  data.after = [
+    {
+      ...sample(HEAD),
+      profileHash: "d".repeat(64),
+      metrics: { ...sample(HEAD).metrics, rowsRead: 90 },
+    },
+  ];
+  assert.match(
+    loadGateAnnotations(evaluateLoadGate(data)).join(""),
+    /::row lookup unknown rowsRead:100>90 [a-f0-9]{64} [a-f0-9]{64}$/u,
+  );
+  // Many rows share at most ten annotations, with newlines escaped for the workflow command.
+  const many = { ...result, problems: Array.from({ length: 25 }, (_, index) => `p${index}`) };
+  const packed = loadGateAnnotations(many);
+  assert.equal(packed.length, 9);
+  assert.ok(packed[0].endsWith("::problem p0%0Aproblem p1%0Aproblem p2"));
+  assert.ok(packed.every((line) => !/[\r\n]/u.test(line)));
 });

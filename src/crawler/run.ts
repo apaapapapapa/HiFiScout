@@ -75,6 +75,7 @@ import {
   coverageDecision,
   discoverPages,
   initialPageQueue,
+  isConfirmedEmptyPage,
   shouldContinueAfterEmpty,
   targetUrl,
 } from "./strategies.js";
@@ -627,7 +628,10 @@ export async function crawlShop(
       }
 
       if (!parsed.length) {
-        if (adapter.discovery.discoverTargets) {
+        if (
+          adapter.discovery.discoverTargets &&
+          !isConfirmedEmptyPage(adapter, html, page, discovered)
+        ) {
           coverageIncomplete = true;
           uncertainCoverage = true;
         }
