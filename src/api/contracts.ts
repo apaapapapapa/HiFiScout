@@ -101,6 +101,14 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
   "dealScore",
 ];
 
+/**
+ * Deepest `offset` accepted by `/api/product-search`.
+ *
+ * Offset pagination exists for direct page jumps and is bounded so a jump cannot become a deep
+ * scan; a page past it is reachable only through the previous page's `nextCursor`.
+ */
+export const MAX_PRODUCT_SEARCH_OFFSET = 10_000;
+
 /** Bounded repeated public filter values; commas remain part of a manufacturer name. */
 export const MULTI_SELECT_LIMITS = {
   shop: { maxItems: 20, maxLength: 80 },

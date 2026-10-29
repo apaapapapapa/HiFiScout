@@ -119,6 +119,15 @@ test("long page counts always keep the first and last page reachable", () => {
   }
 });
 
+test("pages past the API offset ceiling are offered one cursor step at a time", () => {
+  // 50 products per page and the API's 10,000 offset ceiling make page 201 the deepest jump.
+  assert.equal(pageOffset(201), 10_000);
+  assert.deepEqual(pageNumbers(1, 215), [1, 2, 3, 4, 5, 201]);
+  assert.deepEqual(pageNumbers(150, 215), [1, 149, 150, 151, 201]);
+  assert.deepEqual(pageNumbers(201, 215), [1, 198, 199, 200, 201, 202]);
+  assert.deepEqual(pageNumbers(215, 215), [1, 211, 212, 213, 214, 215]);
+});
+
 test("the result counter reports what is on screen, with more-available as a separate signal", () => {
   assert.deepEqual(
     resultSummary({ shown: 50, favoriteMode: false, currentPage: 1, totalPages: 2 }),

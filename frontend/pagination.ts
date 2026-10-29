@@ -1,6 +1,15 @@
 /** Page-number arithmetic for the listing pager. Pure, so the window logic is directly testable. */
 
+import { MAX_PRODUCT_SEARCH_OFFSET } from "../src/api/contracts.js";
+
 export const PAGE_SIZE = 50;
+
+/**
+ * The deepest page an `offset=` request can load.
+ *
+ * Later pages exist, but the API reaches them only through the previous page's cursor.
+ */
+export const MAX_OFFSET_PAGE = Math.floor(MAX_PRODUCT_SEARCH_OFFSET / PAGE_SIZE) + 1;
 
 /** Above this many pages the pager elides the middle instead of listing every page. */
 const DENSE_LIMIT = 7;
@@ -8,19 +17,22 @@ const DENSE_LIMIT = 7;
 /**
  * The page numbers a pager should offer.
  *
- * Always includes the first and last page so a user can jump to either end; gaps between the
- * returned numbers are where the caller draws an ellipsis.
+ * Always includes the first and the last reachable page so a user can jump to either end; gaps
+ * between the returned numbers are where the caller draws an ellipsis. Past
+ * {@link MAX_OFFSET_PAGE} only the page after the current one is offered, because only the
+ * current page's cursor can load it.
  */
 export function pageNumbers(currentPage: number, totalPages: number): number[] {
-  if (totalPages <= 0) return [];
-  if (totalPages <= DENSE_LIMIT) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  const lastPage = Math.min(totalPages, Math.max(MAX_OFFSET_PAGE, currentPage + 1));
+  if (lastPage <= 0) return [];
+  if (lastPage <= DENSE_LIMIT) {
+    return Array.from({ length: lastPage }, (_, index) => index + 1);
   }
-  if (currentPage <= 4) return [1, 2, 3, 4, 5, totalPages];
-  if (currentPage >= totalPages - 3) {
-    return [1, totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  if (currentPage <= 4) return [1, 2, 3, 4, 5, lastPage];
+  if (currentPage >= lastPage - 3) {
+    return [1, lastPage - 4, lastPage - 3, lastPage - 2, lastPage - 1, lastPage];
   }
-  return [1, currentPage - 1, currentPage, currentPage + 1, totalPages];
+  return [1, currentPage - 1, currentPage, currentPage + 1, lastPage];
 }
 
 /** Offset of a 1-based page, for the `offset=` fallback when no cursor is available. */
