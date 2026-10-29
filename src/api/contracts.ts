@@ -109,6 +109,13 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
  */
 export const MAX_PRODUCT_SEARCH_OFFSET = 10_000;
 
+/**
+ * Longest `q` accepted by `/api/product-search`, in code points.
+ *
+ * Also the search box's `maxLength`, whose UTF-16 count is never lower than the code-point count.
+ */
+export const MAX_PRODUCT_SEARCH_QUERY_LENGTH = 100;
+
 /** Bounded repeated public filter values; commas remain part of a manufacturer name. */
 export const MULTI_SELECT_LIMITS = {
   shop: { maxItems: 20, maxLength: 80 },

@@ -15,6 +15,7 @@ import {
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
 import {
   MAX_PRODUCT_SEARCH_OFFSET,
+  MAX_PRODUCT_SEARCH_QUERY_LENGTH,
   MULTI_SELECT_LIMITS,
   PRODUCT_QUERY_SORTS,
 } from "./contracts.js";
@@ -34,7 +35,13 @@ export const MAX_PAGE_SIZE = 100;
 export const MAX_OFFSET = MAX_PRODUCT_SEARCH_OFFSET;
 
 /** Maximum accepted code-point length per string parameter. */
-const LENGTH_LIMITS = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
+const LENGTH_LIMITS = {
+  q: MAX_PRODUCT_SEARCH_QUERY_LENGTH,
+  shop: 80,
+  manufacturer: 100,
+  category: 100,
+  cursor: 1024,
+};
 const MAX_FEATURE_PARAM_LENGTH = 200;
 const MAX_FACET_PARAM_LENGTH = 200;
 const FEATURE_IDS = FEATURE_FILTER_DEFINITIONS.map((feature) => feature.id);

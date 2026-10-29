@@ -372,3 +372,33 @@ test("pages past the API offset ceiling are reached by cursor, never by a reject
   await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
   expect(rejected).toEqual([]);
 });
+
+test("search text stops at the API ceiling instead of failing the catalog", async ({
+  page,
+  mount,
+}) => {
+  const seen = await catalog(page);
+  // The API rejects a longer query, as production does with `q_too_long`.
+  const rejected: URL[] = [];
+  await page.route(
+    (url) =>
+      url.pathname === "/api/product-search" && [...(url.searchParams.get("q") ?? "")].length > 100,
+    (route) => {
+      rejected.push(new URL(route.request().url()));
+      return route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "q_too_long" }),
+      });
+    },
+  );
+  await mount("frontend/public-app/Default");
+  await expect(page.locator("#products .card")).toHaveCount(2);
+  const pasted = "LUXMAN L-509X プリメインアンプ 元箱 取扱説明書 リモコン付属 ".repeat(4);
+  await page.locator("#q").fill(pasted);
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.get("q"))
+    .toBe(pasted.slice(0, 100).trim());
+  await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
+  expect(rejected).toEqual([]);
+});
