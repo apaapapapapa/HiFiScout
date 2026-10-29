@@ -339,6 +339,27 @@ test("product detail loads offers, evidence and model facts in bounded queries",
   assert.match(db.calls[3].sql, /WHERE f.id IN/u);
 });
 
+test("a zero-padded key reads its product's offers instead of an offer-less catalog stand-in", async () => {
+  const db = captureDatabase(({ sql, binds }) => {
+    if (/FROM product_search_entities e/.test(sql))
+      return binds[0] === "c-12" ? [entityRow({ id: 12, entity_key: "c-12" })] : [];
+    if (/FROM knowledge_catalog_products p/.test(sql))
+      return [{ manufacturer_id: "luxman", manufacturer: "LUXMAN", model: "L-507Z" }];
+    return /FROM product_search_entity_offers m/.test(sql)
+      ? [offerRow({ listing_product_id: 100 })]
+      : [];
+  });
+
+  const detail = await productSearchDetail(db, "c-012");
+
+  assert.equal(detail?.product.key, "c-12");
+  assert.equal(detail?.product.offer_count, 1);
+  assert.deepEqual(
+    detail?.offers.map((offer) => offer.listing_product_id),
+    [100],
+  );
+});
+
 test("a malformed product key is rejected before any query runs", async () => {
   const db = captureDatabase();
   assert.equal(await productSearchDetail(db, "c-12; DROP TABLE products"), null);

@@ -39,7 +39,7 @@ import type {
   ProductSearchItem,
   ProductSearchResponse,
 } from "../api/contracts.js";
-import { parseProductSearchKey } from "../api/product-search-key.js";
+import { parseProductSearchKey, productSearchKey } from "../api/product-search-key.js";
 import { addSpecificationFilters } from "./specification-search.js";
 import {
   addCursorPredicate,
@@ -835,7 +835,8 @@ export async function productSearchDetail(
       AND (e.entity_kind = 'unresolved_listing' OR EXISTS (
         SELECT 1 FROM knowledge_catalog_products kp
         WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'))`)
-    .bind(key)
+    // Stored keys are canonical, so `c-012` must read `c-12` rather than miss its offers.
+    .bind(productSearchKey(identity.kind, identity.id))
     .first<
       ProductSearchEntityRow & {
         specification_json: string | null;
