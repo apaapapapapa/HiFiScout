@@ -1235,3 +1235,70 @@ test("budget presets and partial relaxation keep unrelated search conditions", a
   expect(new URL(page.url()).searchParams.has("shop")).toBe(false);
   await expect(page.locator("#inStock")).toBeChecked();
 });
+
+test("the applied search can be copied or shared as a link that restores it", async ({
+  page,
+  context,
+  mount,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    // The installed app's share sheet; desktop Chromium on Linux has none of its own.
+    const shared: ShareData[] = [];
+    Object.assign(window, { shared });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => void shared.push(data),
+    });
+  });
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await page.locator("#q").fill("LUXMAN");
+  await selectShop(page);
+  await page.locator("#apply-filters").click();
+  await expect(page).toHaveURL(/shop=shop-a/);
+  await page.locator(".search-share > summary").click();
+  const link = page.getByRole("textbox", { name: "共有URL", exact: true });
+  const shared = new URL(await link.inputValue());
+  expect(shared.pathname).toBe("/");
+  expect(shared.searchParams.get("q")).toBe("LUXMAN");
+  expect(shared.searchParams.getAll("shop")).toEqual(["shop-a"]);
+
+  await page.getByRole("button", { name: "URLをコピー", exact: true }).click();
+  const status = page.locator(".search-share [role=status]");
+  await expect(status).toHaveText("URLをコピーしました。");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(shared.href);
+  await page.getByRole("button", { name: "ほかのアプリで共有", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { shared: ShareData[] }).shared))
+    .toEqual([{ title: await page.title(), url: shared.href }]);
+
+  // A later search changes the link, and the earlier confirmation no longer describes it.
+  await page.getByRole("button", { name: "テスト販売店を解除", exact: true }).click();
+  await expect(link).not.toHaveValue(/shop=/);
+  await expect(status).toHaveText("");
+
+  // The copied link reopens the same applied search and view in a fresh catalog, even where the
+  // recipient prefers another view.
+  await page.evaluate(async (search) => {
+    const gallery = window as unknown as {
+      mount: (params: { story: string }) => Promise<void>;
+      unmount: () => Promise<void>;
+    };
+    await gallery.unmount();
+    localStorage.setItem("hifiscout:view", "cards");
+    history.replaceState(null, "", `/${search}`);
+    await gallery.mount({ story: "frontend/public-app/Default" });
+  }, shared.search);
+  await expect(page.locator("#q")).toHaveValue("LUXMAN");
+  await expect(page.getByRole("button", { name: "リスト表示", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("button", { name: "テスト販売店を解除", exact: true })).toBeVisible();
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a"]);
+  expect(seen.searches.at(-1)?.searchParams.get("q")).toBe("LUXMAN");
+
+  await page.locator("#favoritesOnly").check();
+  await expect(page.locator(".search-share")).toHaveCount(0);
+});

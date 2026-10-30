@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { sanitizedCatalogSearch } from "../frontend/catalog-url-sanitizer.js";
+import { sanitizedCatalogSearch, sanitizedCatalogUrl } from "../frontend/catalog-url-sanitizer.js";
 import assert from "node:assert/strict";
 
 import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
@@ -12,6 +12,7 @@ import {
   productSearchParams,
   savedSearchFeedPath,
   selectionFromFilterId,
+  sharedSearchPath,
 } from "../frontend/filters.js";
 import type { ProductFilters } from "../frontend/filters.js";
 
@@ -105,6 +106,36 @@ test("date sorts survive URL cleanup, reload and API serialization", () => {
 
 test("favorites-only is device state and is never shared through the URL", () => {
   assert.equal(filterUrlParams(filters({ favoritesOnly: true }), "list").toString(), "");
+});
+
+test("a shared search opens the catalog route without needing a sanitizer rewrite", () => {
+  // The view is explicit even when it is the default, so a stored preference cannot override it.
+  assert.equal(sharedSearchPath(filters({ favoritesOnly: true }), "list"), "/?view=list");
+  assert.equal(parseUrlFilters("?view=list").view, "list");
+  assert.equal(sanitizedCatalogUrl("/", "?q=TAD&view=list", ""), null);
+  const path = sharedSearchPath(
+    filters({
+      q: "TAD",
+      shop: ["shop-b", "shop-a"],
+      sort: "priceAsc",
+      features: ["dac"],
+      facets: [{ facetId: "connectivity", value: "wireless" }],
+      offerFacts: ["shop_warranty"],
+      specificationFilters: { maxWidthMm: "450" },
+      inStock: false,
+      priceDropped: true,
+    }),
+    "cards",
+  );
+  const shared = new URL(path, "https://hifiscout.example");
+  assert.equal(shared.pathname, "/");
+  assert.equal(sanitizedCatalogUrl(shared.pathname, shared.search, ""), null);
+  const restored = parseUrlFilters(shared.search);
+  assert.deepEqual(restored.values.shop, ["shop-a", "shop-b"]);
+  assert.deepEqual(restored.facets, [{ facetId: "connectivity", value: "wireless" }]);
+  assert.deepEqual(restored.offerFacts, ["shop_warranty"]);
+  assert.deepEqual(restored.specificationFilters, { maxWidthMm: "450" });
+  assert.equal(restored.view, "cards");
 });
 
 test("URL state round-trips through the filter controls", () => {

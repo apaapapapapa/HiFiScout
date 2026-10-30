@@ -28,6 +28,7 @@ import {
   productSearchParams,
   savedSearchFeedPath,
   selectionFromFilterId,
+  sharedSearchPath,
 } from "./filters.js";
 import { featureFromFilterId } from "./filters.js";
 import type { ProductFilters, ProductView, SelectionId, ToggleId, UrlValueId } from "./filters.js";
@@ -61,6 +62,7 @@ import {
 import { useFilterSheet } from "./use-filter-sheet.js";
 import { useSearchHeaderLayout } from "./use-search-header-layout.js";
 import { FeedSubscription } from "./feed-subscription.js";
+import { SearchShare } from "./search-share.js";
 import { FavoriteWatch } from "./watch-changes-ui.js";
 import {
   WATCH_PREFERENCES_KEY,
@@ -612,6 +614,7 @@ export function PublicApp() {
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
   const [watchAll, setWatchAll] = useState(false);
   const feedPath = useMemo(() => savedSearchFeedPath(appliedFilters), [appliedFilters]);
+  const sharePath = useMemo(() => sharedSearchPath(appliedFilters, view), [appliedFilters, view]);
 
   const selectedCategoryLabel = useMemo(() => {
     if (!appliedFilters.category || !meta) return "";
@@ -1318,7 +1321,12 @@ export function PublicApp() {
               {loading ? "更新中" : ""}
             </span>
             <div className="result-tools">
-              {!favoriteMode ? <FeedSubscription path={feedPath} /> : null}
+              {!favoriteMode ? (
+                <>
+                  <SearchShare path={sharePath} />
+                  <FeedSubscription path={feedPath} />
+                </>
+              ) : null}
               <label className="sort-control">
                 <span>並び順</span>
                 <select
