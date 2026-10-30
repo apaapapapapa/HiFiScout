@@ -968,11 +968,11 @@ button:disabled { cursor: not-allowed; }
 .offer-updated { margin: 0; align-self: center; font-size: 12px; color: var(--hs-muted); }
 .offer-actions { grid-area: actions; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .offer-actions button, .offer-actions a { display: inline-flex; align-items: center; justify-content: center; }
-.feed-subscription { font-size: 14px; }
-.feed-subscription summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; }
-.feed-help { max-width: 30rem; padding: 16px; border: 1px solid var(--hs-divider); line-height: 1.7; }
-.feed-help input { width: 100%; min-height: 44px; font-size: 14px; }
-.feed-help button, .feed-help a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 12px; }
+.feed-subscription, .search-share { font-size: 14px; }
+.feed-subscription summary, .search-share summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; }
+.feed-help, .share-help { max-width: 30rem; padding: 16px; border: 1px solid var(--hs-divider); line-height: 1.7; }
+.feed-help input, .share-help input { width: 100%; min-height: 44px; font-size: 14px; }
+.feed-help button, .feed-help a, .share-help button { display: inline-flex; align-items: center; min-height: 44px; margin-right: 12px; }
 .favorite-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px; border: 1px solid var(--hs-divider); background: var(--hs-warm); margin-bottom: 16px; line-height: 1.6; }
 .favorite-notice button { min-width: 44px; min-height: 44px; }
 @media (min-width: 761px) and (max-width: 1100px) {

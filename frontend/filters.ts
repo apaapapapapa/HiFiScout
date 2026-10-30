@@ -277,6 +277,17 @@ export function filterUrlParams(filters: ProductFilters, view: ProductView): URL
   return params;
 }
 
+/**
+ * The catalog link that reopens the applied search.
+ *
+ * It is the address-bar query on the catalog route. Comparison selections have their own share
+ * link, and an open product route or hash would open something other than the search.
+ */
+export function sharedSearchPath(filters: ProductFilters, view: ProductView): string {
+  const search = filterUrlParams(filters, view).toString();
+  return `/${search ? `?${search}` : ""}`;
+}
+
 /** Reads a shareable URL back into control values. `favoritesOnly` is never encoded. */
 export function parseUrlFilters(search: string): UrlFilterState {
   const params = new URLSearchParams(search);
