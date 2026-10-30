@@ -146,6 +146,8 @@ only committed text starts search and suggestion requests. List page snapshots e
 client's cache policy. Expiration discards the old cursor chain and refreshes only the requested page,
 not every visited page in the background. If that page no longer exists, fetch the last valid page
 once. Cached-page restoration cancels unfinished requests before displaying the restored snapshot.
+The API bounds page offsets, so pages past the deepest offset page are offered one cursor step at a
+time; without the previous page's cursor such a page falls back to the deepest offset page.
 
 ### Buttons and actions
 

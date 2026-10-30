@@ -33,7 +33,7 @@ import { featureFromFilterId } from "./filters.js";
 import type { ProductFilters, ProductView, SelectionId, ToggleId, UrlValueId } from "./filters.js";
 import { favoriteResults, favoriteShopMatch } from "./favorites.js";
 import { useFavorites } from "./use-favorites.js";
-import { pageNumbers, resultSummary } from "./pagination.js";
+import { MAX_OFFSET_PAGE, pageNumbers, resultSummary } from "./pagination.js";
 import { syncStatusSummary } from "./product-presentation.js";
 import {
   CategoryOptions,
@@ -695,6 +695,14 @@ export function PublicApp() {
         refresh = true;
       }
       if (totalPagesRef.current > 0) page = Math.min(page, totalPagesRef.current);
+      const cursorBefore = (target: number) => {
+        const previous = target > 1 ? pagesRef.current.get(target - 1) : null;
+        return previous?.hasMore && previous.nextCursor ? previous.nextCursor : null;
+      };
+      // The API rejects an offset past its ceiling. Without the previous page's cursor, the
+      // deepest offset page is the closest one that can still be shown.
+      if (!pagesRef.current.has(page) && !cursorBefore(page))
+        page = Math.min(page, MAX_OFFSET_PAGE);
       const cachedPage = pagesRef.current.get(page);
       if (cachedPage) {
         controllerRef.current?.abort();
@@ -709,9 +717,7 @@ export function PublicApp() {
         return;
       }
 
-      const previousPage = page > 1 ? pagesRef.current.get(page - 1) : null;
-      const cursor =
-        previousPage?.hasMore && previousPage.nextCursor ? previousPage.nextCursor : null;
+      const cursor = cursorBefore(page);
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;

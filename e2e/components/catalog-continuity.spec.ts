@@ -316,3 +316,89 @@ test("refreshing a vanished last page returns to the remaining page", async ({ p
   expect(seen.searches.at(-1)?.searchParams.has("cursor")).toBe(false);
   expect(seen.searches.at(-1)?.searchParams.has("includeTotal")).toBe(false);
 });
+
+test("pages past the API offset ceiling are reached by cursor, never by a rejected offset", async ({
+  page,
+  mount,
+}) => {
+  const results = (number: number): Results => ({
+    ...response([product({ key: `c-${number}`, model: `Page ${number}` })]),
+    totalCount: 10_744,
+    totalPages: 215,
+    hasMore: number < 215,
+    nextCursor: number < 215 ? `page-${number + 1}` : null,
+  });
+  const seen = await catalog(page, {
+    search: (url) => {
+      const cursor = url.searchParams.get("cursor");
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      return results(cursor ? Number(cursor.slice("page-".length)) : offset / 50 + 1);
+    },
+  });
+  // The API rejects a deeper offset, as production does with `offset_too_large`.
+  const rejected: URL[] = [];
+  await page.route(
+    (url) =>
+      url.pathname === "/api/product-search" && Number(url.searchParams.get("offset")) > 10_000,
+    (route) => {
+      rejected.push(new URL(route.request().url()));
+      return route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "offset_too_large" }),
+      });
+    },
+  );
+  await mount("frontend/public-app/Default");
+  await expect(page.locator("#products")).toContainText("Page 1");
+  const current = page.locator('.page-button[aria-current="page"]');
+  const last = page.locator("#pagination .page-button").last();
+  await expect(last).toHaveText("201");
+  await last.click();
+  await expect(current).toHaveText("201");
+  await expect(page.locator("#products")).toContainText("Page 201");
+  await page.getByRole("button", { name: "202ページ目", exact: true }).click();
+  await expect(current).toHaveText("202");
+  await expect(page.locator("#products")).toContainText("Page 202");
+  expect(seen.searches.at(-1)?.searchParams.get("cursor")).toBe("page-202");
+  expect(seen.searches.at(-1)?.searchParams.has("offset")).toBe(false);
+
+  // Expired pages lend no cursor, so a deeper page falls back to the deepest offset page.
+  await page.clock.install();
+  await page.clock.fastForward(31_000);
+  await page.getByRole("button", { name: "203ページ目", exact: true }).click();
+  await expect(current).toHaveText("201");
+  await expect(page.locator("#products")).toContainText("Page 201");
+  await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
+  expect(rejected).toEqual([]);
+});
+
+test("search text stops at the API ceiling instead of failing the catalog", async ({
+  page,
+  mount,
+}) => {
+  const seen = await catalog(page);
+  // The API rejects a longer query, as production does with `q_too_long`.
+  const rejected: URL[] = [];
+  await page.route(
+    (url) =>
+      url.pathname === "/api/product-search" && [...(url.searchParams.get("q") ?? "")].length > 100,
+    (route) => {
+      rejected.push(new URL(route.request().url()));
+      return route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "q_too_long" }),
+      });
+    },
+  );
+  await mount("frontend/public-app/Default");
+  await expect(page.locator("#products .card")).toHaveCount(2);
+  const pasted = "LUXMAN L-509X プリメインアンプ 元箱 取扱説明書 リモコン付属 ".repeat(4);
+  await page.locator("#q").fill(pasted);
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.get("q"))
+    .toBe(pasted.slice(0, 100).trim());
+  await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
+  expect(rejected).toEqual([]);
+});

@@ -49,6 +49,39 @@ test("a search too short for the tokenizer still scans the entity terms", async 
   assert.equal(binds.filter((value) => value === "%MC%").length, 5);
 });
 
+test("short search terms match LIKE wildcard characters literally", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    for (const [id, model] of [
+      [1, "L-507Z"],
+      [2, "PC_TRIPLE"],
+    ] as const) {
+      const at = "2026-09-01T00:00:00.000Z";
+      sqlite.exec(`INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,
+          first_seen_at,last_seen_at,last_changed_at,last_activity_at,price_yen)
+        VALUES (${id},'hifido','${id}','${model}','https://example.test/${id}','in_stock',
+          '${at}','${at}','${at}','${at}',1000);
+        INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id,
+          manufacturer,model,normalized_model,model_terms,title_terms,offer_count,
+          in_stock_offer_count,shop_count,latest_activity_at,newest_listed_at)
+        VALUES (${id},'l-${id}','unresolved_listing',${id},'Test','${model}','${model}',
+          '${model}','${model}',1,1,1,'${at}','${at}');
+        INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        VALUES (${id},${id},'hifido');`);
+    }
+    const keys = async (q: string) =>
+      (await searchProducts(db, productQuery(`?q=${encodeURIComponent(q)}&sort=newest`))).items
+        .map((item) => item.key)
+        .sort();
+
+    assert.deepEqual(await keys("_"), ["l-2"]);
+    assert.deepEqual(await keys("%"), []);
+    assert.deepEqual(await keys("C_"), ["l-2"]);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("relevance ranks exact identity matches ahead of bm25 and never counts offers", async () => {
   const db = captureDatabase([entityRow({ id: 5 }), entityRow({ id: 4 })]);
   const result = await searchProducts(db, productQuery("?q=LUXMAN%20L-507Z&limit=1"));
@@ -337,6 +370,27 @@ test("product detail loads offers, evidence and model facts in bounded queries",
   assert.match(db.calls[1].sql, /LIMIT \?/);
   assert.match(db.calls[2].sql, /f.product_id IN \(SELECT value FROM json_each/u);
   assert.match(db.calls[3].sql, /WHERE f.id IN/u);
+});
+
+test("a zero-padded key reads its product's offers instead of an offer-less catalog stand-in", async () => {
+  const db = captureDatabase(({ sql, binds }) => {
+    if (/FROM product_search_entities e/.test(sql))
+      return binds[0] === "c-12" ? [entityRow({ id: 12, entity_key: "c-12" })] : [];
+    if (/FROM knowledge_catalog_products p/.test(sql))
+      return [{ manufacturer_id: "luxman", manufacturer: "LUXMAN", model: "L-507Z" }];
+    return /FROM product_search_entity_offers m/.test(sql)
+      ? [offerRow({ listing_product_id: 100 })]
+      : [];
+  });
+
+  const detail = await productSearchDetail(db, "c-012");
+
+  assert.equal(detail?.product.key, "c-12");
+  assert.equal(detail?.product.offer_count, 1);
+  assert.deepEqual(
+    detail?.offers.map((offer) => offer.listing_product_id),
+    [100],
+  );
 });
 
 test("a malformed product key is rejected before any query runs", async () => {

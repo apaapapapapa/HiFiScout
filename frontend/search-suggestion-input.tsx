@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
+import { MAX_PRODUCT_SEARCH_QUERY_LENGTH } from "../src/api/contracts.js";
 import type { ApiClient } from "./api-client.js";
 import { useSearchSuggestions } from "./search-suggestions.js";
 
@@ -85,6 +86,7 @@ export function SearchSuggestionInput({
         }
         placeholder="例: TAD ME1 / LUXMAN / DAC"
         autoComplete="off"
+        maxLength={MAX_PRODUCT_SEARCH_QUERY_LENGTH}
         value={composing ? draft : value}
         style={{ width: "100%" }}
         onFocus={() => setOpen(true)}

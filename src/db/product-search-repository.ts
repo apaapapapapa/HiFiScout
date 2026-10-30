@@ -39,7 +39,7 @@ import type {
   ProductSearchItem,
   ProductSearchResponse,
 } from "../api/contracts.js";
-import { parseProductSearchKey } from "../api/product-search-key.js";
+import { parseProductSearchKey, productSearchKey } from "../api/product-search-key.js";
 import { addSpecificationFilters } from "./specification-search.js";
 import {
   addCursorPredicate,
@@ -165,6 +165,11 @@ interface ProductSearchPageRow extends ProductSearchEntityRow {
   request_sort_value?: string | number | null;
 }
 
+/** A user's `%` or `_` is text to find, not a LIKE wildcard that matches every entity. */
+function escapedLike(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 /**
  * Joins the entity FTS index and adds the matching predicates.
  *
@@ -193,10 +198,11 @@ function addSearchPlan(
     binds.push(plan.ftsQuery);
   }
   for (const value of plan.shortTerms) {
-    const term = `%${value}%`;
+    const term = `%${escapedLike(value)}%`;
     where.push(`(
-      e.manufacturer_terms LIKE ? OR e.normalized_model LIKE ? OR e.model_terms LIKE ?
-      OR e.title_terms LIKE ? OR e.category_terms LIKE ?
+      e.manufacturer_terms LIKE ? ESCAPE '\\' OR e.normalized_model LIKE ? ESCAPE '\\'
+      OR e.model_terms LIKE ? ESCAPE '\\' OR e.title_terms LIKE ? ESCAPE '\\'
+      OR e.category_terms LIKE ? ESCAPE '\\'
     )`);
     binds.push(term, term, term, term, term);
   }
@@ -835,7 +841,8 @@ export async function productSearchDetail(
       AND (e.entity_kind = 'unresolved_listing' OR EXISTS (
         SELECT 1 FROM knowledge_catalog_products kp
         WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'))`)
-    .bind(key)
+    // Stored keys are canonical, so `c-012` must read `c-12` rather than miss its offers.
+    .bind(productSearchKey(identity.kind, identity.id))
     .first<
       ProductSearchEntityRow & {
         specification_json: string | null;

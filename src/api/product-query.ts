@@ -13,7 +13,12 @@ import {
   isOfferFactId,
 } from "../catalog/types.js";
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
-import { MULTI_SELECT_LIMITS, PRODUCT_QUERY_SORTS } from "./contracts.js";
+import {
+  MAX_PRODUCT_SEARCH_OFFSET,
+  MAX_PRODUCT_SEARCH_QUERY_LENGTH,
+  MULTI_SELECT_LIMITS,
+  PRODUCT_QUERY_SORTS,
+} from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
 import {
   SPECIFICATION_FILTER_DEFINITIONS,
@@ -27,10 +32,16 @@ import type { QueryParameterContract } from "./route-contract.js";
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
 /** Offset pagination is retained for direct page navigation, but bounded to prevent deep scans. */
-export const MAX_OFFSET = 10_000;
+export const MAX_OFFSET = MAX_PRODUCT_SEARCH_OFFSET;
 
 /** Maximum accepted code-point length per string parameter. */
-const LENGTH_LIMITS = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
+const LENGTH_LIMITS = {
+  q: MAX_PRODUCT_SEARCH_QUERY_LENGTH,
+  shop: 80,
+  manufacturer: 100,
+  category: 100,
+  cursor: 1024,
+};
 const MAX_FEATURE_PARAM_LENGTH = 200;
 const MAX_FACET_PARAM_LENGTH = 200;
 const FEATURE_IDS = FEATURE_FILTER_DEFINITIONS.map((feature) => feature.id);
