@@ -77,10 +77,11 @@ detail edits do not appear until applied. On mobile and tablet, the bar sits bel
 search header, using its measured height even when equipment shortcuts expand or text wraps.
 Result-page navigation leaves the first product below both sticky surfaces.
 
-The address bar always carries the applied conditions and view. Because the installed app has no
-address bar, the result tools also offer that catalog link explicitly, beside the Atom subscription:
-a selectable URL, a copy action and, where the platform provides one, the native share sheet. The
-link omits comparison selections, the open product route and favorite mode, and it is not offered
+The address bar carries the applied conditions and any non-default view. Because the installed app
+has no address bar, the result tools also offer that catalog link explicitly, beside the Atom
+subscription: a selectable URL, a copy action and, where the platform provides one, the native share
+sheet. The link always states the view, so the recipient's stored view preference does not replace
+it. It omits comparison selections, the open product route and favorite mode, and it is not offered
 while favorites are shown.
 
 Manufacturer names and category labels on results, details and comparisons link to the matching

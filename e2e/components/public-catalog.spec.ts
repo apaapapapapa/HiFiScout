@@ -1278,17 +1278,23 @@ test("the applied search can be copied or shared as a link that restores it", as
   await expect(link).not.toHaveValue(/shop=/);
   await expect(status).toHaveText("");
 
-  // The copied link reopens the same applied search in a fresh catalog.
+  // The copied link reopens the same applied search and view in a fresh catalog, even where the
+  // recipient prefers another view.
   await page.evaluate(async (search) => {
     const gallery = window as unknown as {
       mount: (params: { story: string }) => Promise<void>;
       unmount: () => Promise<void>;
     };
     await gallery.unmount();
+    localStorage.setItem("hifiscout:view", "cards");
     history.replaceState(null, "", `/${search}`);
     await gallery.mount({ story: "frontend/public-app/Default" });
   }, shared.search);
   await expect(page.locator("#q")).toHaveValue("LUXMAN");
+  await expect(page.getByRole("button", { name: "リスト表示", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByRole("button", { name: "テスト販売店を解除", exact: true })).toBeVisible();
   await expect.poll(() => seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a"]);
   expect(seen.searches.at(-1)?.searchParams.get("q")).toBe("LUXMAN");

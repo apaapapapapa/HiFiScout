@@ -109,7 +109,10 @@ test("favorites-only is device state and is never shared through the URL", () =>
 });
 
 test("a shared search opens the catalog route without needing a sanitizer rewrite", () => {
-  assert.equal(sharedSearchPath(filters({ favoritesOnly: true }), "list"), "/");
+  // The view is explicit even when it is the default, so a stored preference cannot override it.
+  assert.equal(sharedSearchPath(filters({ favoritesOnly: true }), "list"), "/?view=list");
+  assert.equal(parseUrlFilters("?view=list").view, "list");
+  assert.equal(sanitizedCatalogUrl("/", "?q=TAD&view=list", ""), null);
   const path = sharedSearchPath(
     filters({
       q: "TAD",
