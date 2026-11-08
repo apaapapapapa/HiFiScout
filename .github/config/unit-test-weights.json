@@ -251,6 +251,7 @@
   "test/shop-platform.test.ts": 10,
   "test/sound-support.test.ts": 50,
   "test/soundpit.test.ts": 10,
+  "test/soundpitplus.test.ts": 30,
   "test/suggest-query.test.ts": 10,
   "test/sync-date-format.test.ts": 10,
   "test/taxonomy-v3-reactivation-replay.test.ts": 110,

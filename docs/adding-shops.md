@@ -368,6 +368,33 @@ The observed robots policy
 allows the feed and ordinary `?page=` pagination but disallows collection `sort_by` URLs; the
 adapter follows only the immediate next page and keeps the platform's robots/redirect/body guards.
 
+## SOUNDPIT+ collection
+
+`soundpitplus` (Nagoya, `https://soundpit-plus.com`) is a WordPress shop unrelated to the existing
+`soundpit` adapter for `sound-pit.jp`. It starts from the unfiltered `/used-products/` listing and
+follows the pages named in that listing's own `?sp_page=` navigation; category filters
+(`?sp_category=`) are not crawled. Listing cards carry a name, a post id and the seller's
+`product_status` terms but no price, so every card becomes a `/products/<slug>/` detail target and
+listing pages parse no products. It joins the shared 11:00/17:00 JST rotation; page and pacing
+limits are the shop-definition defaults in `src/crawler/shops/index.ts`.
+
+Coverage is **partial**: a price-less listing page already marks the run's coverage incomplete and
+one failed detail fetch cannot prove a sale, so absent listings are never deactivated. The seller
+keeps sold products listed with its explicit SOLD term instead, which maps to `sold_out` with an
+unknown price. Only a post whose terms are exactly USED (no SOLD, other term or negotiating marker)
+is `in_stock`; a card and detail page that disagree about SOLD stay `unknown`. Inquiry-only `ASK`
+prices stay unknown, and a detail page whose post id differs from its card yields nothing.
+
+Facts come from the matched post's header title and its labelled `item-price` / `付属品：` /
+`元箱：` / `カラー：` paragraphs, never from the neighbouring-product navigation, images or
+descriptions. A leading `【委託品】` marker is removed from the title and kept as consignment
+metadata. The seller's lead (`<メーカー>の<種別>「<型番>」の中古品です。`) is read only when its
+quoted name belongs to this title: the words before that name in the title are the maker, and the
+type phrase becomes `rawCategory` when it is a recognized seller label. Otherwise the broad
+AMPLIFIER / PLAYER / SPEAKER / ACCESSORY bucket remains the corroborative raw category; it is
+always kept in metadata. The observed robots.txt (2026-11-08) disallows only `/wp-admin/`, and the
+site publishes no terms of use beyond its privacy policy.
+
 ## Optional capabilities
 
 A normal shop does not need either capability. Seller-specific diagnostics and threshold tuning are

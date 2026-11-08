@@ -57,6 +57,7 @@
     "AFROAUDIO_ENABLED": "true",
     "OSAKAYA_ENABLED": "true",
     "SOUNDPIT_ENABLED": "true",
+    "SOUNDPITPLUS_ENABLED": "true",
     "SOUND_SUPPORT_ENABLED": "true",
     "AVAC_ENABLED": "true",
     "TEREON_ENABLED": "true",

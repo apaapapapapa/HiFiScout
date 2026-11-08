@@ -15,6 +15,7 @@ const ONLY_HIFIDO = {
   AFROAUDIO_ENABLED: "false",
   OSAKAYA_ENABLED: "false",
   SOUNDPIT_ENABLED: "false",
+  SOUNDPITPLUS_ENABLED: "false",
   SOUND_SUPPORT_ENABLED: "false",
   AVAC_ENABLED: "false",
   TEREON_ENABLED: "false",

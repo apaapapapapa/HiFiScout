@@ -64,6 +64,7 @@ import {
   homeShokaiAdapter,
 } from "./home-shokai.js";
 import { E_EARPHONE_CATEGORY_MAPPING, eEarphoneAdapter } from "./e-earphone.js";
+import { SOUNDPITPLUS_CATEGORY_MAPPING, soundPitPlusAdapter } from "./soundpitplus.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -352,6 +353,20 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       transport: { kind: "direct" },
       catalog: { categoryMapping: E_EARPHONE_CATEGORY_MAPPING },
     },
+  ),
+  // Last in the daily rotation so existing shops keep their slots. Price-less listing pages plus
+  // one detail page per listed product, SOLD ones included.
+  defineShopPlugin(
+    soundPitPlusAdapter,
+    {
+      key: "soundpitplus",
+      name: "SOUNDPIT+",
+      baseUrl: "https://soundpit-plus.com",
+      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultRequestDelayMs: 2000,
+      defaultMaxPages: 60,
+    },
+    { catalog: { categoryMapping: SOUNDPITPLUS_CATEGORY_MAPPING } },
   ),
   // shop-generator:plugins
 ]);

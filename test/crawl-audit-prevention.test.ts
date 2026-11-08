@@ -6,6 +6,7 @@ import { extractFujiyaDetailCategoryEvidence } from "../src/crawler/shops/fujiya
 import { classifyCategoryEvidence } from "../src/catalog/category-classifier.js";
 import type { CrawlPage } from "../src/crawler/types.js";
 import type { SoundPitPage } from "../src/crawler/shops/soundpit.js";
+import type { SoundPitPlusPage } from "../src/crawler/shops/soundpitplus.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { detailFetchOptions, emptyCatalogDb } from "./helpers/fixtures.js";
 import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
@@ -18,7 +19,11 @@ import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 // Minimal factual markup, not copies of seller descriptions. A visible control proves each
 // hidden-markup assertion exercises the shop's parser instead of passing on an invalid fixture.
-const listings: readonly (readonly [string, string, (CrawlPage | SoundPitPage)?])[] = [
+const listings: readonly (readonly [
+  string,
+  string,
+  (CrawlPage | SoundPitPage | SoundPitPlusPage)?,
+])[] = [
   [
     "audiounion",
     `<li class="item"><span class="maker_name">LUXMAN</span><span class="item_name"><a href="/ct/detail/used/226458/">C-10X</a></span><span class="selling_price">198,000円</span></li>`,
@@ -63,6 +68,11 @@ const listings: readonly (readonly [string, string, (CrawlPage | SoundPitPage)?]
     "soundpit",
     `<h2>Burmester</h2><h2>911 MK3</h2><p>ステレオパワーアンプ 中古品</p><p>¥1,793,000</p><a href="/pg102.html">Power amp/一覧へ戻る</a>`,
     { url: "https://sound-pit.jp/pg530.html", kind: "detail" },
+  ],
+  [
+    "soundpitplus",
+    `<article id="post-714" class="post-714 products type-products product_status-used"><h1 class="page-title">SOULNOTE A-3</h1><div class="entry-content"><p class="item-price">中古品：￥1,078,000-(税込)</p><p>ソウルノートのプリメインアンプ「A-3」の中古品です。</p></div></article>`,
+    { url: "https://soundpit-plus.com/products/soulnote-a-3/", kind: "detail" },
   ],
   ["sound-support", `<a href="/26477.html">NuPrime IDA-8</a> 販売価格：￥58,000 程度：A`],
   [

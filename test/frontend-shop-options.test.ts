@@ -16,6 +16,7 @@ const GOJUON_KEYS = [
   "osakaya",
   "sound-support",
   "soundpit",
+  "soundpitplus",
   "shimamusen",
   "dynamic-audio",
   "tereon",

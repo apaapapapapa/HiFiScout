@@ -21,6 +21,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   osakaya: "きゃびんおおさかや",
   "sound-support": "さうんどさぽーと",
   soundpit: "さうんどぴっと",
+  soundpitplus: "さうんどぴっとぷらす",
   shimamusen: "しまむせん",
   "dynamic-audio": "だいなみっくおーでぃお",
   tereon: "てれおん",
