@@ -4854,6 +4854,26 @@
         "https://github.com/apaapapapapa/HiFiScout/pull/819",
         "https://github.com/apaapapapapa/HiFiScout/actions/runs/40707841161"
       ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "e16a633a2988f55ddf848a46a14e866f4ae262e8",
+      "beforeDigest": "60401ee6e3163cac0265e7790f91adab3fc5f2e6c9f5966ce43c397fbb3117ca",
+      "afterDigest": "46922dd12bde20f29e9d3bb8aadb58c7a00f121ca3f6246d2e968a3d07f32e82",
+      "reason": "PR #822 adds the SOUNDPIT+ shop to the shared daily rotation. It registers src/crawler/shops/soundpitplus.ts and test/soundpitplus.test.ts under schedule-and-continuation and raises only the daily-schedule crawlDispatches ceiling from 61 to 63, exactly the new shop's two daily passes. scheduledInvocations stays 391 and plannedPages stays 1800 (measured 1739). No sample, suite, source, fixture or other ceiling is removed or relaxed.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/822"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "e16a633a2988f55ddf848a46a14e866f4ae262e8",
+      "beforeDigest": "e92acfbfc98b98a0debbc66911cde5c3330955e5ea58ca86a0689aab860dbdf1",
+      "afterDigest": "0800e61e5488e6df3920283d5428f3b345ab942075c90a920c7f81b41c898280",
+      "reason": "Intentional workload increase from PR #822: the new twice-daily SOUNDPIT+ rotation shop (defaultMaxPages 60) adds two dispatches and 120 planned pages. Clean captures of base e16a633a (391 invocations, 61 dispatches, 1619 planned pages) and candidate c2209217 (391, 63, 1739) share profile 7aec89a5; Cron triggers and every existing shop slot are unchanged because the shop is registered last. Planned pages are a scenario bound, not observed HTTP traffic.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/822"
+      ]
     }
   ]
 }
