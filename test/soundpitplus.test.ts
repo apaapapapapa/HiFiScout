@@ -164,6 +164,25 @@ test("SOUNDPIT+ discovers listing pagination first, then one detail target per u
   assert.deepEqual(plugin.parse(listingPage2, secondPage), []);
 });
 
+test("SOUNDPIT+ carries unknown listing statuses into the detail availability decision", () => {
+  const withHold = listing.replace(
+    "post-714 products type-products status-publish has-post-thumbnail hentry product_status-used",
+    "post-714 products type-products status-publish has-post-thumbnail hentry product_status-used product_status-hold",
+  );
+  const heldPage = (discoverPages(soundPitPlusAdapter, withHold, firstPage) ?? []).find(
+    (page) => page.kind === "detail" && page.postId === "714",
+  );
+  assert.deepEqual(heldPage, { ...a3Page, listingUnknownStatus: true });
+  assert.equal(parseSoundPitPlusDetail(detail, heldPage)[0].stockStatus, "unknown");
+  // Unrelated product cards keep their original availability evidence.
+  assert.deepEqual(
+    (discoverPages(soundPitPlusAdapter, withHold, firstPage) ?? []).find(
+      (page) => page.kind === "detail" && page.postId === "715",
+    ),
+    { url: `${BASE}/products/luxman-pd-191a/`, kind: "detail", postId: "715", listingSold: true },
+  );
+});
+
 test("SOUNDPIT+ follows only its own unfiltered listing pagination", () => {
   const page2Link = `${BASE}/used-products/?sp_page=2`;
   for (const href of [
@@ -245,6 +264,20 @@ test("SOUNDPIT+ maps SOLD, negotiating, unknown and contradictory status evidenc
   assert.equal(parseSoundPitPlusDetail(otherTerm, a3Page)[0].stockStatus, "unknown");
   const notUsed = variant([["product_status-used", "product_status-new"]]);
   assert.equal(parseSoundPitPlusDetail(notUsed, a3Page)[0].stockStatus, "unknown");
+  const soldAndHold = variant([
+    ["product_status-used", "product_status-sold product_status-hold product_status-used"],
+  ]);
+  assert.equal(
+    parseSoundPitPlusDetail(soldAndHold, { ...a3Page, listingSold: true })[0].stockStatus,
+    "unknown",
+  );
+
+  for (const marker of ["商談中", "HOLD", "予約済"]) {
+    const priceHeld = variant([["￥1,078,000-(税込)", `￥1,078,000-(税込) ${marker}`]]);
+    const [product] = parseSoundPitPlusDetail(priceHeld, a3Page);
+    assert.equal(product.stockStatus, "unknown", marker);
+    assert.equal(product.conditionText, "中古品 / 商談中", marker);
+  }
 
   const negotiating = variant([[">SOULNOTE A-3</h1>", ">【商談中】SOULNOTE A-3</h1>"]]);
   const [held] = parseSoundPitPlusDetail(negotiating, a3Page);
@@ -319,6 +352,20 @@ test("SOUNDPIT+ falls back to the seller bucket when the lead is not about this 
   assert.equal(product.rawManufacturer, "SOULNOTE");
   assert.equal(product.model, "A-3");
   assert.equal(plugin.parse(otherModel, a3Page)[0].primaryCategoryId, "unclassified");
+
+  const wrongQuotedRevision = variant([["のプリメインアンプ「A-3」", "のプリアンプ「A-3 MKII」"]]);
+  const [wrongRevision] = parseSoundPitPlusDetail(wrongQuotedRevision, a3Page);
+  assert.equal(wrongRevision.rawCategory, "AMPLIFIER");
+  assert.equal(wrongRevision.rawManufacturer, "SOULNOTE");
+  assert.equal(wrongRevision.model, "A-3");
+
+  const titleRevision = variant([[">SOULNOTE A-3</h1>", ">SOULNOTE A-3 MKII</h1>"]]);
+  const [titleWithRevision] = parseSoundPitPlusDetail(titleRevision, a3Page);
+  assert.equal(titleWithRevision.rawCategory, "AMPLIFIER");
+  assert.equal(titleWithRevision.model, "A-3 MKII");
+
+  const similarModel = variant([[">SOULNOTE A-3</h1>", ">SOULNOTE A-30</h1>"]]);
+  assert.equal(parseSoundPitPlusDetail(similarModel, a3Page)[0].rawCategory, "AMPLIFIER");
 
   const unknownType = variant([["のプリメインアンプ「A-3」", "の試作機「A-3」"]]);
   assert.equal(parseSoundPitPlusDetail(unknownType, a3Page)[0].rawCategory, "AMPLIFIER");
