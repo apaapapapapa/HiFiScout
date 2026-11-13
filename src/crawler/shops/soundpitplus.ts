@@ -65,6 +65,8 @@ export interface SoundPitPlusPage extends CrawlPageObject {
   readonly postId?: string;
   /** The listing card's explicit SOLD term at discovery time. */
   readonly listingSold?: boolean;
+  /** Unknown listing status terms must survive the detail fetch, not become available evidence. */
+  readonly listingUnknownStatus?: boolean;
 }
 
 function listingPage(page: number): SoundPitPlusPage {
@@ -116,6 +118,10 @@ function productStatuses(classes: ReadonlySet<string>): Set<string> {
   );
 }
 
+function hasUnrecognizedStatus(statuses: ReadonlySet<string>): boolean {
+  return [...statuses].some((status) => status !== "used" && status !== "sold");
+}
+
 function openingAttributes(block: string): string {
   return block.match(/^<[a-z]+\b([^>]*)>/iu)?.[1] || "";
 }
@@ -133,7 +139,13 @@ function listingCards(html: string): SoundPitPlusPage[] {
     const href = titleHtml.match(/<a\b[^>]*\bhref\s*=\s*(["'])([^"']+)\1/iu)?.[2] || "";
     const url = canonicalDetailUrl(href);
     if (!url) continue;
-    pages.push({ url, kind: "detail", postId: id, listingSold: statuses.has("sold") });
+    pages.push({
+      url,
+      kind: "detail",
+      postId: id,
+      listingSold: statuses.has("sold"),
+      ...(hasUnrecognizedStatus(statuses) ? { listingUnknownStatus: true } : {}),
+    });
   }
   return pages;
 }
@@ -190,15 +202,13 @@ const NO_LEAD: LeadFacts = Object.freeze({ productType: "", quotedName: "" });
  * models and are never used.
  */
 function leadFacts(content: string, title: string): LeadFacts {
-  const comparableTitle = comparableName(title);
   for (const match of content.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/giu)) {
     const text = cleanText(match[1]);
     if (FIELD_RE.test(text) || !text.includes("「")) continue;
     const quoted = text.match(/^([^「」]{1,80})「([^「」]{1,80})」/u);
     if (!quoted) return NO_LEAD;
     const quotedName = quoted[2].trim();
-    const names = quotedName.split(/\s+/u).map(comparableName);
-    if (!names.some((name) => name.length >= 2 && comparableTitle.includes(name))) return NO_LEAD;
+    if (quotedModelOffset(title, quotedName) < 0) return NO_LEAD;
     // The type is the last noun phrase: `光カートリッジ専用真空管式フォノイコライザー` names a phono
     // equalizer, and the qualifiers before `専用` / `式` describe what it serves or how it is built.
     const phrase =
@@ -212,18 +222,31 @@ function leadFacts(content: string, title: string): LeadFacts {
 }
 
 /**
- * Titles are `<maker> <model>`. When the lead quotes a model that starts a word of the title, the
- * words before it are the seller's own maker spelling (`FYNE AUDIO` / `F502S`), which also keeps
- * unfamiliar multi-word makers intact. A title that is only the quoted model has no maker.
+ * Match the entire quoted model to a title component, not a prefix of a different revision
+ * (A-3 vs A-30 / A-3 MKII). Separators may differ (U・BROS vs U-BROS), and a separately
+ * priced bundle may append " + <another model>" without changing the first model's identity.
  */
+function quotedModelOffset(title: string, quotedName: string): number {
+  const expected = comparableName(quotedName);
+  if (expected.length < 2) return -1;
+  const starts = [
+    0,
+    ...[...title.matchAll(/\s+/gu)].map((match) => (match.index ?? 0) + match[0].length),
+  ];
+  return (
+    starts.find(
+      (start) => comparableName(title.slice(start).split(/\s+\+\s+/u, 1)[0]) === expected,
+    ) ?? -1
+  );
+}
+
+/** Preserve the seller's entire maker spelling before a verified model (including multi-word makers). */
 function manufacturerModel(
   title: string,
   quotedName: string,
 ): { manufacturer: string; model: string } {
-  const index = quotedName ? title.toLowerCase().indexOf(quotedName.toLowerCase()) : -1;
-  if (index < 0 || (index > 0 && title[index - 1] !== " ")) {
-    return splitManufacturerModel(title, SHOP_KEY);
-  }
+  const index = quotedModelOffset(title, quotedName);
+  if (index < 0) return splitManufacturerModel(title, SHOP_KEY);
   return { manufacturer: title.slice(0, index).trim(), model: title.slice(index).trim() };
 }
 
@@ -321,14 +344,15 @@ export function parseSoundPitPlusDetail(
   const detailSold = statuses.has("sold");
   // Any status term the seller adds beyond USED/SOLD (or a negotiating marker) is not proof that
   // the product can still be bought.
-  const unrecognizedStatus = [...statuses].some((status) => status !== "used" && status !== "sold");
-  const negotiating = NEGOTIATING_RE.test(`${listingLabel} ${priceLabel}`);
+  const unrecognizedStatus =
+    hasUnrecognizedStatus(statuses) || page.listingUnknownStatus === true;
+  const negotiating = NEGOTIATING_RE.test(`${listingLabel} ${priceText}`);
   const detailAvailable =
     statuses.has("used") && !detailSold && !unrecognizedStatus && !negotiating;
   // The listing card and the detail page observe the same post moments apart; if their SOLD
-  // terms disagree, neither observation is conclusive.
+  // terms disagree, or either has an unknown term, neither observation is conclusive.
   const listingContradicts = page.listingSold !== undefined && page.listingSold !== detailSold;
-  const stockStatus: StockStatus = listingContradicts
+  const stockStatus: StockStatus = listingContradicts || unrecognizedStatus
     ? "unknown"
     : availabilityFromSignals({ soldOut: detailSold, inStock: detailAvailable });
   const soldOut = detailSold || page.listingSold === true;

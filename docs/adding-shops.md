@@ -381,16 +381,19 @@ limits are the shop-definition defaults in `src/crawler/shops/index.ts`.
 Coverage is **partial**: a price-less listing page already marks the run's coverage incomplete and
 one failed detail fetch cannot prove a sale, so absent listings are never deactivated. The seller
 keeps sold products listed with its explicit SOLD term instead, which maps to `sold_out` with an
-unknown price. Only a post whose terms are exactly USED (no SOLD, other term or negotiating marker)
-is `in_stock`; a card and detail page that disagree about SOLD stay `unknown`. Inquiry-only `ASK`
-prices stay unknown, and a detail page whose post id differs from its card yields nothing.
+unknown price when no evidence conflicts. `in_stock` requires USED without SOLD or other status
+terms on both the listing card and the detail post, and no negotiating marker in the title or full
+price field. Conflicting SOLD evidence or an unknown status term on either page stays `unknown`.
+Inquiry-only `ASK` prices stay unknown, and a detail page whose post id differs from its card
+yields nothing.
 
 Facts come from the matched post's header title and its labelled `item-price` / `付属品：` /
 `元箱：` / `カラー：` paragraphs, never from the neighbouring-product navigation, images or
 descriptions. A leading `【委託品】` marker is removed from the title and kept as consignment
 metadata. The seller's lead (`<メーカー>の<種別>「<型番>」の中古品です。`) is read only when its
-quoted name belongs to this title: the words before that name in the title are the maker, and the
-type phrase becomes `rawCategory` when it is a recognized seller label. Otherwise the broad
+full quoted model matches the title's model component (or its first bundle component), rather than
+a different revision sharing a prefix; the words before it are the maker, and the type phrase
+becomes `rawCategory` when it is a recognized seller label. Otherwise the broad
 AMPLIFIER / PLAYER / SPEAKER / ACCESSORY bucket remains the corroborative raw category; it is
 always kept in metadata. The observed robots.txt (2026-11-08) disallows only `/wp-admin/`, and the
 site publishes no terms of use beyond its privacy policy.
