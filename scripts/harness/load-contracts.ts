@@ -443,6 +443,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "src/crawler/shops/audiounion.ts",
       "src/crawler/shops/audiounion-urls.ts",
       "src/crawler/shops/audiounion-diagnostics.ts",
+      "src/crawler/shops/soundpitplus.ts",
       "src/crawler/shops/index.ts",
       "src/crawler/shops/registry.ts",
       "wrangler*.jsonc",
@@ -454,6 +455,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "test/crawl-daily-schedule.test.ts",
       "test/audiounion-renewal.test.ts",
       "test/crawl-confirmed-empty.test.ts",
+      "test/soundpitplus.test.ts",
     ],
     samples: {
       "maintenance-continuation": {
@@ -462,11 +464,11 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       },
       "daily-schedule": {
         environment: "local-mock",
-        limits: { scheduledInvocations: 391, crawlDispatches: 61, plannedPages: 1800 },
+        limits: { scheduledInvocations: 391, crawlDispatches: 63, plannedPages: 1800 },
       },
     },
     reason:
-      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. AudioUnion renewal regressions cover bounded category discovery, relay guards and explicit-empty evidence through collection receipts. Planned pages are a scenario bound, not observed HTTP traffic.",
+      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. AudioUnion renewal regressions cover bounded category discovery, relay guards and explicit-empty evidence through collection receipts. SOUNDPIT+ joins the shared rotation with two passes of at most 60 listing/detail pages each; its suite covers that page-bounded discovery. Planned pages are a scenario bound, not observed HTTP traffic.",
   },
 ];
 
