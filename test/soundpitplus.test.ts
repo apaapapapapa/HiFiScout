@@ -353,9 +353,7 @@ test("SOUNDPIT+ falls back to the seller bucket when the lead is not about this 
   assert.equal(product.model, "A-3");
   assert.equal(plugin.parse(otherModel, a3Page)[0].primaryCategoryId, "unclassified");
 
-  const wrongQuotedRevision = variant([
-    ["のプリメインアンプ「A-3」", "のプリアンプ「A-3 MKII」"],
-  ]);
+  const wrongQuotedRevision = variant([["のプリメインアンプ「A-3」", "のプリアンプ「A-3 MKII」"]]);
   const [wrongRevision] = parseSoundPitPlusDetail(wrongQuotedRevision, a3Page);
   assert.equal(wrongRevision.rawCategory, "AMPLIFIER");
   assert.equal(wrongRevision.rawManufacturer, "SOULNOTE");

@@ -344,17 +344,17 @@ export function parseSoundPitPlusDetail(
   const detailSold = statuses.has("sold");
   // Any status term the seller adds beyond USED/SOLD (or a negotiating marker) is not proof that
   // the product can still be bought.
-  const unrecognizedStatus =
-    hasUnrecognizedStatus(statuses) || page.listingUnknownStatus === true;
+  const unrecognizedStatus = hasUnrecognizedStatus(statuses) || page.listingUnknownStatus === true;
   const negotiating = NEGOTIATING_RE.test(`${listingLabel} ${priceText}`);
   const detailAvailable =
     statuses.has("used") && !detailSold && !unrecognizedStatus && !negotiating;
   // The listing card and the detail page observe the same post moments apart; if their SOLD
   // terms disagree, or either has an unknown term, neither observation is conclusive.
   const listingContradicts = page.listingSold !== undefined && page.listingSold !== detailSold;
-  const stockStatus: StockStatus = listingContradicts || unrecognizedStatus
-    ? "unknown"
-    : availabilityFromSignals({ soldOut: detailSold, inStock: detailAvailable });
+  const stockStatus: StockStatus =
+    listingContradicts || unrecognizedStatus
+      ? "unknown"
+      : availabilityFromSignals({ soldOut: detailSold, inStock: detailAvailable });
   const soldOut = detailSold || page.listingSold === true;
 
   const { manufacturer, model } = manufacturerModel(title, quotedName);
