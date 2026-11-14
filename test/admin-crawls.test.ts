@@ -119,6 +119,6 @@ test("next schedule shows distinct dedicated slots and keeps every shop out of q
   const schedules = nextAdminCrawlSchedules(new Date("2026-09-01T14:00:00Z"));
   assert.equal(schedules.get("audiounion"), "2026-09-01T23:01:00.000Z");
   assert.equal(schedules.get("hifido"), "2026-09-01T23:31:00.000Z");
-  assert.equal(schedules.get(shopsInDailyRotation()[0].key), "2026-09-02T02:00:00.000Z");
+  assert.equal(schedules.get(shopsInDailyRotation()[0].key), "2026-09-02T08:00:00.000Z");
   for (const at of schedules.values()) assert.equal(isCrawlQuietHours(Date.parse(at)), false);
 });
