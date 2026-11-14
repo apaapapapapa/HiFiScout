@@ -415,7 +415,7 @@ test("SOUNDPIT+ is enabled, bounded and never deactivates absent listings", () =
   assert.equal(getShopEnabled({ SOUNDPITPLUS_ENABLED: "false" }, plugin.definition), false);
   assert.equal(getShopMaxPages({}, plugin.definition, 40), 60);
   assert.equal(getShopRequestDelayMs({}, plugin.definition, 1200), 2000);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 720);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 1440);
   assert.equal(plugin.definition.scheduleCron, undefined);
   assert.equal(
     coverageDecision(soundPitPlusAdapter, {

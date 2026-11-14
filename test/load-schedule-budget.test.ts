@@ -77,7 +77,7 @@ test("configured day includes all Cron firings, bounded shop passes and page wor
     }
     assert.equal(generalTicks, 288);
     assert.equal(dailySlots, 1);
-    for (const shop of shopsInDailyRotation()) assert.equal(counts.get(shop.key), 2, shop.key);
+    for (const shop of shopsInDailyRotation()) assert.equal(counts.get(shop.key), 1, shop.key);
     assert.equal(counts.get("audiounion"), 15);
     assert.equal(counts.get("hifido"), 15);
     assert.equal(counts.get("fujiya-avic"), 1);

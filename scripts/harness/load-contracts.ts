@@ -468,7 +468,7 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       },
     },
     reason:
-      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. AudioUnion renewal regressions cover bounded category discovery, relay guards and explicit-empty evidence through collection receipts. SOUNDPIT+ joins the shared rotation with two passes of at most 60 listing/detail pages each; its suite covers that page-bounded discovery. Planned pages are a scenario bound, not observed HTTP traffic.",
+      "A complete day of configured Cron slots, per-shop page ceilings, plus six bounded recovery ticks with durable progress and no starvation. AudioUnion renewal regressions cover bounded category discovery, relay guards and explicit-empty evidence through collection receipts. SOUNDPIT+ joins the shared rotation with one evening pass of at most 60 listing/detail pages; its suite covers that page-bounded discovery. Planned pages are a scenario bound, not observed HTTP traffic.",
   },
 ];
 

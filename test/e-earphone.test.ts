@@ -125,7 +125,7 @@ test("e-earphone requires explicit opt-in and remains bounded with safe partial 
   assert.equal(getShopEnabled({ E_EARPHONE_ENABLED: "true" }, plugin.definition), true);
   assert.equal(getShopMaxPages({}, plugin.definition, 40), 10);
   assert.equal(getShopRequestDelayMs({}, plugin.definition, 1200), 2000);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 720);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 1440);
   assert.equal(plugin.definition.scheduleCron, undefined);
   assert.equal(
     coverageDecision(eEarphoneAdapter, {

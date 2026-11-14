@@ -3,8 +3,8 @@
  *
  * Shops with exceptional cadences declare `scheduleCron` on their definition. Multiple shops may
  * share one dedicated trigger; in that case the scheduled event timestamp selects exactly one shop
- * from the stable registry order. Every other shop gets two daily slots, ten minutes apart from
- * 11:00 and 17:00 JST, without wrapping after the last shop. All slot decisions use the scheduled event
+ * from the stable registry order. Every other shop gets one daily slot, ten minutes apart from
+ * 17:00 JST, without wrapping after the last shop. All slot decisions use the scheduled event
  * timestamp rather than wall-clock execution time, so delayed Cron delivery cannot reorder them.
  */
 
@@ -14,8 +14,8 @@ import type { ShopPlugin } from "./types.js";
 
 /** Must stay aligned with the ten-minute cadence declared by CRAWL_ROTATION_CRON. */
 const DAILY_ROTATION_SLOT_MINUTES = 10;
-/** Latest start first: 08:00/02:00 UTC are 17:00/11:00 JST. */
-const DAILY_ROTATION_START_MINUTES_UTC = [8 * 60, 2 * 60] as const;
+/** 08:00 UTC is 17:00 JST. */
+const DAILY_ROTATION_START_MINUTES_UTC = 8 * 60;
 /** Shared dedicated trigger starts at :01 and advances to the next shop every 30 minutes. */
 const SHARED_DEDICATED_SLOT_MS = 30 * 60_000;
 /** :01 is the phase anchor, so every hour starts with the first registered shared shop. */
@@ -26,7 +26,7 @@ export function shopsWithDedicatedCron(): ShopPlugin[] {
   return SHOP_PLUGINS.filter((plugin) => Boolean(plugin.definition.scheduleCron));
 }
 
-/** Shops with two daily slots on the shared trigger, in stable registry order. */
+/** Shops with one daily slot on the shared trigger, in stable registry order. */
 export function shopsInDailyRotation(): ShopPlugin[] {
   return SHOP_PLUGINS.filter((plugin) => !plugin.definition.scheduleCron);
 }
@@ -65,10 +65,10 @@ export function sharedSweepExclusions(): string[] {
 }
 
 /**
- * Select a non-dedicated shop only during its ten-minute slot in either daily pass.
+ * Select a non-dedicated shop only during its evening ten-minute slot.
  *
- * Each pass starts at 11:00 or 17:00 JST and advances once through the registry. Remaining ticks
- * are idle until the next pass; a pass never wraps or borrows slots from the next one.
+ * The daily pass starts at 17:00 JST and advances once through the registry. Remaining ticks
+ * are idle; the pass never wraps or creates additional shop runs.
  * Disabled shops keep their slot so enabling/disabling one cannot move another shop's start.
  */
 export function dailyRotationShopForScheduledTime(scheduledAt: Date): ShopPlugin | null {
@@ -77,10 +77,9 @@ export function dailyRotationShopForScheduledTime(scheduledAt: Date): ShopPlugin
   if (!Number.isFinite(scheduledMs) || isCrawlQuietHours(scheduledMs)) return null;
 
   const minutesSinceDayStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
-  const startMinutes = DAILY_ROTATION_START_MINUTES_UTC.find(
-    (start) => minutesSinceDayStart >= start,
+  if (minutesSinceDayStart < DAILY_ROTATION_START_MINUTES_UTC) return null;
+  const slot = Math.floor(
+    (minutesSinceDayStart - DAILY_ROTATION_START_MINUTES_UTC) / DAILY_ROTATION_SLOT_MINUTES,
   );
-  if (startMinutes === undefined) return null;
-  const slot = Math.floor((minutesSinceDayStart - startMinutes) / DAILY_ROTATION_SLOT_MINUTES);
   return shops[slot] || null;
 }
