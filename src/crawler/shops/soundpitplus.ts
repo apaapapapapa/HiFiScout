@@ -4,6 +4,7 @@ import { discoverLinkedPages } from "../html-listing.js";
 import { listingAttribute, listingBlocks, listingFieldHtml } from "../listing-fields.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
+import { explicitPublicationTime } from "../seller-publication.js";
 import type { StockStatus } from "../../catalog/types.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -67,6 +68,8 @@ export interface SoundPitPlusPage extends CrawlPageObject {
   readonly listingSold?: boolean;
   /** Unknown listing status terms must survive the detail fetch, not become available evidence. */
   readonly listingUnknownStatus?: boolean;
+  /** Seller datePublished from this exact listing card, carried to the matching detail. */
+  readonly sourcePublishedAt?: string;
 }
 
 function listingPage(page: number): SoundPitPlusPage {
@@ -139,9 +142,11 @@ function listingCards(html: string): SoundPitPlusPage[] {
     const href = titleHtml.match(/<a\b[^>]*\bhref\s*=\s*(["'])([^"']+)\1/iu)?.[2] || "";
     const url = canonicalDetailUrl(href);
     if (!url) continue;
+    const publication = explicitPublicationTime(card);
     pages.push({
       url,
       kind: "detail",
+      ...(publication ? { sourcePublishedAt: publication.at } : {}),
       postId: id,
       listingSold: statuses.has("sold"),
       ...(hasUnrecognizedStatus(statuses) ? { listingUnknownStatus: true } : {}),
@@ -364,6 +369,7 @@ export function parseSoundPitPlusDetail(
     {
       sourceId,
       sourceUrl,
+      sourcePublishedAt: page.sourcePublishedAt ?? null,
       title,
       rawManufacturer: manufacturer,
       manufacturer,

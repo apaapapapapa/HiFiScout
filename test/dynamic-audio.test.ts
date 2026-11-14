@@ -25,6 +25,8 @@ test("Dynamic Audio parser extracts current prices and seller facts", () => {
   assert.equal(luxman.rawCategory, "SACD/CDプレーヤー");
   assert.equal(luxman.priceYen, 550000);
   assert.equal(luxman.stockStatus, "in_stock");
+  assert.equal(luxman.sourcePublishedAt, "2026-07-11T15:00:00.000Z");
+  assert.equal(luxman.metadata?.sourcePublishedPrecision, "day");
   assert.match(luxman.conditionText, /中古/);
   assert.match(luxman.conditionText, /A−/);
   assert.match(luxman.conditionText, /商談中/);
@@ -86,4 +88,45 @@ test("Dynamic Audio adapter starts from the archive root with non-destructive co
     { url: "https://dynamicaudio5used.wordpress.com/", page: 1 },
   ]);
   assert.equal(dynamicAudioAdapter.discovery.coverage, "partial");
+});
+
+test("Dynamic Audio accepts only an explicit published datetime in the same article header", () => {
+  const html = `
+    <article id="post-105" class="post type-post">
+      <header class="entry-header">
+        <h2 class="entry-title"><a href="/2026/08/19/luxman-d-10x/">LUXMAN D-10X</a></h2>
+        <time class="entry-date published" datetime="2026-08-19T17:42:07+09:00">8月19日</time>
+        <time class="updated" datetime="2026-11-11T09:30:00+09:00">更新</time>
+      </header>
+      <div class="entry-content"><p>中古＠SACD/CDプレーヤー<br>販売価格 ￥900,000</p></div>
+    </article>
+  `;
+  const [item] = parseDynamicAudioListing(html);
+  assert.equal(item.sourcePublishedAt, "2026-08-19T08:42:07.000Z");
+  assert.equal(item.metadata?.sourcePublishedPrecision, "second");
+  const changedDate = html.replace("2026-08-19T17:42:07+09:00", "2026-08-20T17:42:07+09:00");
+  const [fallback] = parseDynamicAudioListing(changedDate);
+  assert.equal(fallback.sourcePublishedAt, "2026-08-18T15:00:00.000Z");
+  assert.equal(fallback.metadata?.sourcePublishedPrecision, "day");
+
+  const prependUpdated = html.replace(
+    '<time class="entry-date published"',
+    '<time class="updated" datetime="2026-08-20T17:42:07+09:00">更新</time>\n        <time class="entry-date published"',
+  );
+  const [kept] = parseDynamicAudioListing(prependUpdated);
+  assert.equal(kept.sourcePublishedAt, "2026-08-19T08:42:07.000Z");
+  assert.equal(kept.metadata?.sourcePublishedPrecision, "second");
+
+  const wrongPublishedDate = prependUpdated
+    .replace(
+      'class="entry-date published" datetime="2026-08-19T17:42:07+09:00"',
+      'class="entry-date published" datetime="2026-08-20T17:42:07+09:00"',
+    )
+    .replace(
+      'class="updated" datetime="2026-08-20T17:42:07+09:00"',
+      'class="updated" datetime="2026-08-19T17:42:07+09:00"',
+    );
+  const [dateFallback] = parseDynamicAudioListing(wrongPublishedDate);
+  assert.equal(dateFallback.sourcePublishedAt, "2026-08-18T15:00:00.000Z");
+  assert.equal(dateFallback.metadata?.sourcePublishedPrecision, "day");
 });
