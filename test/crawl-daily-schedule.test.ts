@@ -56,7 +56,11 @@ test("each JST day dispatches every shared shop once from 17:00, never the forme
       status: "skipped",
       queued: [],
     });
-    assert.equal(recording.executed.length, beforeMorning, "removed morning slots must not read D1");
+    assert.equal(
+      recording.executed.length,
+      beforeMorning,
+      "removed morning slots must not read D1",
+    );
 
     // All 18 configured rotation firings between 17:00 and 19:50 JST.
     // Delayed deliveries select shops by the scheduled timestamp.
@@ -85,8 +89,7 @@ test("each JST day dispatches every shared shop once from 17:00, never the forme
   for (let index = 0; index < passSize; index += 1) {
     assert.equal(Date.parse(sent[index]!.requestedAt), firstTick + index * 10 * 60_000);
     assert.equal(
-      Date.parse(sent[passSize + index]!.requestedAt) -
-        Date.parse(sent[index]!.requestedAt),
+      Date.parse(sent[passSize + index]!.requestedAt) - Date.parse(sent[index]!.requestedAt),
       24 * 60 * 60_000,
     );
   }

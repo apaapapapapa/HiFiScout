@@ -132,10 +132,7 @@ test("all non-dedicated shops have daily intervals and share an evening-only tri
 
 test("daily rotation makes only the 17:00 JST pass, including across New Year", () => {
   const dailyShops = shopsInDailyRotation();
-  for (const start of [
-    "2026-12-31T17:00:00+09:00",
-    "2027-01-01T17:00:00+09:00",
-  ]) {
+  for (const start of ["2026-12-31T17:00:00+09:00", "2027-01-01T17:00:00+09:00"]) {
     for (const [index, plugin] of dailyShops.entries()) {
       const slot = new Date(Date.parse(start) + index * 10 * 60_000);
       assert.equal(dailyRotationShopForScheduledTime(slot), plugin, slot.toISOString());
