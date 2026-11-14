@@ -88,15 +88,16 @@ ten-minute trigger walks the stable plugin registry once from **17:00 JST**. The
 the last shop; remaining ticks are idle without touching D1.
 Disabled shops keep their slot and remain disabled; they do not shift the other shops' start times.
 The selection uses the scheduled event timestamp, so delivery delays do not change the assigned
-shop or restart a pass. The trigger runs at exact ten-minute boundaries, starting at 02:00 UTC
-(11:00 JST), and stops before the overnight pause.
+shop or restart a pass. The trigger runs at exact ten-minute boundaries, starting at 08:00 UTC
+(17:00 JST), with the final firing at 10:50 UTC (19:50 JST).
 
 AudioUnion, HiFiDo and Fujiya Avic retain their dedicated schedules. The current expressions and
 shop inventory live in `src/crawler/shops/index.ts` and `wrangler.jsonc`; selection policy lives in
 `src/crawler/schedule.ts`. Daily rotation shops use a nominal 1440-minute interval for health and
 interval-based eligibility. Scheduled dispatch uses the fixed evening slots, not a rolling
-24-hour check: each shop has one scheduled opportunity per day, 24 hours after its previous slot. An active dispatch still blocks a new generation. Recovery and continuation resume
-the same generation; they do not add another crawl. Explicit manual dispatch remains available
+24-hour check: each shop has one scheduled opportunity per day, 24 hours after its previous slot.
+An active dispatch still blocks a new generation. Recovery and continuation resume the same
+generation; they do not add another crawl. Explicit manual dispatch remains available
 during allowed hours.
 
 ## Overnight pause
