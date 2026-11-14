@@ -44,6 +44,8 @@ test("publication lag keeps exact, date-only, future and missing evidence separa
     // A delay of 60m20s is outside the within-hour bucket despite rounding to 60.
     insert.run("soundpitplus", "2026-11-10T10:00:20.000Z", "2026-11-10T09:00:00.000Z", "{}");
     insert.run("avac", "2026-11-10T09:00:00.000Z", null, "{}");
+    // A listing immediately before the reporting window must not enter the cohort.
+    insert.run("hifido", "2026-10-31T23:59:59.000Z", "2026-10-31T22:59:59.000Z", "{}");
 
     const report = await reportShopPublicationLag(
       sqliteD1(sql),
