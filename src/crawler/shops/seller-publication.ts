@@ -18,7 +18,7 @@ function validCalendarDate(value: string): boolean {
  * The caller passes a single seller-owned card or article header, never an entire search page.
  * A modified date, a date in a description, and timezone-less times are not publication evidence.
  */
-export function explicitPublicationTime(html: string): SellerPublication | null {
+function publicationWithLocalDate(html: string): { publication: SellerPublication; localDate: string } | null {
   for (const match of html.matchAll(/<time\b([^>]*)>/giu)) {
     const attrs = match[1] || "";
     const itemprop = listingAttribute(attrs, "itemprop");
@@ -32,9 +32,18 @@ export function explicitPublicationTime(html: string): SellerPublication | null 
     )
       continue;
     const date = new Date(value);
-    if (Number.isFinite(date.getTime())) return { at: date.toISOString(), precision: "second" };
+    if (Number.isFinite(date.getTime())) {
+      return {
+        publication: { at: date.toISOString(), precision: "second" },
+        localDate: value.slice(0, 10),
+      };
+    }
   }
   return null;
+}
+
+export function explicitPublicationTime(html: string): SellerPublication | null {
+  return publicationWithLocalDate(html)?.publication ?? null;
 }
 
 /**
@@ -50,13 +59,8 @@ export function wordpressPublication(
   if (!datedPath) return null;
   const dateString = `${datedPath[1]}-${datedPath[2]}-${datedPath[3]}`;
   if (!validCalendarDate(dateString)) return null;
-  const explicit = explicitPublicationTime(articleHeader);
-  // A WordPress permalink's date and the labelled local post date should agree.
-  if (explicit) {
-    const sourceDate = articleHeader.match(
-      /<time\b[^>]*datetime\s*=\s*["'](\d{4}-\d{2}-\d{2})/iu,
-    )?.[1];
-    if (sourceDate === dateString) return explicit;
-  }
+  const published = publicationWithLocalDate(articleHeader);
+  // Compare the selected publication element's own local date, not another time tag.
+  if (published?.localDate === dateString) return published.publication;
   return { at: new Date(`${dateString}T00:00:00+09:00`).toISOString(), precision: "day" };
 }
