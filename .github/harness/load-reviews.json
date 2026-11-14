@@ -2600,7 +2600,9 @@
       "afterDigest": "ca7320abc3bdf7095b446a2c7ad91f2acb67b956b09d657c835ee10ee5b5edc6",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "notification-matches",
@@ -2608,7 +2610,9 @@
       "afterDigest": "93b9376a99849c45dc389668a83dc2e4a5c5a25542a1d7eb0a6a765ea8f02b79",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "notification-outbox-replay",
@@ -2616,7 +2620,9 @@
       "afterDigest": "cff2a2e747533f4722d03ad3f79b1e09606b690612cd93837e0db85919541e36",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-replay",
@@ -2624,7 +2630,9 @@
       "afterDigest": "a930f480ad5893ed28366897bab64ea726b6a63173f7543344166c885c2dd036",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-price-change",
@@ -2632,7 +2640,9 @@
       "afterDigest": "c49308fcbe85308375ea7b2e63d6885b1481b91508553f8251d3f2f76f0a8015",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-catalog-shared",
@@ -2640,7 +2650,9 @@
       "afterDigest": "493c1a80f2b0cf70ed1ba4f380a915be3de7aba3f2117879b25f8348e5ee6f4b",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-catalog-replay",
@@ -2648,7 +2660,9 @@
       "afterDigest": "f0fc096d4814bea48d757141dbdfccfa741fc55dc703bdb83c50b5274b468584",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-search-page",
@@ -2656,7 +2670,9 @@
       "afterDigest": "c81719971a5e96301d4119689e53fcc7b7aa18c083494c632ff41af267b27f03",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-search-filtered",
@@ -2664,7 +2680,9 @@
       "afterDigest": "3029aff55c04ee2ba3cbc60782ee7081c73f6db207b193b66af34f322898bdef",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "auction-admin-status",
@@ -2672,7 +2690,9 @@
       "afterDigest": "ec5c61e9478a1e4f316b1c7e6db5ee14f28a9985afaaa668af4983cc913f0057",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-checkpoint-inline",
@@ -2680,7 +2700,9 @@
       "afterDigest": "1cba282215f25eb4c0517c8acdce0f5c5285d121c5d8ed12978b9997baad4fee",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-checkpoint-split",
@@ -2688,7 +2710,9 @@
       "afterDigest": "4cd5478bd2a77ec75cf5e4f22b0da321062f878cd0d7237f0367cd5ad1ef05af",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-do-retry",
@@ -2696,7 +2720,9 @@
       "afterDigest": "de17dc88ec1f69c933a126297ae44f43934c11203c965b215cea6415aba22043",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "queue-export-redelivery",
@@ -2704,7 +2730,9 @@
       "afterDigest": "e5c98c5bf66fa859d71fab810185a06534a9162ca5cf91795c6f4bc77ab032da",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-prune",
@@ -2712,7 +2740,9 @@
       "afterDigest": "37b37a16008a47a1bb5d5c2160789bf073e71dc5bfb0b9c0c9dcf1745e19d3b3",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "search-new-total",
@@ -2720,7 +2750,9 @@
       "afterDigest": "a92b992c37443f0a8d9e37b562cfc8df812b3e5739fad60b4942485735922fd2",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "search-price-drop-total",
@@ -2728,7 +2760,9 @@
       "afterDigest": "1f98c6d9174b77d9eb5bca184cd0e0bdacbe4c7380052dd405a49f5dbfcc1b30",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "projection-unchanged",
@@ -2736,7 +2770,9 @@
       "afterDigest": "db2b5dade28879027757ea6f5708fae5ef42ded50bda35e3da2f1e19cadf6bad",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed one indexed manual-category authority lookup: full unchanged projection replay reads 110 -> 111 rows, still writes zero and uses the same 34 statements. The original 200-read/zero-write ceiling is unchanged. This bounded point read prevents manual/automatic category churn; 10k override replay falls from 590000 reads/370000 writes to 70000 reads/zero writes. The shared-helper profile also adds SQL-duration diagnostics without changing fixture inputs or cost accounting. Exact base and candidate load suites pass. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "search-sync-catalog-offers-100",
@@ -2744,7 +2780,9 @@
       "afterDigest": "995c6a720ab4dbdee691ba1f43487cc36c499c3468585a4838791a3ecb0fbde1",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "search-sync-catalog-offers-1000",
@@ -2752,7 +2790,9 @@
       "afterDigest": "ffef89dbd9e8a5e42236bae936771697b27f9021ef9373ac13c291b0b4befe16",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "search-sync-catalog-offers-10000",
@@ -2760,7 +2800,9 @@
       "afterDigest": "d302f3393b6184a212401496b25de1857a7b508ea0d39aefa63b6cd87886695f",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-deactivate-missing-100",
@@ -2768,7 +2810,9 @@
       "afterDigest": "d10791cbbb033568f9e68067e84911d4b5ba80eb63843e713c5a33c7e992b1eb",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-deactivate-missing-1000",
@@ -2776,7 +2820,9 @@
       "afterDigest": "c446e69a429a9e411e6180be6ceabbd3ac2a5ffa8297419b10952e9ed714caff",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "crawl-deactivate-missing-10000",
@@ -2784,7 +2830,9 @@
       "afterDigest": "dd5ece977270b576c00f22787b17257080445db2ffe259f0e394eda5d0d0bda7",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "dq-snapshot-unchanged-1000",
@@ -2792,7 +2840,9 @@
       "afterDigest": "21244f1ae65a5873632c2aa48cd902451de84ee49a4b993e08632838db4b92d2",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "dq-snapshot-unchanged-5000",
@@ -2800,7 +2850,9 @@
       "afterDigest": "3216d12d3866ead4531ca2a5e9c61bbe1e73eb192554740ed462f33479af61e3",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "dq-snapshot-changed-1000",
@@ -2808,7 +2860,9 @@
       "afterDigest": "a7f05d5fdad841b40758ae5c5301a5b8aad6fce7c95d4b59f1c9ee29065ed196",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "dq-snapshot-changed-5000",
@@ -2816,7 +2870,9 @@
       "afterDigest": "5cc49bd102814956333ec549780b4fa82b890018e996fb97f72df4dd5d5f62bc",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-photo-search-100",
@@ -2824,7 +2880,9 @@
       "afterDigest": "8e128d669f1698665672d72e2aa54c932ba712946ab722d5952900550e79b4ca",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-photo-search-10000",
@@ -2832,7 +2890,9 @@
       "afterDigest": "26787c884463aae56f8a834c0c7ec7e4e0b3d9c4aa30490ca330439fa9098db1",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-photo-replay",
@@ -2840,7 +2900,9 @@
       "afterDigest": "3b9f9f4301f44da20964f6856828b9cf56027b5837d363ffcc109d02f72a1a88",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-photo-update",
@@ -2848,7 +2910,9 @@
       "afterDigest": "fe71ced28cfa4c5e439ea39aea19f9615027797a26117a41e9e9957d73deb1bd",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-rows-100",
@@ -2856,7 +2920,9 @@
       "afterDigest": "f6b73dcb88ee75c127c2163d2c9c7dfd8fb754c5850af5802789e767a83125f9",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-rows-1000",
@@ -2864,7 +2930,9 @@
       "afterDigest": "5ac796c27e539abbcc176314b284141255ae3d5b79046fac699495e08bbd6126",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-rows-10000",
@@ -2872,7 +2940,9 @@
       "afterDigest": "1a74b864a57691d4655c0b18ba9a2b43ee005b5af8d11b1e6345b3ad1132c642",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-100",
@@ -2880,7 +2950,9 @@
       "afterDigest": "df18e525a96de8cdde48a776654c93e07174e09e81f2fdd34fc27413b2657e21",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-1000",
@@ -2888,7 +2960,9 @@
       "afterDigest": "f4d2de30eadd39f8a4b431a35891a07549951fc294659532567ec68b28f0cc61",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-10000",
@@ -2896,7 +2970,9 @@
       "afterDigest": "74f4eb300cb606483e3da7d4979a9116433c67b5f370db8026678a4ed1b5e516",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-backlog-100",
@@ -2904,7 +2980,9 @@
       "afterDigest": "8f6618afda0e3d14e3f361629618d239bf5191a236e3867ac70b7051688ff92b",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-backlog-1000",
@@ -2912,7 +2990,9 @@
       "afterDigest": "fd954d7d2f9909af2c291dd9501d165d78c75d3fb5201d78914bae58fe62c8b8",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-remediation-backlog-10000",
@@ -2920,7 +3000,9 @@
       "afterDigest": "c3b6d2d14c1970e9282d1dca6f8ebf587843f252dc7a44fb13f640380a6140cc",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-duplicates-100",
@@ -2928,7 +3010,9 @@
       "afterDigest": "4005c8516451e6024405bafcce86937bbce9d7738de32669c6795949ff69e901",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-duplicates-1000",
@@ -2936,7 +3020,9 @@
       "afterDigest": "51b3c720ee7b51937d7f25a43204f03ba97275a6ff9aed686a617943bfa0cd14",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-duplicates-10000",
@@ -2944,7 +3030,9 @@
       "afterDigest": "b53867cb2ab928017f8e196f8f1d24dc7de946aa81e6ded2970c919d06c9ef5a",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-unchanged-100",
@@ -2952,7 +3040,9 @@
       "afterDigest": "562175172aaf0417ce492f9f231372d4ead036658bcd02be330aa4ee8c9e5676",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-timestamps-100",
@@ -2960,7 +3050,9 @@
       "afterDigest": "a7474502046067eebc062f22dc7353fbe6e81bf82195b28d0f7f7c510b87c25f",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-few-changes-100",
@@ -2968,7 +3060,9 @@
       "afterDigest": "63131f071c5c7ae9199fdda2fa6a846f1a62d502d1bd883f0ca87bf48519a9e7",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-many-changes-100",
@@ -2976,7 +3070,9 @@
       "afterDigest": "487c1c5931f17b7a5cb807a4b326b50911fb230aeece73c727fb2d27a11bb171",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-unchanged-1000",
@@ -2984,7 +3080,9 @@
       "afterDigest": "37afc91eb99297c0e8e30c8ba05db3a9f46e8c09ff11135d0a8e9dd39039f27a",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-timestamps-1000",
@@ -2992,7 +3090,9 @@
       "afterDigest": "944ab9c3d8dc0f38310658bb68a64c3bdabc71abbaf21dd8990d529435bfa18e",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-few-changes-1000",
@@ -3000,7 +3100,9 @@
       "afterDigest": "f459ce2fe9d95b215d8ea0d9c6760a44597fcc7fe6fcc6c1b060d11d6979a4ba",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-many-changes-1000",
@@ -3008,7 +3110,9 @@
       "afterDigest": "25910065a81596b02e97d44c97219065b747dc422ac916ac1b4924f2d63d59d6",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-unchanged-10000",
@@ -3016,7 +3120,9 @@
       "afterDigest": "5bcfe1248c5cc2304cf31cde909e49e7f5f898ba9ac1e3b948c1bb52050e139d",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-timestamps-10000",
@@ -3024,7 +3130,9 @@
       "afterDigest": "ac336a8ab7d4505d598380e219caccc91ce2435c43730081209d29a18b4247e6",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-few-changes-10000",
@@ -3032,7 +3140,9 @@
       "afterDigest": "b1a47ed42a61fcf30d8913e8aa4968163ed47e61a757f2e189db6cf846c6b947",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "candidate-publication-many-changes-10000",
@@ -3040,7 +3150,9 @@
       "afterDigest": "7aa7f31c14253b53d2e134534dd99915a8ceff54bb25e864641832b7189b8d3a",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-claim-100",
@@ -3048,7 +3160,9 @@
       "afterDigest": "7457b81355afff6a7220a14505c04fc5a2a95d9b76403461fdce89d67269ecc9",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-claim-1000",
@@ -3056,7 +3170,9 @@
       "afterDigest": "26230469544dfff5f7e2fb1e8ee26290bce0c37b6964c704eef858f319381143",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-claim-10000",
@@ -3064,7 +3180,9 @@
       "afterDigest": "c37b476c9ca7d454f713d24aec96f5a76250c65b34ff2d2bc0722f594b6ead01",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-interleaved-50",
@@ -3072,7 +3190,9 @@
       "afterDigest": "49f95a3408a9d356cdf608d10b5a5c3c36f9385ce73fe4aa390f077b5e884142",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-interleaved-200",
@@ -3080,7 +3200,9 @@
       "afterDigest": "a64ec9f52fbdf5fb5125a268b53da80698e14b2428bb83f2383c500596d93a68",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-interleaved-800",
@@ -3088,7 +3210,9 @@
       "afterDigest": "764c6f239f94d1e6c31bbb9693320cc20c7771e530d478cea6d597b3c97fbe04",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-dominant-50",
@@ -3096,7 +3220,9 @@
       "afterDigest": "6009c331660ca0b4839fcb7fdb603ef375cdfd455f3eb109cdb24dcd3dd0294a",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-dominant-200",
@@ -3104,7 +3230,9 @@
       "afterDigest": "5da6d0de3cd621fa71bdb46ac0d0483acb67e5cfd17570a09515a46ddd248325",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-dominant-800",
@@ -3112,7 +3240,9 @@
       "afterDigest": "6eabdd12981e0e6183146a7abc10966792c9a39d0857fe17d6acfec55dd9e6d7",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-backoff-50",
@@ -3120,7 +3250,9 @@
       "afterDigest": "6d0f3439ff7a731588177676bba8e9e57420800172910f0d69c6ca5e50735203",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-backoff-200",
@@ -3128,7 +3260,9 @@
       "afterDigest": "de82bab231da7918fef09fed5368ddbb72638635c5dc973d97b15cf078fd96a1",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-backoff-800",
@@ -3136,7 +3270,9 @@
       "afterDigest": "2f7720d64589db7a060e7e33997c034a0ffa5142e407cd4c5602902bc16fadcf",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-spread-20",
@@ -3144,7 +3280,9 @@
       "afterDigest": "b04c4224931cb5c0ac3f12bcde63e6c6145d798f60b30cc1d55cd00d949233cb",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "catalog-verification-live-claim-spread-60",
@@ -3152,7 +3290,9 @@
       "afterDigest": "8f8c3adc855b67079e58bf54dc16201213c3b78642d3941efbf7175f6a6b40f3",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "inventory-recheck-never-attempted-1000",
@@ -3160,7 +3300,9 @@
       "afterDigest": "84d85c8e0ce8a91695cf1eab56ad7f70c2cdf14cfed18200351225eda289d921",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "inventory-recheck-oldest-attempt-1000",
@@ -3168,7 +3310,9 @@
       "afterDigest": "8b3a4b8d5a9ffed590d35a057a5e8ea2160759ad1ad6be29490c030fb08c3804",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "inventory-recheck-never-attempted-5000",
@@ -3176,7 +3320,9 @@
       "afterDigest": "ffc102ec63e53223e960699cdb7427b2638e6e8a2cfea7ef8e6b8dc068af5d93",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "inventory-recheck-oldest-attempt-5000",
@@ -3184,7 +3330,9 @@
       "afterDigest": "4f3ba43bd9560885a06ec4f41ebd53ff79e2294468ed19f4d9abfec7096ee1c8",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "retention-history-100",
@@ -3192,7 +3340,9 @@
       "afterDigest": "a976946d87760ef423bbde045f3783554526a4e46359139d1a497b98fbfa79c2",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "retention-history-1000",
@@ -3200,7 +3350,9 @@
       "afterDigest": "a4f52fa938c04e9d2c9967a3db6c16b8c8a2f5c82f9b8b8538ae76a98b7b1f2b",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "retention-history-10000",
@@ -3208,7 +3360,9 @@
       "afterDigest": "b40855e1c0f17c206e10a6095215aff2338cc3da1623aeb5f2d5702da3c47f17",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "maintenance-continuation",
@@ -3216,7 +3370,9 @@
       "afterDigest": "e053c01766bcefde97e7d9aebd3b51def8a35c3f508c0f15028488916e790787",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "daily-schedule",
@@ -3224,7 +3380,9 @@
       "afterDigest": "b9eb2cb2e4614c00ae33242f2a89eb7c1009bb74f408c5c401e483126acdc255",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: the existing cost meter adds a separate SQL-duration diagnostic getter, without changing row/statement/call metrics or fixture inputs. Exact base and candidate load suites pass; this sample's measured metrics are identical. All original budgets and required samples remain unchanged. No missing or failing baseline is accepted. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-dynamic-audio-parse",
@@ -3232,7 +3390,9 @@
       "afterDigest": "073d5134e2bbae23c312d6322ce88a009468ac8aadfb9af4c15792f1ff01bd17",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-dynamic-audio-normalize",
@@ -3240,7 +3400,9 @@
       "afterDigest": "3b0fa7fb3e3868378c10b1409520741150bdbed093c458e461e30054855d0bfa",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-dynamic-audio-discover",
@@ -3248,7 +3410,9 @@
       "afterDigest": "9f9041fadd61b941d79c7a42157637327f4bfbbd7cb0619d1d86bfa9f4899188",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-hifido-parse",
@@ -3256,7 +3420,9 @@
       "afterDigest": "587c5d22e89c3484404d4bba1fbc7a3f1265d547169f7b66d33711d413c5b01a",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-hifido-normalize",
@@ -3264,7 +3430,9 @@
       "afterDigest": "339f945601cf77dac298514eb0218baec274b1c84d645baa70f3d3728b4a5b19",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-rewire-parse",
@@ -3272,7 +3440,9 @@
       "afterDigest": "25d31154cf48b0a516548136ff28116f1ddedf0d07200a23451b6a5045c7c936",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-rewire-normalize",
@@ -3280,7 +3450,9 @@
       "afterDigest": "4c69f98d877c2286ef52e378c232713e5095ccc19da92e63b04ad52d97a8cb46",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "cpu-rewire-discover",
@@ -3288,7 +3460,9 @@
       "afterDigest": "800fdd0b6b9af0661f967aec0554afbc906181fb00b3ddcd2c22b4039ed9369b",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed shared-helper profile change: harness-cost.ts adds only a separate SQL-duration getter; parser inputs, dependencies, benchmark sources, repetitions and absolute/noise ceilings are unchanged. All six CI CPU executions and their absolute median checks passed. A subsequent direct-field evidence comparator removes JSON-allocation overhead; same-profile clean 10dc67b5 versus 4218a867, three alternating rounds on one runner, passes all eight original paired CPU gates. Final required CI remeasures the current candidate; this is no waiver for a missing/failing benchmark. See evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-unchanged-100",
@@ -3296,7 +3470,9 @@
       "afterDigest": "fdea396ef5aecd1d09e5b961a48afec686ae33d90fcbf0a1571459c3c2356e4b",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 5900, 'rowsWritten': 3700, 'sqlStatements': 305, 'd1Calls': 12}; the candidate measured {'rowsRead': 700, 'rowsWritten': 0, 'sqlStatements': 5, 'd1Calls': 5}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-few-price-100",
@@ -3304,7 +3480,9 @@
       "afterDigest": "ad801b7a518a99ea792b6c5c4a1c121a0a10118c6c18aab55bfdcba91032b996",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 5825, 'rowsWritten': 3606, 'sqlStatements': 306, 'd1Calls': 12}; the candidate measured {'rowsRead': 728, 'rowsWritten': 11, 'sqlStatements': 7, 'd1Calls': 6}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-many-price-100",
@@ -3312,7 +3490,9 @@
       "afterDigest": "ba1215ae145a37af124f4244084371bc660ba640f2ecffdc13d58d4f52255719",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 8275, 'rowsWritten': 4194, 'sqlStatements': 404, 'd1Calls': 14}; the candidate measured {'rowsRead': 3472, 'rowsWritten': 1089, 'sqlStatements': 203, 'd1Calls': 9}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-unchanged-1000",
@@ -3320,7 +3500,9 @@
       "afterDigest": "0a0ba00f34f149fe381656bba65e573dd6e119930b76f84abc0ac25ee2f11149",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 59000, 'rowsWritten': 37000, 'sqlStatements': 3045, 'd1Calls': 108}; the candidate measured {'rowsRead': 7000, 'rowsWritten': 0, 'sqlStatements': 45, 'd1Calls': 45}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-few-price-1000",
@@ -3328,7 +3510,9 @@
       "afterDigest": "ed53ce908489851a56df1b73e24ad04d2fedb4b247a9dcca24a42974038d5444",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 58250, 'rowsWritten': 36060, 'sqlStatements': 3055, 'd1Calls': 108}; the candidate measured {'rowsRead': 7280, 'rowsWritten': 110, 'sqlStatements': 65, 'd1Calls': 46}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-many-price-1000",
@@ -3336,7 +3520,9 @@
       "afterDigest": "d4de4de29f215406db3beefd6602133ee2a59bd6ef74fc265f90447284cff5fc",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 82750, 'rowsWritten': 41940, 'sqlStatements': 4035, 'd1Calls': 129}; the candidate measured {'rowsRead': 34720, 'rowsWritten': 10890, 'sqlStatements': 2025, 'd1Calls': 85}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-unchanged-10000",
@@ -3344,7 +3530,9 @@
       "afterDigest": "887ca9834dad933f88cc5c677e573470cc953711920610ffc14ef786bf5d7ada",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 590000, 'rowsWritten': 370000, 'sqlStatements': 30450, 'd1Calls': 1075}; the candidate measured {'rowsRead': 70000, 'rowsWritten': 0, 'sqlStatements': 450, 'd1Calls': 450}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-few-price-10000",
@@ -3352,7 +3540,9 @@
       "afterDigest": "e5a1516298783520c64a94a310518de8123d68f9ee85baba664c722d4e16b649",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 582500, 'rowsWritten': 360600, 'sqlStatements': 30550, 'd1Calls': 1075}; the candidate measured {'rowsRead': 72800, 'rowsWritten': 1100, 'sqlStatements': 650, 'd1Calls': 454}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "category-override-many-price-10000",
@@ -3360,7 +3550,9 @@
       "afterDigest": "2e4c0f93f66f00aafd51ec61b2fd850e9cf9f8581abc440522bb61f7b3d34ba7",
       "baseSha": "41ee0a235817ed90f916bd217302cfde8babfda2",
       "reason": "Reviewed initial real-workerd sample. The exact fixture and SQL-duration meter on clean 10dc67b5 measured {'rowsRead': 827500, 'rowsWritten': 419400, 'sqlStatements': 40350, 'd1Calls': 1284}; the candidate measured {'rowsRead': 347200, 'rowsWritten': 108900, 'sqlStatements': 20250, 'd1Calls': 846}. 100/1000/10000 manual-override conflicts retain every category, while 1% and near-total price changes remain immediate. Main has no prior sample for this new workload. Setup is excluded; no production billing/CPU claim. Existing ceilings are unchanged; see evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "load-contracts",
@@ -3368,7 +3560,9 @@
       "beforeDigest": "3782c2ad51222d5ef3552bafc3d4f3cee0e1e586f67281abbf65fd792af454f0",
       "afterDigest": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a",
       "reason": "Register the category change/replay boundary, its existing correctness/recovery suites and nine new scale measurements. Existing owners, samples, absolute ceilings, per-suite limits and CPU policy are unchanged. The new 600-second fixture deadline permits measuring the inefficient pre-fix 10k replay; it changes no existing fixture or CI load-runner deadline. Both CI load suites pass. Clean same-fixture before/after evidence, source verification and CPU measurements are retained in evaluations/2026-10-21-catalog-p1b.json.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/810"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/810"
+      ]
     },
     {
       "id": "manufacturer-alias-fresh-isolate-100",
@@ -3376,7 +3570,9 @@
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "8f2aa04defac6daa8f840fcfcdd398cd40a6a9e5d80944ff5c7111fa52712a51",
       "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement (the registry clock with its persisted snapshot row) for a fresh isolate's manufacturer alias evidence with 134 aliases stored, including the 32 that migrations seed. The same fixture on base abd8afc read 405 rows in three statements, scanning every alias, its table row and its manufacturer; the returned evidence is identical (snapshot equivalence and edit-invalidation tests).",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/811"
+      ]
     },
     {
       "id": "manufacturer-alias-fresh-isolate-1000",
@@ -3384,7 +3580,9 @@
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "01e54b9bf531b87ed2cd4150514a33753eaf7a35a87a9c17397568eafb41bc63",
       "reason": "Reviewed initial real-workerd baseline: 2 reads, 0 writes and one statement for a fresh isolate's manufacturer alias evidence with 1,136 aliases stored, the same as with 134. The same fixture on base abd8afc read 2,955 rows in three statements. Production attributed about 1,613 rows to each such load (79 loads in 19 observed hours).",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/811"
+      ]
     },
     {
       "id": "manufacturer-alias-rebuild-1000",
@@ -3392,7 +3590,9 @@
       "beforeDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
       "afterDigest": "2fa3e303bace2ba72233c60bcf09d727c2adbb291b1435046c8424f292edf3ce",
       "reason": "Reviewed initial real-workerd baseline: 2,957 reads, 1 write and three statements for a load after an alias edit with 1,136 aliases stored: the revision read that finds no current snapshot, the former scan and one conditional snapshot write, the same round trips as the base abd8afc load (2,955 rows in three statements). It runs until the first write of each registry revision lands; identical concurrent rebuilds write nothing.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/811"
+      ]
     },
     {
       "id": "load-contracts",
@@ -3400,7 +3600,9 @@
       "beforeDigest": "3b6c33e7a25459fb1b589da74eb2b43523f2ddbfb359fcd391d26dfdd399a44a",
       "afterDigest": "bd4528568f6d9057c50167a8f3bd7bc8a0cce0ac8901e30f3c5818091ab5a6fc",
       "reason": "Register the manufacturer alias evidence boundary (src/db/manufacturer-repository.ts) with its existing alias suites, the new snapshot suite and three samples. Production attributed about 127,000 reads in 19 observed hours to fresh-isolate alias scans; a fresh isolate now reads the revision and one persisted snapshot row in one statement, and a rebuild keeps the former three round trips, so the remediation sweep's call floor is unchanged. Other contracts, ceilings and CPU policy are unchanged.",
-      "evidence": ["https://github.com/apaapapapapa/HiFiScout/pull/811"]
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/811"
+      ]
     },
     {
       "id": "load-contracts",
@@ -3594,7 +3796,7 @@
       "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
       "beforeDigest": "1443f97c98fe9de94cea559133a05d6a9179a84abb2a7bd755d6270dc575b9fd",
       "afterDigest": "feac11af89caa4b98bc0a8eb4ce572762f98affe6a6c09a13724e7c288ebe9e7",
-      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373–1374 -> 507, writes 800–801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
       ]
@@ -3604,7 +3806,7 @@
       "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
       "beforeDigest": "54e6aa7edb557a56e3b5228744171912145f3ec8eb52005963f4ff5363dea50f",
       "afterDigest": "51f00a4470ea433b5897c2546c7e7f0df9daca3bd918312a9a5f0648ba067af0",
-      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373–1374 -> 507, writes 800–801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
       ]
@@ -3614,7 +3816,7 @@
       "baseSha": "36f7d38b00a7cacd1e64f4dddf037451c41f3ed2",
       "beforeDigest": "103d5bdba0303a022ea0ffaec4480c2e79f1149186ee70605b27725a886a4d48",
       "afterDigest": "88138d343660c6cb7c36629704d64d1c959215806aa5d65c8d3675e61f117b47",
-      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373\u20131374 -> 507, writes 800\u2013801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
+      "reason": "P0 removes age-only deactivation authorized by the inventory safety correction. Identical initial inventory cohorts now change at most 50 listings to unknown and never deactivate: reads 1373–1374 -> 507, writes 800–801 -> 200, statements 4 -> 2. Test assertions change to this explicit safety contract and cleanup resets both cohorts outside measurement. Existing absolute ceilings, schema and complete-coverage deactivation are unchanged. Both 5-test real-D1 captures passed; this accepts only the changed fixture profile with lower work.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/blob/fix/inventory-safety-p0/evaluations/2026-10-22-inventory-safety-p0.json"
       ]
@@ -4873,6 +5075,30 @@
       "reason": "Intentional workload increase from PR #822: the new twice-daily SOUNDPIT+ rotation shop (defaultMaxPages 60) adds two dispatches and 120 planned pages. Clean captures of base e16a633a (391 invocations, 61 dispatches, 1619 planned pages) and candidate c2209217 (391, 63, 1739) share profile 7aec89a5; Cron triggers and every existing shop slot are unchanged because the shop is registered last. Planned pages are a scenario bound, not observed HTTP traffic.",
       "evidence": [
         "https://github.com/apaapapapapa/HiFiScout/pull/822"
+      ]
+    },
+    {
+      "id": "load-contracts",
+      "baseSha": "0da268bf60669d21439cc062823337cb7af78455",
+      "beforeDigest": "46922dd12bde20f29e9d3bb8aadb58c7a00f121ca3f6246d2e968a3d07f32e82",
+      "afterDigest": "4fab2f5b3a63c5fec5d4e974925423f602513450d06249598fcc220df0cfe6d3",
+      "reason": "Reviewed the rotating-shop schedule reduction from two daily passes to one at 17:00 JST. The load-contracts change updates the SOUNDPIT+ explanatory reason to describe the new evening-only pass; registered suites, samples, environment and all absolute ceilings remain identical. CI run 43574197121 provides passing baseline/candidate load suites and sealed local-mock schedule measurements, with no relaxation of CPU or D1 limits. This record approves the documentation-only contract digest transition, not any failure waiver.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/824",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/43574197121/artifacts/14106115719",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/43574197121/artifacts/14105986021"
+      ]
+    },
+    {
+      "id": "daily-schedule",
+      "baseSha": "0da268bf60669d21439cc062823337cb7af78455",
+      "beforeDigest": "0800e61e5488e6df3920283d5428f3b345ab942075c90a920c7f81b41c898280",
+      "afterDigest": "0b7c36b2ebd0882f5f820c890628aed988237f523d0653ec0628243441147960",
+      "reason": "Reviewed the intentional changed-profile daily-schedule local-mock sample for a full configured UTC day including disabled shop slots. Baseline scheduledInvocations 391, crawlDispatches 63 and plannedPages 1739 become candidate 337, 47 and 1217 respectively; the loss of the 11:00 JST pass accounts for the difference. The profile changed with source/config/test cadence, so the original comparison is unknown rather than same-profile measured improvement. Both source-bound suites passed, all three deterministic measurements are present and below unchanged ceilings 391/63/1800, and no unrelated sample or parser CPU gate is waived.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/pull/824",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/43574197121/artifacts/14106115719",
+        "https://github.com/apaapapapapa/HiFiScout/actions/runs/43574197121/artifacts/14105986021"
       ]
     }
   ]
