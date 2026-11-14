@@ -38,47 +38,14 @@ test("offer facts preserve explicit positive, negative and unknown evidence", ()
   assert.deepEqual(states("展示品ではありません。未使用品ではありません"), {});
 });
 
-test("sale units are explicit and never inferred from a model or pair-compatible feature", () => {
-  assert.deepEqual(states("スピーカー（ペア）"), { sale_pair: "present" });
-  assert.deepEqual(states("スピーカー（１本）"), { sale_single: "present" });
-  assert.deepEqual(states("モノラルアンプ 2台セット"), { sale_set: "present" });
-  assert.deepEqual(states("Bluetooth ペアリング"), {});
-  assert.deepEqual(states("モノラルアンプ"), {});
-  assert.deepEqual(states("ペア販売", "1本のみ"), {});
-  assert.deepEqual(states("ペア販売", "セット販売"), {});
-  assert.deepEqual(states("ケーブル 2本セット"), { sale_set: "present" });
-});
-
-test("voltage and optional boards require explicit per-offer claims", () => {
+test("sale unit, power voltage and installed-board claims are not offer facts", () => {
+  assert.deepEqual(states("スピーカー（ペア）"), {});
+  assert.deepEqual(states("モノラルアンプ 2台セット"), {});
+  assert.deepEqual(states("電源電圧切替式"), {});
   assert.deepEqual(
-    states("プリアンプ（ペア）", "電源電圧: AC100V。DACボード搭載。フォノボード未搭載"),
-    {
-      sale_pair: "present",
-      voltage_100v: "present",
-      option_dac: "present",
-      option_phono: "absent",
-    },
+    states("プリアンプ（ペア）", "電源電圧: AC100V。DACボード搭載。フォノボード未搭載。元箱あり"),
+    { original_box: "present" },
   );
-  assert.deepEqual(states("AC230V仕様。ネットワークモジュール装着済み"), {
-    voltage_230v: "present",
-    option_network: "present",
-  });
-  assert.deepEqual(states("電源電圧切替式"), { voltage_switchable: "present" });
-  for (const text of [
-    "DAC内蔵",
-    "DACボード搭載可能",
-    "フォノボード別売",
-    "100V",
-    "出力電圧100V",
-    "DC100V",
-    "AC100-240V",
-    "AC100V/230V",
-    "DACボード搭載予定",
-    "AC100Vではありません",
-  ])
-    assert.deepEqual(states(text), {}, text);
-  assert.deepEqual(states("AC100V", "AC230V"), {});
-  assert.deepEqual(states("DACボード搭載", "DACボード未搭載"), {});
 });
 
 test("facts carry field provenance and a bounded rule identifier without seller prose", () => {

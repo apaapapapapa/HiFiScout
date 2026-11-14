@@ -1,6 +1,6 @@
 import type { MarketPriceBand, ProductMarketAnalysis } from "../src/api/contracts.js";
 import { yen } from "./format.js";
-import { isProductMarketAnalysis, MARKET_CONDITIONS, MARKET_UNITS } from "./market-analysis.js";
+import { isProductMarketAnalysis, MARKET_CONDITIONS } from "./market-analysis.js";
 
 const price = (value: number | null) => (value === null ? "データ不足" : yen.format(value));
 const period = (band: MarketPriceBand) =>
@@ -75,9 +75,9 @@ export function MarketAnalysis({ analysis }: { analysis: ProductMarketAnalysis |
         <p>この製品の追加の相場集計は現在利用できません。各出品の価格・状態を確認してください。</p>
       ) : (
         <>
-          <h3>現在の状態・販売単位別の価格帯</h3>
+          <h3>現在の状態別の価格帯</h3>
           <p>
-            集計時点で在庫あり、直近90日以内に確認した出品です。状態ランクを共通点数に換算せず、単体・ペア・セットを分けています。3出品・2店舗未満では価格統計を控えます。
+            集計時点で在庫あり、直近90日以内に確認した出品です。状態ランクを共通点数に換算しません。3出品・2店舗未満では価格統計を控えます。
           </p>
           {analysis.current_conditions.length ? (
             <div
@@ -90,7 +90,6 @@ export function MarketAnalysis({ analysis }: { analysis: ProductMarketAnalysis |
                 <thead>
                   <tr>
                     <th scope="col">状態の明記</th>
-                    <th scope="col">販売単位</th>
                     <th scope="col">出品 / 店舗</th>
                     <th scope="col">中央値</th>
                     <th scope="col">掲載価格帯</th>
@@ -99,9 +98,8 @@ export function MarketAnalysis({ analysis }: { analysis: ProductMarketAnalysis |
                 </thead>
                 <tbody>
                   {analysis.current_conditions.map((band) => (
-                    <tr key={`${band.condition}:${band.sale_unit}`}>
+                    <tr key={band.condition}>
                       <th scope="row">{MARKET_CONDITIONS[band.condition]}</th>
-                      <td>{MARKET_UNITS[band.sale_unit]}</td>
                       <td>
                         {band.listing_count}件 / {band.shop_count}店舗
                       </td>
@@ -122,7 +120,7 @@ export function MarketAnalysis({ analysis }: { analysis: ProductMarketAnalysis |
           )}
           <h3>月ごとの掲載価格と掲載動向</h3>
           <p>
-            各月・各出品の最後の掲載価格を1件として集計しています。販売単位・状態は混在し、過去の状態は推定しません。価格の変化がない継続出品は、記録が残らない月があります。今月は集計時点までの観測です。
+            各月・各出品の最後の掲載価格を1件として集計しています。状態は混在し、過去の状態は推定しません。価格の変化がない継続出品は、記録が残らない月があります。今月は集計時点までの観測です。
           </p>
           <MonthlyPriceChart months={analysis.months} />
           <div

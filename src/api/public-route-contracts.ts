@@ -96,9 +96,8 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
                 "unknown",
               ],
             },
-            sale_unit: { type: "string", enum: ["single", "pair", "set", "unknown"] },
           },
-          required: [...Object.keys(marketBandProperties), "condition", "sale_unit"],
+          required: [...Object.keys(marketBandProperties), "condition"],
         },
       },
       months: {

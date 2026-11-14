@@ -134,8 +134,9 @@ Observation dates use the original listing's `last_seen_at`, not the date of rep
 survive. Completed steps and unchanged seller facts retain existing write guards.
 
 Coverage is a retained snapshot of active listings processed in this run, grouped separately by shop
-and category. It counts explicit positive or negative evidence for condition, included items,
-warranty, and sale unit. It is partial until completion and is not a live inventory denominator.
+and category. It counts explicit positive or negative evidence for each offer fact group: sales
+status, appearance, operation, included items, warranty and service history. It is partial until
+completion and is not a live inventory denominator.
 Review these gaps and sample the seller evidence before promoting filters more widely. The
 `offer_fact_replay_step` log records D1 reads, writes and statement counts for each bounded step.
 `GET /api/admin/offer-facts/replay` remains Access protected and read-only. Its retired POST returns

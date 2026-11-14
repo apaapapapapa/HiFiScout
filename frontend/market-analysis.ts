@@ -1,7 +1,6 @@
 import type {
   MarketCondition,
   MarketPriceBand,
-  MarketSaleUnit,
   ProductMarketAnalysis,
 } from "../src/api/contracts.js";
 
@@ -15,12 +14,6 @@ export const MARKET_CONDITIONS: Record<MarketCondition, string> = {
   operation_fault: "動作不良あり",
   mixed: "複数の状態の明記",
   unknown: "状態の記載なし・未確認",
-};
-export const MARKET_UNITS: Record<MarketSaleUnit, string> = {
-  single: "単体",
-  pair: "ペア",
-  set: "セット",
-  unknown: "記載なし・未確認",
 };
 const record = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -71,10 +64,14 @@ export function isProductMarketAnalysis(value: unknown): value is ProductMarketA
     return false;
   if (value.status === "limited")
     return value.current_conditions.length === 0 && value.months.length === 0;
-  if (value.status !== "ready" || value.current_conditions.length > 36 || value.months.length !== 6)
+  if (
+    value.status !== "ready" ||
+    value.current_conditions.length > Object.keys(MARKET_CONDITIONS).length ||
+    value.months.length !== 6
+  )
     return false;
   const asOf = Date.parse(value.as_of),
-    groups = new Set<string>(),
+    conditions = new Set<string>(),
     months = new Set<string>();
   let currentListings = 0;
   for (const group of value.current_conditions) {
@@ -83,15 +80,12 @@ export function isProductMarketAnalysis(value: unknown): value is ProductMarketA
       !record(group) ||
       typeof group.condition !== "string" ||
       !Object.hasOwn(MARKET_CONDITIONS, group.condition) ||
-      typeof group.sale_unit !== "string" ||
-      !Object.hasOwn(MARKET_UNITS, group.sale_unit)
+      conditions.has(group.condition)
     )
       return false;
-    const key = `${group.condition}:${group.sale_unit}`;
-    if (groups.has(key)) return false;
     currentListings += group.listing_count;
     if (group.listing_count === 0 || currentListings > 200) return false;
-    groups.add(key);
+    conditions.add(group.condition);
   }
   let observedSamples = 0;
   for (const month of value.months) {

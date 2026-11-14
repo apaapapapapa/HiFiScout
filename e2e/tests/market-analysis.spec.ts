@@ -48,7 +48,6 @@ test("market detail displays observation context and scrollable tables on mobile
         first_observed_at: "2026-09-01T00:00:00.000Z",
         last_observed_at: "2026-09-07T00:00:00.000Z",
         condition: "used",
-        sale_unit: "pair",
       },
     ],
     months: ["04", "05", "06", "07", "08", "09"].map((month) => ({
@@ -80,7 +79,7 @@ test("market detail displays observation context and scrollable tables on mobile
   await expect(panel).toContainText("成約価格ではありません");
   await expect(panel).toContainText("2件 / 1店舗");
   await expect(panel).toContainText("データ不足");
-  await expect(panel).toContainText("ペア");
+  await expect(panel).toContainText("中古品");
   expect(detailRequests).toBe(1);
   const table = panel.getByRole("region", { name: "月次の掲載価格と観測件数", exact: true });
   await table.focus();

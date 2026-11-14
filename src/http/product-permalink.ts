@@ -1,4 +1,3 @@
-import { offerTermGroups } from "../api/offer-terms-contracts.js";
 import { parseCatalogPhoto } from "../api/catalog-photo-contracts.js";
 import type {
   CatalogRelationProof,
@@ -86,14 +85,6 @@ function offerHtml(offer: ProductOffer): string {
     <div><strong>${escapeHtml(shopName)}</strong><span>${escapeHtml(stockLabel(offer))}</span></div>
     <p>${escapeHtml(offer.title)}</p>
     <p>${escapeHtml(yen(offer.price_yen))} ${condition} ${color}</p>
-    <dl class="offer-terms" aria-label="この出品の販売単位・仕様">${offerTermGroups(
-      offer.offer_facts,
-    )
-      .map(
-        (group) =>
-          `<div><dt>${escapeHtml(group.name)}</dt><dd>${group.values.map((value) => `<span>${escapeHtml(value)}</span>`).join("")}</dd></div>`,
-      )
-      .join("")}</dl>
     ${link}
   </li>`;
 }

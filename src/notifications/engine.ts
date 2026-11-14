@@ -1,8 +1,7 @@
-import { parseProductQuery } from "../api/product-query.js";
 import { matchNotificationListings } from "../db/product-search-repository.js";
 import { notificationCandidates, notificationEvents } from "../db/notification-candidates.js";
 import type { QueryableDatabase } from "../db/types.js";
-import { digest, NOTIFICATION_LIMITS as L, watchAccepts } from "./policy.js";
+import { digest, NOTIFICATION_LIMITS as L, storedWatchQuery, watchAccepts } from "./policy.js";
 import type { PushAddress, Watch } from "./policy.js";
 import { NotificationStore } from "./storage.js";
 import type { Runtime } from "./storage.js";
@@ -97,13 +96,14 @@ export async function runNotifications(
     for (let done = 0; work.index < work.queries.length && done < L.rulesPerAlarm; done++) {
       if (Date.now() >= deadline) break;
       const query = work.queries[work.index];
-      const url = new URL("https://notification.invalid/api/product-search");
-      url.search = query;
-      const rows = await matchNotificationListings(
-        metered,
-        parseProductQuery(url),
-        work.candidates.map((candidate) => candidate.id),
-      );
+      const parsed = storedWatchQuery(query);
+      const rows = parsed
+        ? await matchNotificationListings(
+            metered,
+            parsed,
+            work.candidates.map((candidate) => candidate.id),
+          )
+        : [];
       const events = notificationEvents(rows).filter((event) => event.at >= now - L.retentionMs);
       // Materialize hashes before the atomic outbox/checkpoint commit. Updates during reads are
       // fenced by re-reading each watch, and newly registered watches cannot receive old events.

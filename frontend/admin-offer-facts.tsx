@@ -113,7 +113,7 @@ export function AdminOfferFacts({
             ) : null}
             <p>「自動判定に戻す」は手動補正を解除します。「不明」は自動判定より優先されます。</p>
             <fieldset disabled={saving}>
-              <legend>状態・付属品・保証・整備歴・販売単位</legend>
+              <legend>状態・付属品・保証・整備歴</legend>
               {OFFER_FACT_GROUPS.map((group) => (
                 <fieldset key={group.id}>
                   <legend>{group.name}</legend>
