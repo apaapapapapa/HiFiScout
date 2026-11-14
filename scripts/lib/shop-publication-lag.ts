@@ -22,7 +22,7 @@ WITH observations AS (
         THEN 'day'
       ELSE 'second'
     END AS precision,
-    ROUND((julianday(first_seen_at) - julianday(source_published_at)) * 1440) AS lag_minutes,
+    (julianday(first_seen_at) - julianday(source_published_at)) * 1440 AS lag_minutes,
     CAST(
       julianday(date(first_seen_at, '+9 hours'))
       - julianday(date(source_published_at, '+9 hours')) AS INTEGER
@@ -42,8 +42,8 @@ precise_ranked AS (
 precise_percentiles AS (
   SELECT
     shop_key,
-    MAX(CASE WHEN rn = (n + 1) / 2 THEN lag_minutes END) AS p50_minutes,
-    MAX(CASE WHEN rn = (n * 9 + 9) / 10 THEN lag_minutes END) AS p90_minutes
+    MAX(CASE WHEN rn = (n + 1) / 2 THEN ROUND(lag_minutes) END) AS p50_minutes,
+    MAX(CASE WHEN rn = (n * 9 + 9) / 10 THEN ROUND(lag_minutes) END) AS p90_minutes
   FROM precise_ranked
   GROUP BY shop_key
 ),
