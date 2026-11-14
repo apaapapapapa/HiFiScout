@@ -25,15 +25,6 @@
 .filters .offer-fact-filter-group { margin: 8px 0 12px; padding: 0; border: 0; min-inline-size: 0; }
 .offer-facts .filter-note { color: #555555; font-size: 12px; line-height: 1.7; }
 
-.representative-terms { margin: 8px 0; text-align: start; }
-.representative-terms > p { margin: 0 0 4px; color: #555555; font-size: 11px; }
-.offer-terms { margin: 8px 0; font-size: 12px; line-height: 1.6; }
-.offer-terms > div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px; }
-.offer-terms dt { color: #555555; }
-.offer-terms dd { margin: 0; overflow-wrap: anywhere; }
-.offer-terms dd span { display: inline; }
-.offer-terms dd span + span::before { content: " / "; }
-
 :root {
   --hs-ink: #000;
   --hs-warm-ink: #191817;
@@ -1092,7 +1083,6 @@ body.filters-open { overflow: hidden; }
 .offer-condition .product-color { margin-left: 8px; }
 .offer-summary .offer-commerce { flex-shrink: 0; }
 .offer-summary .offer-commerce strong { font-size: 20px; white-space: nowrap; }
-.offer-item > .offer-terms { margin: 0; }
 .offer-primary-actions { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .offer-primary-actions button, .offer-primary-actions a {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -1105,7 +1095,6 @@ body.filters-open { overflow: hidden; }
 .offer-details { display: grid; gap: 12px; padding: 16px; background: #f8f7f3; border-left: 2px solid var(--hs-divider); min-width: 0; }
 .offer-details[hidden] { display: none; }
 .offer-reference { margin: 0; color: var(--hs-muted); font-size: 12px; }
-.offer-details .offer-terms { margin: 0; }
 .offer-details .offer-actions { grid-area: auto; justify-content: flex-start; }
 @media (max-width: 480px) {
   .offer-summary { flex-direction: column; gap: 8px; }

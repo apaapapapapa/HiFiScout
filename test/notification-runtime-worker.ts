@@ -18,6 +18,7 @@ interface Input {
   result?: "sent" | "retry" | "expired";
   unknown?: boolean;
   queries?: number;
+  query?: string;
 }
 export class TestNotifications extends DurableObject<FixtureEnv> {
   async fetch(request: Request) {
@@ -73,7 +74,7 @@ export class TestNotifications extends DurableObject<FixtureEnv> {
       });
       store.saveWatch(
         device,
-        { id, query: "inStock=true", newListings: true, priceDrops: true },
+        { id, query: input.query ?? "inStock=true", newListings: true, priceDrops: true },
         now - 1_200_000,
       );
     }

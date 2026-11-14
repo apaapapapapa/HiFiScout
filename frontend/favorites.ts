@@ -31,7 +31,7 @@ import { productPriceIndex } from "./price-index-ui.js";
 import { safeDate } from "./format.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
-import { productSearchTerms } from "../src/api/contracts.js";
+import { isOfferFactId, productSearchTerms } from "../src/api/contracts.js";
 import {
   inferredSearchManufacturerId,
   matchesSearchManufacturer,
@@ -227,7 +227,8 @@ export function parseFavoriteStorage(
     const parsed: unknown = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return { products, legacyIds };
     const entries: unknown[] = parsed;
-    for (const entry of entries) {
+    for (const stored of entries) {
+      const entry = withoutRetiredOfferFacts(stored);
       if (isProduct(entry)) {
         products.set(entry.key, favoriteSnapshot(entry));
         continue;
@@ -244,6 +245,22 @@ export function parseFavoriteStorage(
     // Ignore malformed local data and start with an empty favorite collection.
   }
   return { products, legacyIds };
+}
+
+/**
+ * A snapshot saved while a since-retired offer fact existed keeps the favorite: only fact entries
+ * with a well-formed but unknown id are dropped, while malformed entries still fail validation.
+ */
+function withoutRetiredOfferFacts(entry: unknown): unknown {
+  if (!isRecord(entry) || !isRecord(entry.representative_offer)) return entry;
+  const facts = entry.representative_offer.offer_facts;
+  if (!Array.isArray(facts)) return entry;
+  const kept = facts.filter(
+    (fact) => !isRecord(fact) || typeof fact.factId !== "string" || isOfferFactId(fact.factId),
+  );
+  return kept.length === facts.length
+    ? entry
+    : { ...entry, representative_offer: { ...entry.representative_offer, offer_facts: kept } };
 }
 
 /** What to persist: legacy ids first, then snapshots, matching the read order. */

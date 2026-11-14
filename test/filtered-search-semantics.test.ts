@@ -86,15 +86,16 @@ test("search and detail apply manual, detail, then title authority on the same o
   }
 });
 
-test("price-adjacent terms belong only to the filtered representative offer", async () => {
+test("representative offer facts belong only to the filtered offer and skip retired ids", async () => {
   const { sqlite, db } = fixture();
   try {
     sqlite.exec(`INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES
-      (1,'sale_pair','seller','present','title','fixture',1,'2026-09-07'),
-      (1,'voltage_100v','seller','present','title','fixture',1,'2026-09-07'),
-      (2,'sale_single','seller','present','title','fixture',1,'2026-09-07'),
-      (2,'voltage_230v','seller','present','title','fixture',1,'2026-09-07'),
-      (2,'voltage_230v','manual','unknown','manual','fixture',1,'2026-09-07')`);
+      (1,'original_box','seller','present','title','fixture',1,'2026-09-07'),
+      (1,'remote_control','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'manual','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'remote_control','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'remote_control','manual','unknown','manual','fixture',1,'2026-09-07'),
+      (2,'sale_single','seller','present','title','fixture',1,'2026-09-07')`);
     const result = await searchProducts(
       db,
       productQuery("?shop=audiounion&maxPrice=20&inStock=true"),
@@ -106,8 +107,8 @@ test("price-adjacent terms belong only to the filtered representative offer", as
     assert.deepEqual(
       representative.offer_facts?.map((fact) => [fact.factId, fact.state]),
       [
-        ["sale_single", "present"],
-        ["voltage_230v", "unknown"],
+        ["manual", "present"],
+        ["remote_control", "unknown"],
       ],
     );
   } finally {

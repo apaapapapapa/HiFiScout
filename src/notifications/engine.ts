@@ -1,4 +1,4 @@
-import { parseProductQuery } from "../api/product-query.js";
+import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
 import { matchNotificationListings } from "../db/product-search-repository.js";
 import { notificationCandidates, notificationEvents } from "../db/notification-candidates.js";
 import type { QueryableDatabase } from "../db/types.js";
@@ -99,11 +99,14 @@ export async function runNotifications(
       const query = work.queries[work.index];
       const url = new URL("https://notification.invalid/api/product-search");
       url.search = query;
-      const rows = await matchNotificationListings(
-        metered,
-        parseProductQuery(url),
-        work.candidates.map((candidate) => candidate.id),
-      );
+      // A watch saved with since-retired filter values matches nothing rather than widening.
+      const rows = validateProductQuery(url)
+        ? []
+        : await matchNotificationListings(
+            metered,
+            parseProductQuery(url),
+            work.candidates.map((candidate) => candidate.id),
+          );
       const events = notificationEvents(rows).filter((event) => event.at >= now - L.retentionMs);
       // Materialize hashes before the atomic outbox/checkpoint commit. Updates during reads are
       // fenced by re-reading each watch, and newly registered watches cannot receive old events.

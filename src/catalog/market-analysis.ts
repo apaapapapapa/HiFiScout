@@ -1,9 +1,4 @@
-import type {
-  MarketCondition,
-  MarketPriceBand,
-  MarketSaleUnit,
-  ProductMarketAnalysis,
-} from "./types.js";
+import type { MarketCondition, MarketPriceBand, ProductMarketAnalysis } from "./types.js";
 
 export interface MarketOffer {
   id: number;
@@ -45,12 +40,6 @@ function condition(facts: readonly string[]): MarketCondition {
     ? "mixed"
     : (selected[0] ?? (facts.includes("used") ? "used" : "unknown"));
 }
-function saleUnit(facts: readonly string[]): MarketSaleUnit {
-  const units = (["single", "pair", "set"] as const).filter((unit) =>
-    facts.includes(`sale_${unit}`),
-  );
-  return units.length === 1 ? units[0] : "unknown";
-}
 function band(quotes: readonly Quote[]): MarketPriceBand {
   const prices = quotes.map((quote) => quote.price).sort((a, b) => a - b);
   const shops = new Set(quotes.map((quote) => quote.shop));
@@ -77,10 +66,7 @@ export function calculateMarketAnalysis(
   samples: readonly MarketSample[],
   now: Date,
 ): ProductMarketAnalysis {
-  const groups = new Map<
-    string,
-    { condition: MarketCondition; sale_unit: MarketSaleUnit; quotes: Quote[] }
-  >();
+  const groups = new Map<MarketCondition, Quote[]>();
   for (const offer of offers) {
     if (
       !offer.is_active ||
@@ -96,18 +82,15 @@ export function calculateMarketAnalysis(
       observed < now.getTime() - 90 * DAY
     )
       continue;
-    const evidence = facts.get(offer.id) ?? [];
-    const c = condition(evidence),
-      unit = saleUnit(evidence),
-      key = `${c}:${unit}`;
-    const group = groups.get(key) ?? { condition: c, sale_unit: unit, quotes: [] };
-    group.quotes.push({
+    const c = condition(facts.get(offer.id) ?? []);
+    const quotes = groups.get(c) ?? [];
+    quotes.push({
       id: offer.id,
       shop: offer.shop_key,
       price: offer.price_yen,
       at: new Date(observed).toISOString(),
     });
-    groups.set(key, group);
+    groups.set(c, quotes);
   }
   const months = Array.from({ length: 6 }, (_, index) =>
     new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5 + index, 1))
@@ -132,11 +115,7 @@ export function calculateMarketAnalysis(
     as_of: now.toISOString(),
     current_conditions: [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, group]) => ({
-        condition: group.condition,
-        sale_unit: group.sale_unit,
-        ...band(group.quotes),
-      })),
+      .map(([c, quotes]) => ({ condition: c, ...band(quotes) })),
     months: months.map((month) => {
       const asking = new Map<number, MarketSample>();
       const sold = new Set<number>(),

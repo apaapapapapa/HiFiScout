@@ -31,12 +31,12 @@ const sample = (id: number, listing = id, price = id * 100, at = AT): MarketSamp
   observed_at: at,
 });
 
-test("condition bands separate selling units, conflicts, stale offers and sparse evidence", () => {
+test("condition bands separate conflicts, stale offers and sparse evidence", () => {
   const facts = new Map([
-    [1, ["used", "sale_pair"]],
-    [2, ["used", "sale_pair"]],
-    [3, ["used", "sale_pair"]],
-    [4, ["used", "sale_single"]],
+    [1, ["used"]],
+    [2, ["used"]],
+    [3, ["used"]],
+    [4, ["used"]],
     [5, ["used", "junk", "operation_unchecked"]],
   ]);
   const result = calculateMarketAnalysis(
@@ -53,19 +53,14 @@ test("condition bands separate selling units, conflicts, stale offers and sparse
     [],
     NOW,
   );
-  const pair = result.current_conditions.find((band) => band.sale_unit === "pair")!;
-  assert.equal(pair.listing_count, 3);
-  assert.equal(pair.shop_count, 2);
-  assert.equal(pair.median_yen, 200);
-  assert.equal(
-    result.current_conditions.find((band) => band.sale_unit === "single")?.median_yen,
-    null,
+  assert.deepEqual(
+    result.current_conditions.map((band) => [band.condition, band.listing_count, band.median_yen]),
+    [
+      ["mixed", 1, null],
+      ["used", 4, 250],
+    ],
   );
-  assert.ok(result.current_conditions.some((band) => band.condition === "mixed"));
-  assert.equal(
-    result.current_conditions.reduce((sum, band) => sum + band.listing_count, 0),
-    5,
-  );
+  assert.equal(result.current_conditions.find((band) => band.condition === "used")?.shop_count, 2);
 });
 
 test("monthly quotes give each listing one vote and first/end observations remain distinct", () => {

@@ -89,15 +89,11 @@ replay; deployment does not automatically scan or refetch all inventory.
 Replay coverage uses the same group registry, including appearance, operation and service history;
 older responses with no count display “未集計”, distinct from an observed zero.
 
-### Sale units and installed options beside prices
+### Representative offer facts
 
-The price area shows sale unit, explicitly stated AC input voltage and installed DAC/phono/network
-boards for that offer. Optional compatibility or a model's built-in capability does not prove an
-installed board. Conflicting sale units/voltages remain unresolved; no per-piece conversion or
-equivalence between a pair and a set is invented. Product cards identify the representative shop
-and its price when several offers are grouped, so its conditions cannot label another offer's price.
-The existing detail retains all shops and their separate evidence. Missing values are visible and
-do not mean domestic voltage or an absent option.
+Sale unit, power voltage and installed-board claims are not offer facts. Search results carry the
+effective facts of each card's representative offer only; the detail retains every shop's separate
+evidence.
 
 Search reads effective facts once for only the selected page's representative listing IDs (at most
 100), using the listing/fact/source primary key and the existing manual-override rule. This adds one
@@ -947,7 +943,7 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ### Condition bands and monthly market observations
 
-The product offer detail expands into condition/unit tables and six monthly observations. A median
+The product offer detail expands into condition tables and six monthly observations. A median
 chart leaves missing months disconnected; the accessible table retains every count and interval.
 Sparse groups say data insufficient, and a limited computation exposes no misleading partial chart.
 Unchanged-price listings may have months without retained observations; this is not an inventory
@@ -960,17 +956,19 @@ oversized scope produces an explicit limited result rather than biased partial s
 bound the queue, expired-projection and abandoned-claim selectors; unchanged idle work writes nothing.
 Migrations queue existing projections without reading historical samples. Initial coverage grows as
 the bounded queue drains; new changes join that queue. Projections also expire after a day.
+Retiring the sale-unit split removed that field from stored projections and queued only those that
+had split one condition, which stay hidden until the bounded queue rebuilds them.
 
 Current condition bands use active, in-stock asking prices observed within 90 days of the snapshot.
-Effective manual decisions override seller facts, including unknown. Single, pair, set and unknown
-selling units are separate. Specific conditions take precedence over the generic used label;
+Effective manual decisions override seller facts, including unknown. Bands do not separate selling
+units. Specific conditions take precedence over the generic used label;
 conflicting specific states remain mixed, and no shop grade is converted to a common quality score.
 Each band shows independent listing and shop counts plus its observation interval. Fewer than three
 listings or two shops suppresses its price statistics. Unknown conditions remain explicitly unknown.
 
 Six UTC calendar months show the latest asking observation per listing per month, with independent
-listing/shop counts and observation intervals. They combine historical selling units and do not
-reuse today's condition for historical prices. First observed listings mean the earliest retained
+listing/shop counts and observation intervals. They do not reuse today's condition for historical
+prices. First observed listings mean the earliest retained
 asking observation, not the true shop publication date. Sold-out and deactivated observations count
 distinct listing IDs separately; one ID can occur in both columns, which must not be summed. Ended
 listing prices are never represented as completed sale prices. A partial current month is dated by
@@ -1094,7 +1092,7 @@ the currently deployed SHA and schema compatibility before a rollback.
 
 ### 機種比較用の出典付き仕様
 
-確認済みCatalogの2〜4機種比較は既存の詳細APIを最大4回使用する。寸法（本体1台分、mm）・重量（kg）・入力／出力の系統数・最大12項目の主要仕様を、Access管理画面から出典URLとともに登録する。出品ごとの電圧・搭載オプションを機種共通仕様へ転記しない。
+確認済みCatalogの2〜4機種比較は既存の詳細APIを最大4回使用する。寸法（本体1台分、mm）・重量（kg）・入力／出力の系統数・最大12項目の主要仕様を、Access管理画面から出典URLとともに登録する。
 
 `catalog_product_specifications` はCatalog IDを主キーとする任意の記録で、既存詳細SELECTへ主キーLEFT JOINする。検索一覧の読み取りは増えず、クロールや一括推測のバックフィルは行わない。NULLは未記載、空の端子配列は確認済みの「なし」、系統数NULLは未確認。同一内容の保存は更新日時も変更しない。モデル共通仕様は機種同定とは別の管理者確認で、登録・更新日時と参照資料を比較表に表示する。全情報CSVに含める。
 

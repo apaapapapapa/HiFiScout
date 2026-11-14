@@ -1026,9 +1026,6 @@ export const OFFER_FACT_GROUPS = [
   { id: "included", name: "付属品" },
   { id: "warranty", name: "保証" },
   { id: "maintenance", name: "整備・修理・改造歴" },
-  { id: "sale_unit", name: "販売単位" },
-  { id: "voltage", name: "電源電圧" },
-  { id: "option", name: "搭載オプション" },
 ] as const;
 
 /** Seller-observed facts belong to a listing, independently of catalog capabilities. */
@@ -1051,19 +1048,6 @@ export const OFFER_FACT_DEFINITIONS = [
   { id: "maintenance_serviced", name: "整備済み", group: "maintenance" },
   { id: "maintenance_repaired", name: "修理歴あり", group: "maintenance" },
   { id: "maintenance_modified", name: "改造歴あり", group: "maintenance" },
-  { id: "sale_pair", name: "ペア販売", group: "sale_unit" },
-  { id: "sale_single", name: "単体販売", group: "sale_unit" },
-  { id: "sale_set", name: "セット販売", group: "sale_unit" },
-  { id: "voltage_100v", name: "AC 100V", group: "voltage" },
-  { id: "voltage_115v", name: "AC 115V", group: "voltage" },
-  { id: "voltage_120v", name: "AC 120V", group: "voltage" },
-  { id: "voltage_220v", name: "AC 220V", group: "voltage" },
-  { id: "voltage_230v", name: "AC 230V", group: "voltage" },
-  { id: "voltage_240v", name: "AC 240V", group: "voltage" },
-  { id: "voltage_switchable", name: "電源電圧切替式", group: "voltage" },
-  { id: "option_dac", name: "DACボード搭載", group: "option" },
-  { id: "option_phono", name: "フォノボード搭載", group: "option" },
-  { id: "option_network", name: "ネットワークボード搭載", group: "option" },
 ] as const;
 
 export type OfferFactId = (typeof OFFER_FACT_DEFINITIONS)[number]["id"];
@@ -1079,7 +1063,6 @@ export type MarketCondition =
   | "operation_fault"
   | "mixed"
   | "unknown";
-export type MarketSaleUnit = "single" | "pair" | "set" | "unknown";
 export interface MarketPriceBand {
   listing_count: number;
   shop_count: number;
@@ -1093,10 +1076,7 @@ export interface ProductMarketAnalysis {
   version: 1;
   status: "ready" | "limited";
   as_of: string;
-  current_conditions: (MarketPriceBand & {
-    condition: MarketCondition;
-    sale_unit: MarketSaleUnit;
-  })[];
+  current_conditions: (MarketPriceBand & { condition: MarketCondition })[];
   months: (MarketPriceBand & {
     month: string;
     first_observed_listings: number;

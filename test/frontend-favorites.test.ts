@@ -90,6 +90,34 @@ test("product favorites round-trip through storage under their entity key", () =
   assert.deepEqual(favoriteStoragePayload(store), [stored]);
 });
 
+test("a favorite saved with a since-retired offer fact keeps its product and other facts", () => {
+  const fact = (factId: string) => ({
+    factId,
+    state: "present",
+    source: "seller",
+    sourceField: "title",
+    ruleId: "offer.v3.fixture",
+    confidence: 1,
+    observedAt: "2026-08-11T00:00:00.000Z",
+  });
+  const stored = {
+    ...favoriteSnapshot(product({ key: "c-9" })),
+    representative_offer: { ...offer(), offer_facts: [fact("sale_pair"), fact("original_box")] },
+  };
+  const store = parseFavoriteStorage(JSON.stringify([stored]), isProductSearchItem);
+
+  assert.deepEqual([...store.products.keys()], ["c-9"]);
+  assert.deepEqual(
+    store.products.get("c-9")?.representative_offer?.offer_facts?.map((entry) => entry.factId),
+    ["original_box"],
+  );
+  const malformed = { ...stored, representative_offer: { ...offer(), offer_facts: [{}] } };
+  assert.equal(
+    parseFavoriteStorage(JSON.stringify([malformed]), isProductSearchItem).products.size,
+    0,
+  );
+});
+
 test("a seller-listing favorite is migrated into a namespaced product, never into a product id", () => {
   const store = parseFavoriteStorage(
     JSON.stringify([

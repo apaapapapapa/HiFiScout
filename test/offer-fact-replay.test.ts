@@ -86,7 +86,6 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
     assert.equal(coverage.condition, 0);
     assert.equal(coverage.included, 29);
     assert.equal(coverage.warranty, 1);
-    assert.equal(coverage.sale_unit, 0);
     assert.equal(coverage.appearance, 1);
     assert.equal(coverage.operation, 1);
     assert.equal(coverage.maintenance, 1);

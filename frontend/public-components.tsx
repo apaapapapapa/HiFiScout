@@ -7,7 +7,6 @@ import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.j
 import { ModelRelations } from "./model-relations-ui.js";
 import { MarketAnalysis } from "./market-analysis-ui.js";
 import { OfferFacts } from "./offer-facts.js";
-import { OfferTerms } from "./offer-terms.js";
 import { WatchSummary } from "./watch-preferences-ui.js";
 import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
 import type { ProductFilterNavigation } from "./product-filter-links.js";
@@ -244,19 +243,6 @@ export function ProductCard({
         <div className="price-row">
           <strong>{priceSummary(product)}</strong>
         </div>
-        {product.representative_offer ? (
-          <div className="representative-terms">
-            {multiOffer ? (
-              <p>
-                表示出品: {shopName(product.representative_offer.shop_key)} /{" "}
-                {product.representative_offer.price_yen == null
-                  ? "価格不明"
-                  : yen.format(product.representative_offer.price_yen)}
-              </p>
-            ) : null}
-            <OfferTerms facts={product.representative_offer.offer_facts} compact />
-          </div>
-        ) : null}
         <div className={`stock ${offerAvailabilityClass(product)}`}>
           {offerAvailability(product)}
         </div>
@@ -437,7 +423,6 @@ function OfferRow({
           <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
         </div>
       </div>
-      {!expanded ? <OfferTerms facts={offer.offer_facts} compact /> : null}
       <div className="offer-primary-actions">
         <button
           id={toggleId}
@@ -467,7 +452,6 @@ function OfferRow({
       <div id={detailId} className="offer-details" hidden={!expanded} aria-labelledby={toggleId}>
         <p className="offer-reference">出品番号 {offer.listing_product_id}</p>
         <p className="offer-title">{offer.title}</p>
-        <OfferTerms facts={offer.offer_facts} />
         <p className="offer-updated">
           掲載情報の最終取得:{" "}
           {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (

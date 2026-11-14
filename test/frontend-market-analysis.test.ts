@@ -19,7 +19,26 @@ test("market response guards reject oversized, duplicate, sparse-price and inval
   assert.ok(
     !isProductMarketAnalysis({
       ...ready,
-      current_conditions: [{ ...ready.months[0], condition: "excellent", sale_unit: "pair" }],
+      current_conditions: [{ ...ready.months[0], condition: "excellent" }],
+    }),
+  );
+  // A projection still split by the retired sale unit repeats a condition and is not shown.
+  const used = {
+    ...ready.months[0],
+    listing_count: 1,
+    shop_count: 1,
+    first_observed_at: ready.as_of,
+    last_observed_at: ready.as_of,
+    condition: "used",
+  };
+  assert.ok(isProductMarketAnalysis({ ...ready, current_conditions: [used] }));
+  assert.ok(
+    !isProductMarketAnalysis({
+      ...ready,
+      current_conditions: [
+        { ...used, sale_unit: "pair" },
+        { ...used, sale_unit: "single" },
+      ],
     }),
   );
   assert.ok(isProductMarketAnalysis({ ...ready, status: "limited", months: [] }));
@@ -41,7 +60,6 @@ test("market intervals must belong to their month and counts respect the full sc
   const group = {
     ...misplaced,
     condition: "used",
-    sale_unit: "pair",
     listing_count: 201,
     shop_count: 2,
     min_yen: 100,
