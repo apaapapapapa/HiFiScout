@@ -108,4 +108,23 @@ test("Dynamic Audio accepts only an explicit published datetime in the same arti
   const [fallback] = parseDynamicAudioListing(changedDate);
   assert.equal(fallback.sourcePublishedAt, "2026-08-18T15:00:00.000Z");
   assert.equal(fallback.metadata?.sourcePublishedPrecision, "day");
+
+  const prependUpdated = html.replace(
+    '<time class="entry-date published"',
+    '<time class="updated" datetime="2026-08-20T17:42:07+09:00">更新</time>\n        <time class="entry-date published"',
+  );
+  const [kept] = parseDynamicAudioListing(prependUpdated);
+  assert.equal(kept.sourcePublishedAt, "2026-08-19T08:42:07.000Z");
+  assert.equal(kept.metadata?.sourcePublishedPrecision, "second");
+
+  const wrongPublishedDate = prependUpdated.replace(
+    'class="entry-date published" datetime="2026-08-19T17:42:07+09:00"',
+    'class="entry-date published" datetime="2026-08-20T17:42:07+09:00"',
+  ).replace(
+    'class="updated" datetime="2026-08-20T17:42:07+09:00"',
+    'class="updated" datetime="2026-08-19T17:42:07+09:00"',
+  );
+  const [dateFallback] = parseDynamicAudioListing(wrongPublishedDate);
+  assert.equal(dateFallback.sourcePublishedAt, "2026-08-18T15:00:00.000Z");
+  assert.equal(dateFallback.metadata?.sourcePublishedPrecision, "day");
 });
