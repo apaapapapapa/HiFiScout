@@ -39,6 +39,10 @@ test("publication lag keeps exact, date-only, future and missing evidence separa
       '{"sourcePublishedPrecision":"second"}',
     );
     insert.run("soundpitplus", "2026-11-10T09:00:00.000Z", "2026-11-10T08:45:00.000Z", "{}");
+    // A 20-second negative lag is future evidence, not a rounded zero-minute lag.
+    insert.run("soundpitplus", "2026-11-10T09:00:00.000Z", "2026-11-10T09:00:20.000Z", "{}");
+    // A delay of 60m20s is outside the within-hour bucket despite rounding to 60.
+    insert.run("soundpitplus", "2026-11-10T10:00:20.000Z", "2026-11-10T09:00:00.000Z", "{}");
     insert.run("avac", "2026-11-10T09:00:00.000Z", null, "{}");
 
     const report = await reportShopPublicationLag(
@@ -64,7 +68,9 @@ test("publication lag keeps exact, date-only, future and missing evidence separa
     assert.equal(shops.get("dynamic-audio")?.day_count, 1);
     assert.equal(shops.get("dynamic-audio")?.same_day_count, 1);
     assert.equal(shops.get("dynamic-audio")?.precise_count, 1);
-    assert.equal(shops.get("soundpitplus")?.precise_count, 1);
+    assert.equal(shops.get("soundpitplus")?.precise_count, 2);
+    assert.equal(shops.get("soundpitplus")?.future_count, 1);
+    assert.equal(shops.get("soundpitplus")?.within_hour_count, 1);
     assert.equal(shops.get("avac")?.sourced_count, 0);
     assert.equal(shops.get("avac")?.p50_minutes, null);
     assert.equal(shops.get("e-earphone")?.first_seen_count, 0);
