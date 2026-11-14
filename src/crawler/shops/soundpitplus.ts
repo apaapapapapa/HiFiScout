@@ -68,6 +68,8 @@ export interface SoundPitPlusPage extends CrawlPageObject {
   readonly listingSold?: boolean;
   /** Unknown listing status terms must survive the detail fetch, not become available evidence. */
   readonly listingUnknownStatus?: boolean;
+  /** Seller datePublished from this exact listing card, carried to the matching detail. */
+  readonly sourcePublishedAt?: string;
 }
 
 function listingPage(page: number): SoundPitPlusPage {
