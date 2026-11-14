@@ -22,7 +22,11 @@ WITH observations AS (
         THEN 'day'
       ELSE 'second'
     END AS precision,
-    (julianday(first_seen_at) - julianday(source_published_at)) * 1440 AS lag_minutes,
+    -- Compare integer milliseconds; floating JULIANDAY differences can misclassify 60m exactly.
+    (CAST(strftime('%s', first_seen_at) AS INTEGER) -
+      CAST(strftime('%s', source_published_at) AS INTEGER)) * 1000 +
+    (CAST(substr(strftime('%f', first_seen_at), 4, 3) AS INTEGER) -
+      CAST(substr(strftime('%f', source_published_at), 4, 3) AS INTEGER)) AS lag_ms,
     CAST(
       julianday(date(first_seen_at, '+9 hours'))
       - julianday(date(source_published_at, '+9 hours')) AS INTEGER
@@ -33,17 +37,17 @@ WITH observations AS (
 precise_ranked AS (
   SELECT
     shop_key,
-    lag_minutes,
-    ROW_NUMBER() OVER (PARTITION BY shop_key ORDER BY lag_minutes) AS rn,
+    lag_ms,
+    ROW_NUMBER() OVER (PARTITION BY shop_key ORDER BY lag_ms) AS rn,
     COUNT(*) OVER (PARTITION BY shop_key) AS n
   FROM observations
-  WHERE precision = 'second' AND lag_minutes >= 0
+  WHERE precision = 'second' AND lag_ms >= 0
 ),
 precise_percentiles AS (
   SELECT
     shop_key,
-    MAX(CASE WHEN rn = (n + 1) / 2 THEN ROUND(lag_minutes) END) AS p50_minutes,
-    MAX(CASE WHEN rn = (n * 9 + 9) / 10 THEN ROUND(lag_minutes) END) AS p90_minutes
+    MAX(CASE WHEN rn = (n + 1) / 2 THEN ROUND(lag_ms / 60000.0) END) AS p50_minutes,
+    MAX(CASE WHEN rn = (n * 9 + 9) / 10 THEN ROUND(lag_ms / 60000.0) END) AS p90_minutes
   FROM precise_ranked
   GROUP BY shop_key
 ),
@@ -52,11 +56,11 @@ shop_counts AS (
     shop_key,
     COUNT(*) AS first_seen_count,
     SUM(CASE WHEN source_published_at IS NOT NULL THEN 1 ELSE 0 END) AS sourced_count,
-    SUM(CASE WHEN precision = 'second' AND lag_minutes >= 0 THEN 1 ELSE 0 END) AS precise_count,
+    SUM(CASE WHEN precision = 'second' AND lag_ms >= 0 THEN 1 ELSE 0 END) AS precise_count,
     SUM(CASE WHEN precision = 'day' AND lag_days >= 0 THEN 1 ELSE 0 END) AS day_count,
-    SUM(CASE WHEN source_published_at IS NOT NULL AND lag_minutes < 0 THEN 1 ELSE 0 END) AS future_count,
-    SUM(CASE WHEN source_published_at IS NOT NULL AND lag_minutes IS NULL THEN 1 ELSE 0 END) AS invalid_count,
-    SUM(CASE WHEN precision = 'second' AND lag_minutes BETWEEN 0 AND 60 THEN 1 ELSE 0 END) AS within_hour_count,
+    SUM(CASE WHEN source_published_at IS NOT NULL AND lag_ms < 0 THEN 1 ELSE 0 END) AS future_count,
+    SUM(CASE WHEN source_published_at IS NOT NULL AND lag_ms IS NULL THEN 1 ELSE 0 END) AS invalid_count,
+    SUM(CASE WHEN precision = 'second' AND lag_ms BETWEEN 0 AND 3600000 THEN 1 ELSE 0 END) AS within_hour_count,
     SUM(CASE WHEN precision = 'day' AND lag_days = 0 THEN 1 ELSE 0 END) AS same_day_count
   FROM observations
   GROUP BY shop_key
