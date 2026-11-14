@@ -100,6 +100,57 @@ An active dispatch still blocks a new generation. Recovery and continuation resu
 generation; they do not add another crawl. Explicit manual dispatch remains available
 during allowed hours.
 
+## Seller publication timestamps and discovery lag
+
+The shop's own publication timestamp is distinct from `first_seen_at` (HiFiScout's first
+observation). The `products.source_published_at` column already exists. Adapters supply it
+**only from seller-owned, product-scoped evidence**; they do not infer it from crawl time, a
+description containing a date, a modified timestamp or a neighbouring product.
+
+- **Hifido:** the arrival date/time printed on a product. A date with no clock is represented
+  as midnight JST and only supports day-level comparison.
+- **Dynamic Audio:** an explicitly labelled WordPress publication `<time>` inside the same
+  post header, or the dated WordPress permalink as a *day-only* fallback. Its
+  `metadata.sourcePublishedPrecision` distinguishes these two cases. This is the original
+  blog-post date, not proof that a subsequently edited offer was published at that time.
+- **SOUNDPIT+:** the `datePublished` machine timestamp on the seller's own used-product
+  listing card, carried through to the matching product-detail post ID. Other post dates
+  and pages cannot be reused as evidence for the product.
+- **Other shops:** leave `source_published_at` unset unless their own listing-scoped
+  evidence becomes available. The absence of a source date is *unknown*, not zero lag.
+
+A publication date introduced into an existing listing may update its one `products` row
+once. Once stabilized, unchanged dates must not create repeated writes, and the existing
+same-value update guard remains in force. No new D1 tables or crawler requests are added.
+
+### Read-only lag report
+
+From an authorized operator environment with `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_API_TOKEN` and `D1_DATABASE_ID` set:
+
+```bash
+vp exec tsx scripts/report-shop-publication-lag.ts --days 30
+# Optional fixed end instant for reproducible analysis:
+vp exec tsx scripts/report-shop-publication-lag.ts --days 7 --at 2026-11-15T00:00:00Z
+```
+
+Output is one `SHOP_PUBLICATION_LAG_REPORT` JSON line with a `[windowStart, windowEnd)`
+UTC window, every registered shop, counts, and separate metrics for exact timestamps and
+date-only publications. `first_seen_count` is the cohort size; `sourced_count` is the
+subset with a seller date. `precise_count` includes only nonnegative, parseable,
+second-precision lags; `within_hour_count`, `p50_minutes` and `p90_minutes` apply
+only to that subset. `day_count` and `same_day_count` apply to date-only sources
+and never imply a zero-minute lag. `future_count` and `invalid_count` flag
+timestamps that cannot establish lag. Shops without samples have null percentiles.
+
+This is a **first-discovery delay** report, *not* an update-time, price-change or stock-change
+latency report. A previously published listing first found after coverage expands can skew
+the distribution. A seller's original post time may differ from the instant it made an
+edited price or stock available. Record the cohort window, source coverage and precision
+when comparing shops. The report performs a bounded read-only aggregate (maximum 90 days),
+does not request seller pages or trigger backfills, and is intended for on-demand operator
+analysis rather than another periodic D1 workload.
+
 ## Overnight pause
 
 All shops pause collection every day from **23:00 JST (inclusive) to 08:00 JST (exclusive)**.
