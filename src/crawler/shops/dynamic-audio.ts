@@ -1,7 +1,7 @@
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, splitManufacturerModel } from "../normalize.js";
-import { wordpressPublication } from "./seller-publication.js";
+import { wordpressPublication } from "../seller-publication.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://dynamicaudio5used.wordpress.com";
