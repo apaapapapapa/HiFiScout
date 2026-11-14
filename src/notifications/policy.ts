@@ -4,6 +4,7 @@ import {
   parseProductQuery,
   validateProductQuery,
 } from "../api/product-query.js";
+import type { ProductQuery } from "../api/product-query.js";
 
 export const NOTIFICATION_LIMITS = {
   devices: 50,
@@ -142,6 +143,12 @@ export function parseWatch(value: unknown): WatchInput | null {
     newListings: value.newListings,
     priceDrops: value.priceDrops,
   };
+}
+/** A watch saved with since-retired filter values matches nothing rather than widening. */
+export function storedWatchQuery(query: string): ProductQuery | null {
+  const url = new URL("https://notification.invalid/api/product-search");
+  url.search = query;
+  return validateProductQuery(url) ? null : parseProductQuery(url);
 }
 export function watchAccepts(watch: Watch, event: NotificationEvent): boolean {
   return (

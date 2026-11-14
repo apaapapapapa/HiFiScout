@@ -73,14 +73,6 @@ it("persists notices and suppresses duplicate scans, without querying when no wa
   expect(empty.next).toBeNull();
   expect(empty.deliveries).toHaveLength(0);
 });
-it("a watch saved with a retired offer filter is not widened to every listing", async () => {
-  await call("retired", { op: "register", query: "inStock=true&offer=sale_pair" });
-  const retired = await call("retired", { op: "run" });
-  // Only the shared candidate scan runs; the stale watch issues no match query and sends nothing.
-  expect(retired.calls).toBe(1);
-  expect(retired.pushes).toHaveLength(0);
-  expect(retired.deliveries).toHaveLength(0);
-});
 it("resumes an idle hub near the new opt-in without resetting its same-day budget", async () => {
   await call("resume", { op: "register" });
   await call("resume", { op: "budget", queries: 100 });

@@ -3,6 +3,7 @@ import {
   allowedPushEndpoint,
   parseWatch,
   parsePushAddress,
+  storedWatchQuery,
   watchAccepts,
 } from "../src/notifications/policy.js";
 import { notificationQuery } from "../frontend/notifications.js";
@@ -29,6 +30,12 @@ describe("notification admission", () => {
     ])
       expect(parseWatch({ ...input, query })).toBeNull();
     expect(parseWatch({ ...input, newListings: false, priceDrops: false })).toBeNull();
+  });
+  it("a stored watch with a retired offer filter matches nothing instead of every listing", () => {
+    expect(storedWatchQuery("inStock=true&offer=original_box")?.offerFacts).toEqual([
+      "original_box",
+    ]);
+    expect(storedWatchQuery("inStock=true&offer=sale_pair")).toBeNull();
   });
   it("rejects arbitrary destinations, redirects via input, oversized/invalid keys", () => {
     for (const endpoint of [
