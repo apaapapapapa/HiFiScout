@@ -241,6 +241,7 @@ test("SOUNDPIT+ detail parser reads the post's own labelled facts and seller lea
   assert.deepEqual(product, {
     sourceId: "714",
     sourceUrl: `${BASE}/products/soulnote-a-3/`,
+    sourcePublishedAt: "2026-10-16T02:00:00.000Z",
     title: "SOULNOTE A-3",
     rawManufacturer: "SOULNOTE",
     manufacturer: "SOULNOTE",
