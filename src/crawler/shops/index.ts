@@ -71,7 +71,6 @@ export { getShopActivityPolicy } from "./registry.js";
 
 const HOURLY_INTERVAL_MINUTES = 60;
 const DAILY_INTERVAL_MINUTES = 24 * 60;
-const TWICE_DAILY_INTERVAL_MINUTES = 12 * 60;
 const SHARED_HOURLY_CRON = "1,31 0-13,23 * * *";
 
 /** Hifido re-lists the same stock with edited titles, so only price and stock are user activity. */
@@ -125,7 +124,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "ippinkan",
       name: "逸品館",
       baseUrl: "https://ippinkan.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     },
     {
       catalog: { categoryPolicy: IPPINKAN_CATEGORY_POLICY },
@@ -193,7 +192,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "formusic",
       name: "FOR MUSIC",
       baseUrl: "https://shop.formusic.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     },
     {
       catalog: {
@@ -208,7 +207,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "u-audio",
       name: "U-AUDIO",
       baseUrl: "https://www.u-audio.com",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 50,
     },
     {
@@ -224,7 +223,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "shimamusen",
       name: "シマムセン",
       baseUrl: "https://www.shimamusen.com",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     { catalog: { categoryPolicy: SHIMAMUSEN_CATEGORY_POLICY } },
@@ -233,14 +232,14 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "dynamic-audio",
     name: "DYNAMIC AUDIO",
     baseUrl: "https://dynamicaudio5used.wordpress.com",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     defaultMaxPages: 30,
   }),
   defineShopPlugin(afroAudioAdapter, {
     key: "afroaudio",
     name: "アフロオーディオ",
     baseUrl: "https://afroaudio.jp",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     defaultMaxPages: 50,
   }),
   defineShopPlugin(
@@ -249,7 +248,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "osakaya",
       name: "CAVIN大阪屋",
       baseUrl: "https://osakaya.com",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     { catalog: { categoryPolicy: OSAKAYA_CATEGORY_POLICY } },
@@ -258,7 +257,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "soundpit",
     name: "SOUND PIT",
     baseUrl: "https://sound-pit.jp",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     defaultMaxPages: 50,
   }),
   defineShopPlugin(
@@ -267,7 +266,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "sound-support",
       name: "Sound Support",
       baseUrl: "https://sound-support.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     {
@@ -283,7 +282,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "avac",
       name: "アバック",
       baseUrl: "https://www.avac.co.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 50,
     },
     { catalog: { categoryMapping: AVAC_CATEGORY_MAPPING } },
@@ -292,7 +291,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "tereon",
     name: "テレオン",
     baseUrl: "https://www.tereon-tsuhan.com",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 10,
   }),
@@ -302,7 +301,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "audio-space-core",
       name: "オーディオスペースコア",
       baseUrl: "https://www.as-core.co.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     },
     {
       catalog: {
@@ -316,7 +315,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     name: "REWIRE",
     baseUrl: "https://rewire.co.jp",
     defaultEnabled: false,
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 30,
   }),
@@ -326,7 +325,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "home-shokai",
       name: "ホーム商会",
       baseUrl: "https://www.homeshokai.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 1500,
       defaultMaxPages: 2,
     },
@@ -343,7 +342,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "e-earphone",
       name: "e☆イヤホン",
       baseUrl: "https://www.e-earphone.jp",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 2000,
       defaultMaxPages: 10,
       // Deployments opt in explicitly after obtaining the seller consent required by §15.
@@ -362,7 +361,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "soundpitplus",
       name: "SOUNDPIT+",
       baseUrl: "https://soundpit-plus.com",
-      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 2000,
       defaultMaxPages: 60,
     },

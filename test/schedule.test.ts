@@ -113,11 +113,11 @@ test("dedicated shop crons are declared in wrangler and may be shared", () => {
   );
 });
 
-test("all non-dedicated shops have twice-daily intervals and share a staggered trigger", () => {
+test("all non-dedicated shops have daily intervals and share an evening-only trigger", () => {
   const dailyShops = shopsInDailyRotation();
-  const expectedIntervalMinutes = 12 * 60;
+  const expectedIntervalMinutes = 24 * 60;
   assert.equal(dailyShops.length, 16);
-  assert.equal(CRAWL_ROTATION_CRON, "*/10 2-13 * * *");
+  assert.equal(CRAWL_ROTATION_CRON, "*/10 8-10 * * *");
   assert.ok(wranglerConfig.triggers.crons.includes(CRAWL_ROTATION_CRON));
 
   for (const plugin of dailyShops) {
@@ -130,12 +130,10 @@ test("all non-dedicated shops have twice-daily intervals and share a staggered t
   }
 });
 
-test("daily rotation makes one pass from 11:00 and 17:00 JST, including across New Year", () => {
+test("daily rotation makes only the 17:00 JST pass, including across New Year", () => {
   const dailyShops = shopsInDailyRotation();
   for (const start of [
-    "2026-12-31T11:00:00+09:00",
     "2026-12-31T17:00:00+09:00",
-    "2027-01-01T11:00:00+09:00",
     "2027-01-01T17:00:00+09:00",
   ]) {
     for (const [index, plugin] of dailyShops.entries()) {
@@ -146,6 +144,8 @@ test("daily rotation makes one pass from 11:00 and 17:00 JST, including across N
   for (const at of [
     "2026-12-31T08:00:00+09:00",
     "2026-12-31T10:59:59.999+09:00",
+    "2026-12-31T11:00:00+09:00",
+    "2026-12-31T13:00:00+09:00",
     "2026-12-31T13:40:00+09:00",
     "2026-12-31T16:59:59.999+09:00",
     "2026-12-31T19:40:00+09:00",
@@ -154,6 +154,7 @@ test("daily rotation makes one pass from 11:00 and 17:00 JST, including across N
     "2027-01-01T00:00:00+09:00",
     "2027-01-01T08:00:00+09:00",
     "2027-01-01T10:50:00+09:00",
+    "2027-01-01T11:00:00+09:00",
   ]) {
     assert.equal(dailyRotationShopForScheduledTime(new Date(at)), null, at);
   }
