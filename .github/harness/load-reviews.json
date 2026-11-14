@@ -3,6 +3,17 @@
   "reviews": [
     {
       "id": "load-contracts",
+      "baseSha": "687d57a84018f9c049a4116643bede0fa140e868",
+      "beforeDigest": "4fab2f5b3a63c5fec5d4e974925423f602513450d06249598fcc220df0cfe6d3",
+      "afterDigest": "665d16744601e82aac1457a1a6fe3e1be9877faa6643e3d2280d2445b509c66b",
+      "reason": "Register newly added seller publication extraction and bounded read-only report in their dedicated load ownership contract. The existing dynamic-audio paired CPU samples and 4-shard measured parser/cost suites passed on the same baseline and candidate in PR #826. This source-registration policy adds only coverage and three real parser/SQLite test suites, changes no budgets, fixtures, CPU thresholds, seller request cadence or existing sample limits. Previous gate on the exact candidate failed only with unregistered_load_boundary for these two files, and the required before/after policy digests have been independently calculated from the frozen baseline and updated contracts.",
+      "evidence": [
+        "https://github.com/apaapapapa/HiFiScout/pull/826",
+        "https://github.com/apaapapapa/HiFiScout/actions/runs/43619083211"
+      ]
+    },
+    {
+      "id": "load-contracts",
       "baseSha": "51ff05194b0477a6d8acb3dfc465eabb350a26e3",
       "beforeDigest": "71c71a6c3cf0c0d208d007c63fa11130fcbfb2b199c2c0db98b00fc3115ab29e",
       "afterDigest": "b7fe9a5639c0c8cc9fd32b80964cbcf2b45118426e041e04603848be43dfeb3e",
