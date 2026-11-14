@@ -1,6 +1,7 @@
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, splitManufacturerModel } from "../normalize.js";
+import { wordpressPublication } from "./seller-publication.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://dynamicaudio5used.wordpress.com";
@@ -160,13 +161,18 @@ export function parseDynamicAudioListing(html: string): SellerProduct[] {
     const negotiating = lines.some((line) => /商談中/u.test(line));
     const condition = conditionText(lines, classification.listingKind, negotiating);
     const { manufacturer, model } = splitManufacturerModel(entry.title, "dynamic-audio");
+    const header =
+      article.html.match(/<header\b[^>]*>[\s\S]*?<\/header>/iu)?.[0] || "";
+    const publication = wordpressPublication(header, entry.sourceUrl);
     const metadata: Record<string, unknown> = { listingKind: classification.listingKind };
     if (condition.grade) metadata.conditionGrade = condition.grade;
     if (condition.accessories) metadata.accessories = condition.accessories;
+    if (publication) metadata.sourcePublishedPrecision = publication.precision;
 
     products.push({
       sourceId: article.sourceId,
       sourceUrl: entry.sourceUrl,
+      sourcePublishedAt: publication?.at ?? null,
       title: entry.title,
       rawManufacturer: manufacturer,
       manufacturer,
