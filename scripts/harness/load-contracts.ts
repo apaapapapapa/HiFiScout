@@ -53,6 +53,24 @@ export const LOAD_CONTRACTS: LoadContract[] = [
       "Hifido extraction preserves factual fields and hidden-text boundaries. Required cpu-hifido-parse and cpu-hifido-normalize samples retain their existing same-runner paired CPU ceilings and regression checks.",
   },
   {
+    id: "seller-publication-evidence",
+    sources: [
+      "src/crawler/seller-publication.ts",
+      "src/crawler/shops/dynamic-audio.ts",
+      "scripts/lib/shop-publication-lag.ts",
+    ],
+    suites: [
+      "test/dynamic-audio.test.ts",
+      "test/soundpitplus.test.ts",
+      "test/shop-publication-lag.test.ts",
+    ],
+    // The existing paired dynamic-audio CPU gate owns parsing overhead, while these suites
+    // enforce product-scoped dates, precision boundaries and zero seller fetches in the report.
+    samples: {},
+    reason:
+      "Seller publication evidence adds no seller requests or scheduled D1 writes: WordPress dates and SOUNDPIT+ card dates come from pages already fetched. The existing dynamic-audio paired CPU samples cover parser overhead; the new read-only shop lag aggregate is operator-invoked only. Parser, shop contract and SQLite lag tests preserve exact time, day-only and negative/one-hour boundary semantics without changing any load ceiling.",
+  },
+  {
     id: "auction-storage",
     sources: ["src/auctions/*", "src/crawler/types.ts"],
     suites: ["test/auction-runtime.test.ts"],
