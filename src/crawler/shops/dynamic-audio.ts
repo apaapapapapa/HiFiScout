@@ -161,8 +161,7 @@ export function parseDynamicAudioListing(html: string): SellerProduct[] {
     const negotiating = lines.some((line) => /商談中/u.test(line));
     const condition = conditionText(lines, classification.listingKind, negotiating);
     const { manufacturer, model } = splitManufacturerModel(entry.title, "dynamic-audio");
-    const header =
-      article.html.match(/<header\b[^>]*>[\s\S]*?<\/header>/iu)?.[0] || "";
+    const header = article.html.match(/<header\b[^>]*>[\s\S]*?<\/header>/iu)?.[0] || "";
     const publication = wordpressPublication(header, entry.sourceUrl);
     const metadata: Record<string, unknown> = { listingKind: classification.listingKind };
     if (condition.grade) metadata.conditionGrade = condition.grade;

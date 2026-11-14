@@ -27,11 +27,10 @@ export function explicitPublicationTime(html: string): SellerPublication | null 
     if (itemprop !== "datePublished" && !classes.includes("published")) continue;
     const value = listingAttribute(attrs, "datetime");
     if (
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(
-        value,
-      ) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(value) ||
       !validCalendarDate(value.slice(0, 10))
-    ) continue;
+    )
+      continue;
     const date = new Date(value);
     if (Number.isFinite(date.getTime())) return { at: date.toISOString(), precision: "second" };
   }
@@ -54,7 +53,9 @@ export function wordpressPublication(
   const explicit = explicitPublicationTime(articleHeader);
   // A WordPress permalink's date and the labelled local post date should agree.
   if (explicit) {
-    const sourceDate = articleHeader.match(/<time\b[^>]*datetime\s*=\s*["'](\d{4}-\d{2}-\d{2})/iu)?.[1];
+    const sourceDate = articleHeader.match(
+      /<time\b[^>]*datetime\s*=\s*["'](\d{4}-\d{2}-\d{2})/iu,
+    )?.[1];
     if (sourceDate === dateString) return explicit;
   }
   return { at: new Date(`${dateString}T00:00:00+09:00`).toISOString(), precision: "day" };
