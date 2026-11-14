@@ -129,6 +129,7 @@ const a3Page: SoundPitPlusPage = {
   kind: "detail",
   postId: "714",
   listingSold: false,
+  sourcePublishedAt: "2026-10-16T02:00:00.000Z",
 };
 
 function variant(replacements: ReadonlyArray<readonly [string | RegExp, string]>): string {
@@ -146,8 +147,9 @@ test("SOUNDPIT+ discovers listing pagination first, then one detail target per u
       kind: "detail",
       postId: "794",
       listingSold: false,
+      sourcePublishedAt: "2026-11-06T07:28:10.000Z",
     },
-    { url: `${BASE}/products/luxman-pd-191a/`, kind: "detail", postId: "715", listingSold: true },
+    { url: `${BASE}/products/luxman-pd-191a/`, kind: "detail", postId: "715", listingSold: true, sourcePublishedAt: "2026-10-16T03:00:00.000Z" },
     a3Page,
   ]);
   // The last page names no later page; it adds only its own cards.
@@ -173,13 +175,14 @@ test("SOUNDPIT+ carries unknown listing statuses into the detail availability de
     (page) => page.kind === "detail" && page.postId === "714",
   );
   assert.deepEqual(heldPage, { ...a3Page, listingUnknownStatus: true });
+  assert.equal(parseSoundPitPlusDetail(detail, heldPage)[0]?.sourcePublishedAt, "2026-10-16T02:00:00.000Z");
   assert.equal(parseSoundPitPlusDetail(detail, heldPage)[0].stockStatus, "unknown");
   // Unrelated product cards keep their original availability evidence.
   assert.deepEqual(
     (discoverPages(soundPitPlusAdapter, withHold, firstPage) ?? []).find(
       (page) => page.kind === "detail" && page.postId === "715",
     ),
-    { url: `${BASE}/products/luxman-pd-191a/`, kind: "detail", postId: "715", listingSold: true },
+    { url: `${BASE}/products/luxman-pd-191a/`, kind: "detail", postId: "715", listingSold: true, sourcePublishedAt: "2026-10-16T03:00:00.000Z" },
   );
 });
 
