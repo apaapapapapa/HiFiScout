@@ -18,7 +18,9 @@ function validCalendarDate(value: string): boolean {
  * The caller passes a single seller-owned card or article header, never an entire search page.
  * A modified date, a date in a description, and timezone-less times are not publication evidence.
  */
-function publicationWithLocalDate(html: string): { publication: SellerPublication; localDate: string } | null {
+function publicationWithLocalDate(
+  html: string,
+): { publication: SellerPublication; localDate: string } | null {
   for (const match of html.matchAll(/<time\b([^>]*)>/giu)) {
     const attrs = match[1] || "";
     const itemprop = listingAttribute(attrs, "itemprop");
