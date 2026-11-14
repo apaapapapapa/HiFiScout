@@ -4,7 +4,7 @@ import { discoverLinkedPages } from "../html-listing.js";
 import { listingAttribute, listingBlocks, listingFieldHtml } from "../listing-fields.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
-import { explicitPublicationTime } from "./seller-publication.js";
+import { explicitPublicationTime } from "../seller-publication.js";
 import type { StockStatus } from "../../catalog/types.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
