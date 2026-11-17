@@ -9,6 +9,11 @@
 
 import { createKnowledgeSourceVerifier } from "../catalog/knowledge-verification/verifier.js";
 import { createRobotsRespectingFetch } from "../crawler/robots-respecting-fetch.js";
+import { errorMessage } from "../types.js";
+import type {
+  FailedKnowledgeSource,
+  KnowledgeSourceVerification,
+} from "../catalog/knowledge-verification/types.js";
 import { sourceRequestDelayMs } from "./policy.js";
 import type { KnowledgeSourceVerifier } from "../catalog/knowledge-verification/types.js";
 import type { KnowledgeCatalogQueueEnv } from "./types.js";
@@ -30,13 +35,51 @@ function sourceFetcher(
   });
 }
 
-export const createVerifier: VerifierFactory = (env, fetchImpl = globalThis.fetch) =>
-  createKnowledgeSourceVerifier(env, {
-    fetchImpl: sourceFetcher(env, fetchImpl),
+export const createVerifier: VerifierFactory = (env, fetchImpl = globalThis.fetch) => {
+  // This verifier belongs to one target. A failed discovery/index/robots read must not disappear
+  // when a strategy falls through to its generic "not found" placeholder.
+  let failure: FailedKnowledgeSource | undefined;
+  const fetchSource = sourceFetcher(env, fetchImpl);
+  const observedFetch: typeof fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    try {
+      const response = await fetchSource(input, init);
+      if (!response.ok && response.status !== 404 && response.status !== 410) {
+        failure ??= {
+          status: "error",
+          sourceUrl: response.url || url,
+          sourceType: "manufacturer_official",
+          httpStatus: response.status,
+          message: `http_${response.status}`,
+        };
+      }
+      return response;
+    } catch (error) {
+      failure ??= {
+        status: "error",
+        sourceUrl: url,
+        sourceType: "manufacturer_official",
+        httpStatus: null,
+        message: errorMessage(error),
+      };
+      throw error;
+    }
+  };
+  const verifier = createKnowledgeSourceVerifier(env, {
+    fetchImpl: observedFetch,
     // Queue jobs are per-target and already rate-limited per domain, so the expensive generic
     // discovery is affordable here.
     fallbackEnabled: true,
   });
+  const preserveFailure = (result: KnowledgeSourceVerification): KnowledgeSourceVerification =>
+    result.status === "not_found" && failure ? failure : result;
+  return {
+    definitions: verifier.definitions,
+    verifyCandidate: async (target) => preserveFailure(await verifier.verifyCandidate(target)),
+    verifyStoredSource: async (target) =>
+      preserveFailure(await verifier.verifyStoredSource(target)),
+  };
+};
 
 /**
  * The host a job will contact, used as the key for its domain lease.

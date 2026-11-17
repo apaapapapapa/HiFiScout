@@ -6,7 +6,10 @@ import {
   claimNextKnowledgeCatalogVerificationJobForRun,
   createKnowledgeCatalogVerificationJobs,
 } from "../src/db/knowledge-catalog-verification-queue-repository.js";
-import { consumeKnowledgeCatalogVerificationMessage } from "../src/knowledge-catalog/consumer.js";
+import {
+  consumeKnowledgeCatalogVerificationBatch,
+  consumeKnowledgeCatalogVerificationMessage,
+} from "../src/knowledge-catalog/consumer.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queueBinding, queueEnv, runWakeMessage } from "./helpers/knowledge-queue.js";
 import { recordingDatabase } from "./helpers/query-plan.js";
@@ -302,4 +305,167 @@ test("a wake that finds its run drained settles on an empty outstanding count", 
   assert.equal(result.outstandingJobs, 0);
   assert.deepEqual(runReads(recording.executed), ["claim", "next-available", "outstanding-count"]);
   assert.equal(queue.sent.length, 0);
+});
+
+test("source requests share an invocation budget and interrupted candidates are not published", async () => {
+  const { sqlite, db, runId } = await createCandidateRun(8);
+  let requests = 0;
+  const rawFetch: typeof fetch = async () => {
+    requests += 1;
+    if (requests > 50) throw new Error("Too many subrequests by single Worker invocation");
+    return new Response("", { status: 404 });
+  };
+  const { createVerifier } = await import("../src/knowledge-catalog/verifier.js");
+  const queue = queueBinding();
+  const env = queueEnv(db, queue.binding, { KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS: "0" });
+  const result = await consumeKnowledgeCatalogVerificationMessage(
+    env,
+    runWakeMessage(runId).message,
+    {
+      fetchImpl: rawFetch,
+      createVerifier: (settings, transport = rawFetch) => createVerifier(settings, transport),
+    },
+  );
+  assert.ok(requests <= 40, `one invocation issued ${requests} raw requests`);
+  assert.equal(result.status, "continued");
+  const interrupted = sqlite
+    .prepare(
+      "SELECT target_id FROM knowledge_catalog_verification_jobs WHERE status = 'retrying' LIMIT 1",
+    )
+    .get();
+  assert.ok(interrupted, "the incomplete target must be retried, not completed/not_found");
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM knowledge_catalog_verification_attempts WHERE candidate_id = ?",
+      )
+      .get(interrupted.target_id)?.n,
+    0,
+  );
+  assert.equal(
+    sqlite
+      .prepare("SELECT verification_status FROM knowledge_catalog_candidates WHERE id = ?")
+      .get(interrupted.target_id)?.verification_status,
+    "unverified",
+  );
+  assert.equal(queue.sent.length, 1);
+  // The next invocation gets a fresh budget; durable terminal jobs must not be fetched again.
+  sqlite
+    .prepare(
+      "UPDATE knowledge_catalog_verification_jobs SET available_at = ? WHERE status = 'retrying'",
+    )
+    .run(STARTED_AT);
+  requests = 0;
+  await consumeKnowledgeCatalogVerificationMessage(env, runWakeMessage(runId).message, {
+    fetchImpl: rawFetch,
+    createVerifier: (settings, transport = rawFetch) => createVerifier(settings, transport),
+  });
+  assert.ok(requests <= 40);
+  assert.equal(
+    sqlite
+      .prepare("SELECT status FROM knowledge_catalog_verification_jobs WHERE target_id = ?")
+      .get(interrupted.target_id)?.status,
+    "completed",
+  );
+});
+
+test("a whole Queue batch shares the raw-fetch budget, including robots and redirects", async () => {
+  const { sqlite, db, runId } = await createCandidateRun(12);
+  const messages = [runWakeMessage(runId), runWakeMessage(runId)];
+  let requests = 0;
+  let robots = 0;
+  let redirects = 0;
+  const rawFetch: typeof fetch = async (input, init) => {
+    requests += 1;
+    assert.equal(init?.redirect, "manual");
+    const url = new URL(String(input));
+    if (url.pathname === "/robots.txt") {
+      robots += 1;
+      return new Response("", { status: 404 });
+    }
+    if (!url.search) {
+      redirects += 1;
+      return new Response(null, { status: 302, headers: { location: `${url}?redirected=1` } });
+    }
+    return new Response("", { status: 404 });
+  };
+  await consumeKnowledgeCatalogVerificationBatch(
+    queueEnv(db, undefined, {
+      KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS: "0",
+    }),
+    { messages: messages.map((m) => m.message) } as unknown as MessageBatch<never>,
+    { fetchImpl: rawFetch },
+  );
+  assert.equal(requests, 40);
+  assert.ok(robots > 0 && redirects > 0);
+  assert.deepEqual(messages[1].retries, [{ delaySeconds: 1 }]);
+  assert.equal(messages[1].acks.length, 0);
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM knowledge_catalog_verification_jobs WHERE status = 'completed' AND outcome = 'error'",
+      )
+      .get()?.n,
+    0,
+  );
+});
+
+test("an oversized single target is bounded by delivery retries without publishing a false answer", async () => {
+  const { sqlite, db, runId } = await createCandidateRun(1);
+  const env = queueEnv(db, undefined, {
+    KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS: "0",
+    KNOWLEDGE_CATALOG_QUEUE_TRANSIENT_MAX_ATTEMPTS: "1",
+  });
+  let requests = 0;
+  const options = {
+    fetchImpl: (async () => {
+      requests += 1;
+      return new Response("", { status: 404 });
+    }) as typeof fetch,
+    createVerifier: (_env: unknown, transport = globalThis.fetch): KnowledgeSourceVerifier => ({
+      definitions: new Map(),
+      async verifyCandidate() {
+        // Simulate a strategy which discards transport failures and returns its placeholder.
+        for (let i = 0; i < 45; i += 1) await transport("https://example.test/").catch(() => null);
+        return {
+          status: "not_found",
+          sourceUrl: "",
+          sourceType: "manufacturer_official",
+          httpStatus: null,
+          message: "placeholder",
+        };
+      },
+      verifyStoredSource: async () => {
+        throw new Error("unexpected recheck");
+      },
+    }),
+  };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    requests = 0;
+    await consumeKnowledgeCatalogVerificationMessage(env, runWakeMessage(runId).message, options);
+    assert.equal(requests, 40);
+    sqlite
+      .prepare(
+        "UPDATE knowledge_catalog_verification_jobs SET available_at = ? WHERE status = 'retrying'",
+      )
+      .run(STARTED_AT);
+  }
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT status FROM knowledge_catalog_verification_jobs WHERE job_type = 'candidate'",
+      )
+      .get()?.status,
+    "dead_letter",
+  );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_verification_attempts").get()?.n,
+    0,
+  );
+  assert.equal(
+    sqlite
+      .prepare("SELECT verification_status FROM knowledge_catalog_candidates WHERE id = 1")
+      .get()?.verification_status,
+    "unverified",
+  );
 });
