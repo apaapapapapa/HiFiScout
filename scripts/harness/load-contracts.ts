@@ -351,6 +351,8 @@ export const LOAD_CONTRACTS: LoadContract[] = [
     sources: [
       "src/db/knowledge-catalog-verification-queue-repository.ts",
       "src/knowledge-catalog/consumer.ts",
+      "src/knowledge-catalog/verifier.ts",
+      "src/knowledge-catalog/fetch-budget.ts",
       "src/knowledge-catalog/dispatch.ts",
       "src/knowledge-catalog/types.ts",
       "src/db/knowledge-catalog-candidate-refresh.ts",

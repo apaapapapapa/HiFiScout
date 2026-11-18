@@ -449,3 +449,20 @@ this does not create an offer or change search grouping. Detail reads use the en
 indexes, bounded by the existing 40-fact / 40-member limits; ordinary search adds no relation reads. No
 model relationships are inferred or seeded by migrations. Catalog deletion requires an explicit
 review of existing model facts; transient search-entity cleanup leaves them intact.
+
+
+### Knowledge Catalog source request budget
+
+Queue verification shares a 40-request raw HTTP allowance across the entire Worker invocation,
+including all wake/legacy messages, robots reads and each manual redirect hop. This leaves headroom
+below the observed 50-request external-fetch limit; it is separate from D1, CPU and wall budgets.
+When another source request cannot fit, no candidate/source outcome is published. The existing
+bounded consumer-error retry/backoff returns that durable target to a fresh invocation; completed
+jobs are retained and skipped. Attempts are charged, so a single target exceeding a fresh allowance
+ultimately becomes a visible dead letter rather than retrying forever. The interrupted target starts
+its bounded source lookup again; fetched pages are not persisted as a new evidence cache.
+
+A per-target transport failure during discovery cannot become `not_found` merely because the
+strategy discarded it. A subsequently verified/ambiguous page remains meaningful, while 404/410
+remain actual misses. This deployment does not reset historical candidates, raise the platform
+limit, bump verifier rollout version, run a manual review or replay old errors automatically.

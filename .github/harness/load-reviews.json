@@ -3,6 +3,16 @@
   "reviews": [
     {
       "id": "load-contracts",
+      "baseSha": "cf90db2d6c15898918fd6c1ca8a95355d1aa0146",
+      "beforeDigest": "665d16744601e82aac1457a1a6fe3e1be9877faa6643e3d2280d2445b509c66b",
+      "afterDigest": "207ccfb39a2a8300b277c17a67315395bd47f46cdebd90520c1601fca3bb53f3",
+      "reason": "Register the invocation fetch-budget helper and existing per-target verifier in catalog-verification-queue. All existing suites, fixtures, sample IDs and ceilings are unchanged. Clean baseline/candidate captures passed 471/476 tests and 104 samples each; all 96 deterministic cost samples have identical profiles and metrics. The five added behavioral cases prove the previously failing limit/false-not-found scenarios, batch sharing including redirects/robots, continuation and bounded terminal failure. This registration does not waive missing samples, changed-source checks, absolute limits or paired CPU regression checks.",
+      "evidence": [
+        "https://github.com/apaapapapapa/HiFiScout/blob/fix/catalog-invocation-fetch-budget/evaluations/2026-11-18-catalog-fetch-budget.json"
+      ]
+    },
+    {
+      "id": "load-contracts",
       "baseSha": "687d57a84018f9c049a4116643bede0fa140e868",
       "beforeDigest": "4fab2f5b3a63c5fec5d4e974925423f602513450d06249598fcc220df0cfe6d3",
       "afterDigest": "665d16744601e82aac1457a1a6fe3e1be9877faa6643e3d2280d2445b509c66b",

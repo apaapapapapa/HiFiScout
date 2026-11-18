@@ -391,3 +391,37 @@ test("a dead-lettered target job is recorded without failing the whole run", asy
   );
   assert.equal(acks.length, 1);
 });
+
+test("failed discovery transport cannot become a not_found answer", async () => {
+  const { createVerifier } = await import("../src/knowledge-catalog/verifier.js");
+  const verifier = createVerifier(
+    queueEnv(queueDatabase(), undefined, {
+      KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS: "0",
+    }),
+    async () => {
+      throw new Error("fetch failed: connection reset");
+    },
+  );
+  const result = await verifier.verifyCandidate({
+    manufacturerId: "accuphase",
+    observedManufacturer: "Accuphase",
+    observedModel: "C-49",
+    normalizedModel: "C-49",
+  });
+  assert.equal(result.status, "error");
+  assert.match(result.message, /connection reset/);
+});
+
+test("HTTP service failures remain errors but real absent pages remain not_found", async () => {
+  const { createVerifier } = await import("../src/knowledge-catalog/verifier.js");
+  for (const status of [404, 410, 429, 503]) {
+    const verifier = createVerifier(
+      queueEnv(queueDatabase(), undefined, {
+        KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS: "0",
+      }),
+      async () => new Response("", { status }),
+    );
+    const result = await verifier.verifyCandidate(CANDIDATE_TARGET);
+    assert.equal(result.status, status === 404 || status === 410 ? "not_found" : "error");
+  }
+});

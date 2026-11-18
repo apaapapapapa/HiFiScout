@@ -50,6 +50,7 @@ import {
   verifyProductRecheckTarget,
 } from "./targets.js";
 import { errorMessage, isRecord } from "../types.js";
+import { KnowledgeSourceFetchBudget } from "./fetch-budget.js";
 import { createVerifier } from "./verifier.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
 import type {
@@ -136,6 +137,8 @@ function unclaimableRetryDelaySeconds(
 export interface ConsumeOptions {
   /** Overridable so job processing can be exercised without reaching the network. */
   createVerifier?: VerifierFactory;
+  /** Raw transport, below robots and manual redirect handling. */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -411,6 +414,7 @@ async function consumeKnowledgeCatalogRunWakeMessage(
   message: Message<KnowledgeCatalogQueueMessage>,
   runId: number,
   buildVerifier: VerifierFactory,
+  budget: KnowledgeSourceFetchBudget,
 ) {
   if (!runId) {
     console.error(
@@ -431,6 +435,7 @@ async function consumeKnowledgeCatalogRunWakeMessage(
 
   while (
     processedJobs < maxJobs &&
+    !budget.exhausted &&
     (processedJobs === 0 || Date.now() - startedAt < wallBudgetMs)
   ) {
     const claimedAt = new Date().toISOString();
@@ -520,11 +525,34 @@ async function consumeKnowledgeCatalogRunWakeMessage(
   return result;
 }
 
-export async function consumeKnowledgeCatalogVerificationMessage(
+async function consumeMessageWithBudget(
   env: KnowledgeCatalogQueueEnv,
   message: Message<KnowledgeCatalogQueueMessage>,
-  { createVerifier: buildVerifier = createVerifier }: ConsumeOptions = {},
+  options: ConsumeOptions,
+  budget: KnowledgeSourceFetchBudget,
 ) {
+  // A Queue batch is one Worker invocation, including legacy messages and different runs.
+  if (budget.exhausted) {
+    message.retry({ delaySeconds: 1 });
+    return { status: "retrying", reason: "invocation_fetch_budget" };
+  }
+  const factory = options.createVerifier ?? createVerifier;
+  const buildVerifier: VerifierFactory = (settings) => {
+    const verifier = factory(settings, budget.fetch);
+    return {
+      definitions: verifier.definitions,
+      async verifyCandidate(target) {
+        const result = await verifier.verifyCandidate(target);
+        budget.assertComplete();
+        return result;
+      },
+      async verifyStoredSource(target) {
+        const result = await verifier.verifyStoredSource(target);
+        budget.assertComplete();
+        return result;
+      },
+    };
+  };
   const body = message.body;
   if (isLegacyJobMessage(body)) {
     return consumeLegacyKnowledgeCatalogJobMessage(env, message, body, buildVerifier);
@@ -534,6 +562,20 @@ export async function consumeKnowledgeCatalogVerificationMessage(
     message,
     Number(body.runId || 0),
     buildVerifier,
+    budget,
+  );
+}
+
+export async function consumeKnowledgeCatalogVerificationMessage(
+  env: KnowledgeCatalogQueueEnv,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  options: ConsumeOptions = {},
+) {
+  return consumeMessageWithBudget(
+    env,
+    message,
+    options,
+    new KnowledgeSourceFetchBudget(options.fetchImpl),
   );
 }
 
@@ -542,9 +584,10 @@ export async function consumeKnowledgeCatalogVerificationBatch(
   batch: MessageBatch<KnowledgeCatalogQueueMessage>,
   options: ConsumeOptions = {},
 ): Promise<void> {
+  const budget = new KnowledgeSourceFetchBudget(options.fetchImpl);
   // Sequential: concurrent messages would compete for the same domain leases and mostly defer.
   for (const message of batch.messages) {
-    await consumeKnowledgeCatalogVerificationMessage(env, message, options);
+    await consumeMessageWithBudget(env, message, options, budget);
   }
 }
 
