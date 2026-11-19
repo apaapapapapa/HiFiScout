@@ -456,6 +456,8 @@ review of existing model facts; transient search-entity cleanup leaves them inta
 Queue verification shares a 40-request raw HTTP allowance across the entire Worker invocation,
 including all wake/legacy messages, robots reads and each manual redirect hop. This leaves headroom
 below the observed 50-request external-fetch limit; it is separate from D1, CPU and wall budgets.
+The wrapper preserves the native Workers fetch receiver (`globalThis`); local workerd tests cover
+real outbound requests, manual redirects and the unchanged request ceiling without external traffic.
 When another source request cannot fit, no candidate/source outcome is published. The existing
 bounded consumer-error retry/backoff returns that durable target to a fresh invocation; completed
 jobs are retained and skipped. Attempts are charged, so a single target exceeding a fresh allowance
