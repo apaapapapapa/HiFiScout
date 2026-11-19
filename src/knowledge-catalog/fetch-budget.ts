@@ -18,7 +18,8 @@ export class KnowledgeSourceFetchBudget {
     this.#used += 1;
     try {
       // Robots transport already handles redirects one hop at a time. Never allow hidden hops.
-      return await this.rawFetch(input, { ...init, redirect: "manual" });
+      // Native Workers fetch requires its global receiver, not this budget instance.
+      return await this.rawFetch.call(globalThis, input, { ...init, redirect: "manual" });
     } catch (error) {
       // A platform rejection also invalidates a result even if a strategy catches the exception.
       if (error instanceof Error && /too many subrequests/i.test(error.message)) {
